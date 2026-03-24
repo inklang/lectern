@@ -1,17 +1,16 @@
 ---
 import Base from '../layouts/Base.astro'
-import { PackageStore } from '../store.js'
+import { listAllPackages } from '../lib/db.js'
 
-const store = new PackageStore(process.env['STORAGE_DIR'] ?? './storage')
-const index = store.readIndex()
-const packages = Object.entries(index.packages)
+const allPackagesMap = await listAllPackages()
+const packages = Object.entries(allPackagesMap)
 const totalVersions = packages.reduce((n, [, versions]) => n + Object.keys(versions).length, 0)
 
 const recent = packages
   .flatMap(([name, versions]) =>
     Object.values(versions).map(v => ({ name, ...v }))
   )
-  .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+  .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
   .slice(0, 6)
 ---
 <Base title="Home">
@@ -163,7 +162,7 @@ const recent = packages
         {recent.map(pkg => (
           <a class="pkg-row" href={`/packages/${pkg.name}`}>
             <span class="pkg-name">{pkg.name}</span>
-            <span class="pkg-meta">v{pkg.version} &middot; {new Date(pkg.publishedAt).toLocaleDateString()}</span>
+            <span class="pkg-meta">v{pkg.version} &middot; {new Date(pkg.published_at).toLocaleDateString()}</span>
           </a>
         ))}
       </div>

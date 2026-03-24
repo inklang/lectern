@@ -1,21 +1,20 @@
 ---
 import Base from '../../layouts/Base.astro'
-import { PackageStore } from '../../store.js'
+import { listAllPackages } from '../../lib/db.js'
 
 const PAGE_SIZE = 20
 
-const store = new PackageStore(process.env['STORAGE_DIR'] ?? './storage')
-const index = store.readIndex()
+const allPackagesMap = await listAllPackages()
 
-const allPackages = Object.entries(index.packages)
+const allPackages = Object.entries(allPackagesMap)
   .map(([name, versions]) => {
     const sorted = Object.values(versions).sort((a, b) =>
-      new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+      new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
     )
     return { name, latest: sorted[0], versionCount: sorted.length }
   })
   .sort((a, b) =>
-    new Date(b.latest.publishedAt).getTime() - new Date(a.latest.publishedAt).getTime()
+    new Date(b.latest.published_at).getTime() - new Date(a.latest.published_at).getTime()
   )
 
 const page = Math.max(1, parseInt(Astro.url.searchParams.get('page') ?? '1'))
@@ -76,6 +75,8 @@ const packages = allPackages.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * 
       font-size: 0.8rem;
       color: var(--muted);
     }
+
+    .pkg-description { display: block; font-family: system-ui, sans-serif; font-size: 0.8rem; color: var(--muted); margin-top: 0.2rem; }
 
     .pkg-right { text-align: right; flex-shrink: 0; }
 
@@ -156,10 +157,11 @@ const packages = allPackages.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * 
               <div class="pkg-left">
                 <span class="pkg-name">{pkg.name}</span>
                 <span class="pkg-versions">{pkg.versionCount} version{pkg.versionCount !== 1 ? 's' : ''}</span>
+                {pkg.latest.description && <span class="pkg-description">{pkg.latest.description}</span>}
               </div>
               <div class="pkg-right">
                 <div class="pkg-ver">v{pkg.latest.version}</div>
-                <div class="pkg-date">{new Date(pkg.latest.publishedAt).toLocaleDateString()}</div>
+                <div class="pkg-date">{new Date(pkg.latest.published_at).toLocaleDateString()}</div>
               </div>
             </a>
           ))}
