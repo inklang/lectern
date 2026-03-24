@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro'
 import { extractBearer, resolveToken } from '../../../../lib/tokens.js'
+import { canUserPublish } from '../../../../lib/authz.js'
 import { getPackageOwner, createPackage, insertVersion, versionExists } from '../../../../lib/db.js'
 import { uploadTarball } from '../../../../lib/storage.js'
 import { extractDependencies } from '../../../../tar.js'
@@ -31,14 +32,11 @@ export const PUT: APIRoute = async ({ params, request }) => {
     return new Response(JSON.stringify({ error: 'Invalid or expired token. Run `quill login`.' }), { status: 401 })
   }
 
-  // Ownership check
-  const owner = await getPackageOwner(name)
-  if (owner && owner !== userId) {
-    return new Response(JSON.stringify({ error: `Package ${name} is owned by a different account` }), { status: 403 })
-  }
-
-  // Duplicate check
+  // Permission check: if version already exists, verify publisher has access
   if (await versionExists(name, version)) {
+    if (!(await canUserPublish(userId, name))) {
+      return new Response(JSON.stringify({ error: `You do not have permission to publish to ${name}` }), { status: 403 })
+    }
     return new Response(JSON.stringify({ error: `${name}@${version} already exists` }), { status: 409 })
   }
 
@@ -69,6 +67,7 @@ export const PUT: APIRoute = async ({ params, request }) => {
   const tarballUrl = await uploadTarball(name, version, tarballData)
 
   // Create package record on first publish
+  const owner = await getPackageOwner(name)
   if (!owner) await createPackage(name, userId)
 
   // Insert version row (embedding added async after response)
