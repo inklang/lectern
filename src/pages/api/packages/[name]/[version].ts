@@ -66,9 +66,26 @@ export const PUT: APIRoute = async ({ params, request }) => {
   // Upload to Supabase Storage
   const tarballUrl = await uploadTarball(name, version, tarballData)
 
+  // Check if this should be an org-owned package
+  const url = new URL(request.url)
+  const ownerOrgId = url.searchParams.get('owner_org_id')
+
+  let ownerType: 'user' | 'org' = 'user'
+  let actualOwnerId = userId
+
+  if (ownerOrgId) {
+    // Verify user is admin of this org
+    const { isOrgAdmin } = await import('../../../../lib/orgs.js')
+    if (!(await isOrgAdmin(ownerOrgId, userId))) {
+      return new Response(JSON.stringify({ error: 'Not an admin of this org' }), { status: 403 })
+    }
+    ownerType = 'org'
+    actualOwnerId = ownerOrgId
+  }
+
   // Create package record on first publish
   const owner = await getPackageOwner(name)
-  if (!owner) await createPackage(name, userId)
+  if (!owner) await createPackage(name, actualOwnerId, ownerType)
 
   // Insert version row (embedding added async after response)
   await insertVersion({

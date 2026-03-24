@@ -54,10 +54,10 @@ export async function getPackageOwner(name: string): Promise<string | null> {
 }
 
 // Registers a new package (first publish)
-export async function createPackage(name: string, ownerId: string): Promise<void> {
+export async function createPackage(name: string, ownerId: string, ownerType: 'user' | 'org' = 'user'): Promise<void> {
   const { error } = await supabase
     .from('packages')
-    .insert({ name, owner_id: ownerId })
+    .insert({ name, owner_id: ownerId, owner_type: ownerType })
   if (error) throw error
 }
 

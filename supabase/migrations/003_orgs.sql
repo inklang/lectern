@@ -118,3 +118,7 @@ create policy "admins read invites" on org_invites
   for select using (
     exists (select 1 from org_members where org_id = org_invites.org_id and user_id = auth.uid() and role in ('owner', 'admin'))
   );
+create policy "org members can update invites" on org_invites
+  for update using (
+    exists (select 1 from org_members where org_id = org_invites.org_id and user_id = auth.uid())
+  );
