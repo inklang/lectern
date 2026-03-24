@@ -31,274 +31,211 @@ const accessToken = session.access_token
 ---
 <Base title="Profile">
   <style>
-    .profile-wrap {
-      max-width: 860px;
-    }
-
     h1 {
       font-family: var(--font-mono);
-      font-size: 1.1rem;
+      font-size: 1.25rem;
       font-weight: 600;
       letter-spacing: -0.02em;
-      margin-bottom: 2rem;
+      margin-bottom: 2.5rem;
     }
 
+    /* ── section ──────────────────────────────── */
     .section {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
+      margin-bottom: 2.5rem;
     }
 
-    .section-title {
+    .section-heading {
       font-family: var(--font-mono);
-      font-size: 0.8rem;
-      font-weight: 600;
-      letter-spacing: 0.05em;
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
       color: var(--muted);
-      margin-bottom: 1.25rem;
+      margin-bottom: 0.875rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* ── account ──────────────────────────────── */
+    .account-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .account-avatar {
+      width: 2.75rem;
+      height: 2.75rem;
+      border-radius: 8px;
+      object-fit: cover;
+      flex-shrink: 0;
     }
 
     .account-info {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1.5rem;
-      margin-bottom: 1.5rem;
+      flex: 1;
+      min-width: 0;
     }
 
-    .info-row {
+    .account-name {
+      font-family: var(--font-mono);
+      font-size: 0.9375rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .account-email {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+
+    /* ── shared row list ──────────────────────── */
+    .row-list {
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
     }
 
-    .info-label {
+    .row-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.8rem 0;
+      border-bottom: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+    }
+
+    .row-item:first-child {
+      border-top: 1px solid var(--border);
+    }
+
+    .row-left {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      min-width: 0;
+    }
+
+    .row-name {
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .row-name:hover { opacity: 0.7; }
+
+    .row-meta {
       font-size: 0.775rem;
       color: var(--muted);
-      font-family: var(--font-mono);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
     }
 
-    .info-value {
-      font-size: 0.95rem;
-      color: var(--text);
-      word-break: break-all;
-    }
-
-    .avatar {
-      width: 3rem;
-      height: 3rem;
-      border-radius: 8px;
-      object-fit: cover;
-    }
-
+    /* ── buttons ──────────────────────────────── */
     .btn {
+      font-family: var(--font-mono);
+      font-size: 0.775rem;
+      padding: 0.3rem 0.75rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+      text-decoration: none;
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem 1.1rem;
-      border-radius: 7px;
-      font-size: 0.875rem;
-      font-family: var(--font-sans);
-      cursor: pointer;
-      border: 1px solid var(--accent);
-      background: var(--accent);
-      color: #fff;
-      font-weight: 500;
-      transition: opacity 0.15s, border-color 0.15s, color 0.15s;
     }
 
-    .btn:hover { opacity: 0.9; }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn:hover { color: var(--text); border-color: var(--text); opacity: 1; }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-    .btn-outline {
-      background: transparent;
+    .btn-danger {
       color: #f87171;
       border-color: #f87171;
     }
 
-    .btn-outline:hover {
-      opacity: 0.8;
-    }
+    .btn-danger:hover { color: #fca5a5; border-color: #fca5a5; }
 
-    .btn-signout {
-      background: transparent;
-      border-color: var(--muted);
-      color: var(--muted);
-    }
-
-    .btn-signout:hover {
-      border-color: var(--text);
-      color: var(--text);
-    }
-
-    .packages-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-    }
-
-    .package-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.75rem;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      font-size: 0.875rem;
-    }
-
-    .package-name {
-      color: var(--text);
-      text-decoration: none;
-      font-weight: 500;
-    }
-
-    .package-name:hover {
-      opacity: 0.8;
-    }
-
-    .package-date {
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
-
-    .tokens-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-    }
-
-    .token-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.75rem;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      font-size: 0.875rem;
-    }
-
-    .token-id {
-      font-family: var(--font-mono);
-      color: var(--text);
-      font-weight: 500;
-    }
-
-    .token-dates {
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
-
-    .empty-message {
-      font-size: 0.875rem;
-      color: var(--muted);
-      padding: 1rem 0;
-    }
-
-    .loading {
-      font-size: 0.875rem;
-      color: var(--muted);
-    }
-
-    .section-header {
+    /* ── token reveal ─────────────────────────── */
+    .token-reveal {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      margin-bottom: 1.25rem;
-    }
-
-    .section-header .section-title {
-      margin-bottom: 0;
-    }
-
-    .new-token-reveal {
-      background: var(--bg);
+      gap: 0.5rem;
+      background: var(--surface);
       border: 1px solid var(--accent);
       border-radius: 8px;
-      padding: 1rem;
+      padding: 0.75rem 1rem;
       margin-bottom: 1rem;
     }
 
-    .new-token-reveal p {
-      font-size: 0.8rem;
+    .token-reveal-note {
+      font-size: 0.775rem;
       color: var(--muted);
-      margin-bottom: 0.75rem;
+      margin-bottom: 0.6rem;
+      font-family: var(--font-mono);
     }
 
-    .token-copy-row {
-      display: flex;
-      gap: 0.5rem;
-      align-items: center;
-    }
-
-    .token-value {
+    .token-reveal-val {
       flex: 1;
       font-family: var(--font-mono);
       font-size: 0.8rem;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.5rem 0.75rem;
       color: var(--text);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
-    .btn-copy {
-      background: transparent;
-      border: 1px solid var(--border);
+    /* ── misc ─────────────────────────────────── */
+    .empty {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
       color: var(--muted);
-      padding: 0.4rem 0.75rem;
-      border-radius: 6px;
-      font-size: 0.8rem;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: color 0.15s, border-color 0.15s;
+      padding: 1rem 0;
+      border-top: 1px solid var(--border);
     }
 
-    .btn-copy:hover {
-      color: var(--text);
-      border-color: var(--text);
+    .loading {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      padding: 1rem 0;
+      border-top: 1px solid var(--border);
     }
   </style>
 
-  <div class="profile-wrap" id="profile-container" data-url={supabaseUrl} data-key={supabaseKey} data-token={accessToken}>
+  <div id="profile-container" data-url={supabaseUrl} data-key={supabaseKey} data-token={accessToken}>
     <h1>profile</h1>
 
-    <!-- Account Section (server-rendered) -->
-    <div class="section" id="account-section">
-      <div class="section-title">Account</div>
-      <div class="account-info">
-        <div class="info-row">
-          <div class="info-label">GitHub Username</div>
-          <div class="info-value">{username}</div>
-        </div>
-        <div class="info-row">
-          <div class="info-label">Email</div>
-          <div class="info-value">{email}</div>
+    <!-- Account (server-rendered) -->
+    <div class="section">
+      <div class="section-heading">
+        <span>account</span>
+        <button class="btn" id="signout-btn">sign out</button>
+      </div>
+      <div class="account-row">
+        {avatar && <img src={avatar} alt={username} class="account-avatar" />}
+        <div class="account-info">
+          <div class="account-name">{username}</div>
+          <div class="account-email">{email}</div>
         </div>
       </div>
-      {avatar && <img src={avatar} alt="Avatar" class="avatar" />}
-      <button class="btn btn-signout" id="signout-btn">Sign Out</button>
     </div>
 
-    <!-- Your Packages Section -->
+    <!-- Packages (client-rendered) -->
     <div class="section" id="packages-section">
-      <div class="section-title">Your Packages</div>
-      <div class="loading">Loading…</div>
+      <div class="section-heading">packages</div>
+      <div class="loading">loading…</div>
     </div>
 
-    <!-- CLI Tokens Section -->
+    <!-- CLI Tokens (client-rendered) -->
     <div class="section" id="tokens-section">
-      <div class="section-title">CLI Tokens</div>
-      <div class="loading">Loading…</div>
+      <div class="section-heading">
+        <span>cli tokens</span>
+      </div>
+      <div class="loading">loading…</div>
     </div>
   </div>
 
@@ -320,7 +257,7 @@ const accessToken = session.access_token
     })
 
     async function load() {
-      // Your Packages Section
+      // Packages
       const packagesSection = document.getElementById('packages-section')!
       try {
         const { data: packages } = await supabase
@@ -329,124 +266,130 @@ const accessToken = session.access_token
           .order('created_at', { ascending: false })
 
         if (packages && packages.length > 0) {
-          const packagesList = packages.map((pkg: any) => {
-            const date = formatDate(new Date(pkg.created_at))
-            return `
-              <div class="package-item">
-                <a href="/packages/${encodeURIComponent(pkg.name)}" class="package-name">${escapeHtml(pkg.name)}</a>
-                <span class="package-date">${date}</span>
-              </div>
-            `
-          }).join('')
-          packagesSection.innerHTML = `<div class="section-title">Your Packages</div><div class="packages-list">${packagesList}</div>`
+          const rows = packages.map((pkg: any) => `
+            <div class="row-item">
+              <a href="/packages/${encodeURIComponent(pkg.name)}" class="row-name">${escapeHtml(pkg.name)}</a>
+              <span class="row-meta">${formatDate(new Date(pkg.created_at))}</span>
+            </div>
+          `).join('')
+          packagesSection.innerHTML = `<div class="section-heading">packages</div><div class="row-list">${rows}</div>`
         } else {
-          packagesSection.innerHTML = `<div class="section-title">Your Packages</div><p class="empty-message">No packages published yet.</p>`
+          packagesSection.innerHTML = `<div class="section-heading">packages</div><p class="empty">no packages published yet.</p>`
         }
-      } catch (e) {
-        packagesSection.innerHTML = `<div class="section-title">Your Packages</div><p class="empty-message">Error loading packages.</p>`
+      } catch {
+        packagesSection.innerHTML = `<div class="section-heading">packages</div><p class="empty">error loading packages.</p>`
       }
 
-      // CLI Tokens Section
+      // Tokens
       const tokensSection = document.getElementById('tokens-section')!
       await renderTokens(tokensSection)
     }
 
     async function renderTokens(tokensSection: HTMLElement) {
+      // Preserve any existing reveal box
+      const existingReveal = tokensSection.querySelector('.token-reveal-wrap')?.cloneNode(true) as HTMLElement | null
+
       try {
         const { data: tokens } = await supabase
           .from('cli_tokens')
           .select('id, created_at, last_used')
           .order('created_at', { ascending: false })
 
-        const header = `
-          <div class="section-header">
-            <div class="section-title">CLI Tokens</div>
-            <button class="btn" id="new-token-btn">New Token</button>
+        const heading = `
+          <div class="section-heading">
+            <span>cli tokens</span>
+            <button class="btn" id="new-token-btn">+ new token</button>
           </div>
         `
 
         if (tokens && tokens.length > 0) {
-          const tokensList = tokens.map((token: any) => {
+          const rows = tokens.map((token: any) => {
             const created = formatDate(new Date(token.created_at))
-            const lastUsed = token.last_used ? formatDate(new Date(token.last_used)) : 'Never'
-            const tokenId = token.id.slice(0, 8)
+            const lastUsed = token.last_used ? formatDate(new Date(token.last_used)) : 'never'
             return `
-              <div class="token-item" data-token-id="${escapeHtml(token.id)}">
-                <div>
-                  <div class="token-id">${tokenId}…</div>
-                  <div class="token-dates">Created ${created} · Last used ${lastUsed}</div>
+              <div class="row-item" data-token-id="${escapeHtml(token.id)}">
+                <div class="row-left">
+                  <span class="row-name">${token.id.slice(0, 8)}…</span>
+                  <span class="row-meta">created ${created} · last used ${lastUsed}</span>
                 </div>
-                <button class="btn btn-outline revoke-btn" data-token-id="${escapeHtml(token.id)}">Revoke</button>
+                <button class="btn btn-danger revoke-btn" data-token-id="${escapeHtml(token.id)}">revoke</button>
               </div>
             `
           }).join('')
-          tokensSection.innerHTML = `${header}<div class="tokens-list">${tokensList}</div>`
+          tokensSection.innerHTML = `${heading}<div class="row-list">${rows}</div>`
         } else {
-          tokensSection.innerHTML = `${header}<p class="empty-message">No CLI tokens yet.</p>`
+          tokensSection.innerHTML = `${heading}<p class="empty">no cli tokens yet.</p>`
+        }
+
+        // Re-insert reveal if it existed
+        if (existingReveal) {
+          const heading = tokensSection.querySelector('.section-heading')!
+          heading.after(existingReveal)
+          tokensSection.querySelector('#copy-token-btn')?.addEventListener('click', handleCopy)
         }
 
         document.getElementById('new-token-btn')?.addEventListener('click', createToken)
 
-        document.querySelectorAll('.revoke-btn').forEach(btn => {
+        tokensSection.querySelectorAll('.revoke-btn').forEach(btn => {
           btn.addEventListener('click', async (e) => {
             const tokenId = (e.target as HTMLElement).getAttribute('data-token-id')!
-            const btn = e.target as HTMLButtonElement
-            btn.disabled = true
-            btn.textContent = 'Revoking…'
+            const b = e.target as HTMLButtonElement
+            b.disabled = true
+            b.textContent = 'revoking…'
             try {
               await supabase.from('cli_tokens').delete().eq('id', tokenId)
-              const item = tokensSection.querySelector(`[data-token-id="${tokenId}"]`)
-              if (item) item.remove()
+              tokensSection.querySelector(`[data-token-id="${tokenId}"]`)?.remove()
             } catch {
-              btn.disabled = false
-              btn.textContent = 'Revoke'
+              b.disabled = false
+              b.textContent = 'revoke'
             }
           })
         })
       } catch {
-        tokensSection.innerHTML = `<p class="empty-message">Error loading tokens.</p>`
+        tokensSection.innerHTML = `<div class="section-heading">cli tokens</div><p class="empty">error loading tokens.</p>`
       }
     }
+
+    let pendingToken = ''
 
     async function createToken() {
       const btn = document.getElementById('new-token-btn') as HTMLButtonElement
       btn.disabled = true
-      btn.textContent = 'Creating…'
+      btn.textContent = 'creating…'
 
       try {
         const res = await fetch('/api/auth/token', { method: 'POST' })
         const { token } = await res.json()
+        pendingToken = token
 
-        // Insert the one-time reveal above the token list
         const tokensSection = document.getElementById('tokens-section')!
-        const existing = tokensSection.querySelector('.new-token-reveal')
+        const existing = tokensSection.querySelector('.token-reveal-wrap')
         if (existing) existing.remove()
 
-        const reveal = document.createElement('div')
-        reveal.className = 'new-token-reveal'
-        reveal.innerHTML = `
-          <p>Copy this token now — it won't be shown again.</p>
-          <div class="token-copy-row">
-            <div class="token-value" title="${escapeHtml(token)}">${escapeHtml(token)}</div>
-            <button class="btn-copy" id="copy-token-btn">Copy</button>
+        const wrap = document.createElement('div')
+        wrap.className = 'token-reveal-wrap'
+        wrap.innerHTML = `
+          <p class="token-reveal-note">copy this token now — it won't be shown again.</p>
+          <div class="token-reveal">
+            <span class="token-reveal-val" title="${escapeHtml(token)}">${escapeHtml(token)}</span>
+            <button class="btn" id="copy-token-btn">copy</button>
           </div>
         `
-        const header = tokensSection.querySelector('.section-header')!
-        header.after(reveal)
+        tokensSection.querySelector('.section-heading')!.after(wrap)
+        tokensSection.querySelector('#copy-token-btn')?.addEventListener('click', handleCopy)
 
-        document.getElementById('copy-token-btn')?.addEventListener('click', async () => {
-          await navigator.clipboard.writeText(token)
-          const copyBtn = document.getElementById('copy-token-btn')!
-          copyBtn.textContent = 'Copied!'
-          setTimeout(() => { copyBtn.textContent = 'Copy' }, 2000)
-        })
-
-        // Reload token list to show the new entry
         await renderTokens(tokensSection)
       } catch {
         btn.disabled = false
-        btn.textContent = 'New Token'
+        btn.textContent = '+ new token'
       }
+    }
+
+    async function handleCopy() {
+      await navigator.clipboard.writeText(pendingToken)
+      const btn = document.getElementById('copy-token-btn')!
+      btn.textContent = 'copied!'
+      setTimeout(() => { btn.textContent = 'copy' }, 2000)
     }
 
     function formatDate(date: Date): string {
