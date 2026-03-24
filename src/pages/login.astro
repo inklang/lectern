@@ -1,8 +1,5 @@
 ---
 import Base from '../layouts/Base.astro'
-
-const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
-const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
 ---
 <Base title="Login">
   <style>
@@ -60,32 +57,9 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
     </p>
 
     <div class="card">
-      <button
-        id="github-btn"
-        class="btn"
-        data-url={supabaseUrl}
-        data-key={supabaseKey}
-      >
+      <a id="github-btn" class="btn" href="/api/auth/login">
         Login with GitHub
-      </button>
+      </a>
     </div>
   </div>
-
-  <script>
-    import { createClient } from '@supabase/supabase-js'
-
-    const btn = document.getElementById('github-btn') as HTMLButtonElement
-    const supabaseUrl = btn.dataset.url!
-    const supabaseKey = btn.dataset.key!
-    const supabase = createClient(supabaseUrl, supabaseKey)
-
-    btn.addEventListener('click', async () => {
-      btn.disabled = true
-      btn.textContent = 'Redirecting…'
-      await supabase.auth.signInWithOAuth({
-        provider: 'github',
-        options: { redirectTo: window.location.origin + '/auth/callback' }
-      })
-    })
-  </script>
 </Base>
