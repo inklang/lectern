@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro'
-import { createServerClient, parseCookieHeader, serializeCookieHeader } from '@supabase/ssr'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 
-export const GET: APIRoute = async ({ request }) => {
+export const GET: APIRoute = async ({ request, cookies, redirect }) => {
   const url = new URL(request.url)
   const code = url.searchParams.get('code')
   const next = url.searchParams.get('next') ?? '/profile'
@@ -9,21 +9,18 @@ export const GET: APIRoute = async ({ request }) => {
   const errorDescription = url.searchParams.get('error_description')
 
   if (error) {
-    return Response.redirect(
-      new URL(`/login?error=${encodeURIComponent(errorDescription ?? error)}`, url).toString(),
-      302
-    )
+    return redirect(`/login?error=${encodeURIComponent(errorDescription ?? error)}`)
   }
 
   if (!code) {
-    return Response.redirect(new URL('/login?error=no_code', url).toString(), 302)
+    return redirect('/login?error=no_code')
   }
 
   const supabaseUrl = import.meta.env.SUPABASE_URL
   const supabaseKey = import.meta.env.SUPABASE_SECRET_KEY
 
   if (!supabaseUrl || !supabaseKey) {
-    return Response.redirect(new URL('/login?error=server_config', url).toString(), 302)
+    return redirect('/login?error=server_config')
   }
 
   const supabase = createServerClient(supabaseUrl, supabaseKey, {
@@ -31,8 +28,8 @@ export const GET: APIRoute = async ({ request }) => {
       getAll() {
         return parseCookieHeader(request.headers.get('Cookie') ?? '')
       },
-      setAll(cookiesToSet) {
-        // Handled below - serialize cookies into the response directly
+      setAll() {
+        // handled below via cookies.set()
       },
     },
   })
@@ -41,40 +38,23 @@ export const GET: APIRoute = async ({ request }) => {
 
   if (exchangeError) {
     console.error('OAuth callback error:', exchangeError)
-    return Response.redirect(
-      new URL(`/login?error=${encodeURIComponent(exchangeError.message)}`, url).toString(),
-      302
-    )
+    return redirect(`/login?error=${encodeURIComponent(exchangeError.message)}`)
   }
 
   if (!data.session) {
-    return Response.redirect(new URL('/login?error=no_session', url).toString(), 302)
+    return redirect('/login?error=no_session')
   }
 
-  // Serialize cookies manually to include in the redirect response
-  const setCookieHeaders: string[] = []
-  const cookieOptions = {
+  const supabaseCookieName = `${supabaseUrl.split('://')[1]}.auth-token`
+  const cookieValue = JSON.stringify(data.session)
+
+  cookies.set(supabaseCookieName, cookieValue, {
     maxAge: data.session.expires_in,
     httpOnly: true,
-    sameSite: 'lax' as const,
+    sameSite: 'lax',
     secure: true,
     path: '/',
-  }
-
-  // Access token cookie
-  setCookieHeaders.push(
-    serializeCookieHeader(
-      `${supabaseUrl.split('://')[1]}.auth-token`,
-      JSON.stringify(data.session),
-      cookieOptions
-    )
-  )
-
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: next,
-      'Set-Cookie': setCookieHeaders.join(', '),
-    },
   })
+
+  return redirect(next)
 }
