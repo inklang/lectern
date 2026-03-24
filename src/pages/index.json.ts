@@ -1,11 +1,9 @@
 import type { APIRoute } from 'astro'
-import { PackageStore } from '../store.js'
+import { listAllPackages } from '../lib/db.js'
 
-const store = new PackageStore(process.env['STORAGE_DIR'] ?? './storage')
-
-export const GET: APIRoute = () => {
-  const index = store.readIndex()
-  return new Response(JSON.stringify(index), {
+export const GET: APIRoute = async () => {
+  const packages = await listAllPackages()
+  return new Response(JSON.stringify({ packages }), {
     headers: { 'Content-Type': 'application/json' }
   })
 }
