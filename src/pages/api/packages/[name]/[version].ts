@@ -89,8 +89,24 @@ export const PUT: APIRoute = async ({ params, request }) => {
   return new Response(JSON.stringify({ name, version, url: `${baseUrl}/api/packages/${name}/${version}` }), { status: 201 })
 }
 
-// Placeholder — wired up in Task 16
+import { embedText } from '../../../../lib/embed.js'
+
 async function generateAndStoreEmbedding(
-  _name: string, _version: string,
-  _description: string | null, _readme: string | null
-): Promise<void> {}
+  name: string, version: string,
+  description: string | null, readme: string | null
+): Promise<void> {
+  const { supabase } = await import('../../../../lib/supabase.js')
+
+  // Strip markdown to plain text for embedding (rough strip)
+  const plaintext = [name, description ?? '', readme?.replace(/[#*`\[\]]/g, '') ?? '']
+    .filter(Boolean).join(' ').slice(0, 8000)
+
+  const embedding = await embedText(plaintext, 'passage')
+  if (!embedding) return
+
+  await supabase
+    .from('package_versions')
+    .update({ embedding })
+    .eq('package_name', name)
+    .eq('version', version)
+}
