@@ -1,5 +1,6 @@
 services:
   lectern:
+    build: .
     image: ghcr.io/inklang/lectern:latest
     restart: unless-stopped
     ports:
