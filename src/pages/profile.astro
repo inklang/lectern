@@ -205,6 +205,68 @@ const accessToken = session.access_token
       font-size: 0.875rem;
       color: var(--muted);
     }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+    }
+
+    .section-header .section-title {
+      margin-bottom: 0;
+    }
+
+    .new-token-reveal {
+      background: var(--bg);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .new-token-reveal p {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .token-copy-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .token-value {
+      flex: 1;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .btn-copy {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 0.4rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .btn-copy:hover {
+      color: var(--text);
+      border-color: var(--text);
+    }
   </style>
 
   <div class="profile-wrap" id="profile-container" data-url={supabaseUrl} data-key={supabaseKey} data-token={accessToken}>
@@ -286,11 +348,22 @@ const accessToken = session.access_token
 
       // CLI Tokens Section
       const tokensSection = document.getElementById('tokens-section')!
+      await renderTokens(tokensSection)
+    }
+
+    async function renderTokens(tokensSection: HTMLElement) {
       try {
         const { data: tokens } = await supabase
           .from('cli_tokens')
           .select('id, created_at, last_used')
           .order('created_at', { ascending: false })
+
+        const header = `
+          <div class="section-header">
+            <div class="section-title">CLI Tokens</div>
+            <button class="btn" id="new-token-btn">New Token</button>
+          </div>
+        `
 
         if (tokens && tokens.length > 0) {
           const tokensList = tokens.map((token: any) => {
@@ -307,30 +380,72 @@ const accessToken = session.access_token
               </div>
             `
           }).join('')
-          tokensSection.innerHTML = `<div class="section-title">CLI Tokens</div><div class="tokens-list">${tokensList}</div>`
-
-          // Add revoke listeners
-          document.querySelectorAll('.revoke-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-              const tokenId = (e.target as HTMLElement).getAttribute('data-token-id')!
-              const btn = e.target as HTMLButtonElement
-              btn.disabled = true
-              btn.textContent = 'Revoking…'
-              try {
-                await supabase.from('cli_tokens').delete().eq('id', tokenId)
-                const item = document.querySelector(`[data-token-id="${tokenId}"]`)
-                if (item) item.remove()
-              } catch (e) {
-                btn.disabled = false
-                btn.textContent = 'Revoke'
-              }
-            })
-          })
+          tokensSection.innerHTML = `${header}<div class="tokens-list">${tokensList}</div>`
         } else {
-          tokensSection.innerHTML = `<div class="section-title">CLI Tokens</div><p class="empty-message">No CLI tokens created yet.</p>`
+          tokensSection.innerHTML = `${header}<p class="empty-message">No CLI tokens yet.</p>`
         }
-      } catch (e) {
-        tokensSection.innerHTML = `<div class="section-title">CLI Tokens</div><p class="empty-message">Error loading tokens.</p>`
+
+        document.getElementById('new-token-btn')?.addEventListener('click', createToken)
+
+        document.querySelectorAll('.revoke-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const tokenId = (e.target as HTMLElement).getAttribute('data-token-id')!
+            const btn = e.target as HTMLButtonElement
+            btn.disabled = true
+            btn.textContent = 'Revoking…'
+            try {
+              await supabase.from('cli_tokens').delete().eq('id', tokenId)
+              const item = tokensSection.querySelector(`[data-token-id="${tokenId}"]`)
+              if (item) item.remove()
+            } catch {
+              btn.disabled = false
+              btn.textContent = 'Revoke'
+            }
+          })
+        })
+      } catch {
+        tokensSection.innerHTML = `<p class="empty-message">Error loading tokens.</p>`
+      }
+    }
+
+    async function createToken() {
+      const btn = document.getElementById('new-token-btn') as HTMLButtonElement
+      btn.disabled = true
+      btn.textContent = 'Creating…'
+
+      try {
+        const res = await fetch('/api/auth/token', { method: 'POST' })
+        const { token } = await res.json()
+
+        // Insert the one-time reveal above the token list
+        const tokensSection = document.getElementById('tokens-section')!
+        const existing = tokensSection.querySelector('.new-token-reveal')
+        if (existing) existing.remove()
+
+        const reveal = document.createElement('div')
+        reveal.className = 'new-token-reveal'
+        reveal.innerHTML = `
+          <p>Copy this token now — it won't be shown again.</p>
+          <div class="token-copy-row">
+            <div class="token-value" title="${escapeHtml(token)}">${escapeHtml(token)}</div>
+            <button class="btn-copy" id="copy-token-btn">Copy</button>
+          </div>
+        `
+        const header = tokensSection.querySelector('.section-header')!
+        header.after(reveal)
+
+        document.getElementById('copy-token-btn')?.addEventListener('click', async () => {
+          await navigator.clipboard.writeText(token)
+          const copyBtn = document.getElementById('copy-token-btn')!
+          copyBtn.textContent = 'Copied!'
+          setTimeout(() => { copyBtn.textContent = 'Copy' }, 2000)
+        })
+
+        // Reload token list to show the new entry
+        await renderTokens(tokensSection)
+      } catch {
+        btn.disabled = false
+        btn.textContent = 'New Token'
       }
     }
 
