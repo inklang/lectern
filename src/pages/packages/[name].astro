@@ -143,6 +143,21 @@ const owner = index.owners[name!]
       font-size: 0.8rem;
       color: var(--muted);
     }
+
+    .owner-block {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .owner-key {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text);
+      word-break: break-all;
+    }
+
+    .owner-key-muted { color: var(--muted); }
   </style>
 
   <a class="back" href="/packages">← packages</a>
@@ -151,7 +166,6 @@ const owner = index.owners[name!]
     <div class="pkg-name">{name}</div>
     <div class="pkg-meta-row">
       <span class="badge latest">v{latest.version}</span>
-      {owner && <span class="owner-fp">by {owner.slice(0, 8)}···</span>}
     </div>
   </div>
 
@@ -162,6 +176,17 @@ const owner = index.owners[name!]
       <span>quill add {name}</span>
     </div>
   </div>
+
+  {owner && (
+    <div class="section">
+      <p class="section-heading">owner</p>
+      <div class="owner-block">
+        <span class="owner-key">
+          {owner.slice(0, 8)}<span class="owner-key-muted">{owner.slice(8)}</span>
+        </span>
+      </div>
+    </div>
+  )}
 
   {Object.keys(latest.dependencies).length > 0 && (
     <div class="section">
