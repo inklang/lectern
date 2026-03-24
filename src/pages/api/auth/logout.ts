@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro'
 import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 
-export const POST: APIRoute = async ({ request, redirect }) => {
+export const POST: APIRoute = async ({ request }) => {
   const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
   const supabaseKey = import.meta.env.SUPABASE_SECRET_KEY ?? ''
 
@@ -10,22 +10,19 @@ export const POST: APIRoute = async ({ request, redirect }) => {
       getAll() {
         return parseCookieHeader(request.headers.get('Cookie') ?? '')
       },
-      setAll() {
-        // We'll handle cookie clearing below
-      },
+      setAll() {},
     },
   })
 
   await supabase.auth.signOut()
 
   const cookieName = `${supabaseUrl.split('://')[1]}.auth-token`
-  const clearedCookie = `${cookieName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure`
 
   return new Response(null, {
     status: 302,
     headers: {
       Location: '/',
-      'Set-Cookie': clearedCookie,
+      'Set-Cookie': `${cookieName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure`,
     },
   })
 }
