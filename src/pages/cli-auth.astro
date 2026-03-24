@@ -1,38 +1,58 @@
 ---
-import { supabaseAnon } from '../lib/supabase.js'
-import { issueToken } from '../lib/tokens.js'
-
-const url = new URL(Astro.request.url)
-const callbackUrl = url.searchParams.get('callback')
-
-// Step 2: OAuth returned with code — exchange for session
-const code = url.searchParams.get('code')
-if (code) {
-  const { data, error } = await supabaseAnon.auth.exchangeCodeForSession(code)
-  if (!error && data.session && callbackUrl) {
-    const userId = data.session.user.id
-    const username = data.session.user.user_metadata?.['user_name'] as string ?? 'unknown'
-    const token = await issueToken(userId)
-    const redirect = new URL(callbackUrl)
-    redirect.searchParams.set('token', token)
-    redirect.searchParams.set('username', username)
-    return Astro.redirect(redirect.toString())
-  }
-}
-
-// Step 1: No session — kick off GitHub OAuth
-if (!callbackUrl) {
-  return new Response('Missing callback parameter', { status: 400 })
-}
-
-const redirectTo = new URL('/cli-auth', Astro.url.origin)
-redirectTo.searchParams.set('callback', callbackUrl)
-
-const { data } = await supabaseAnon.auth.signInWithOAuth({
-  provider: 'github',
-  options: { redirectTo: redirectTo.toString() }
-})
-
-if (data.url) return Astro.redirect(data.url)
+import Base from '../layouts/Base.astro'
+const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
+const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
 ---
-<p>Something went wrong. Please try again.</p>
+<Base title="CLI Login">
+  <div id="root" data-url={supabaseUrl} data-key={supabaseKey} style="font-family:var(--font-mono);color:var(--muted)">
+    <p id="status">Authenticating…</p>
+  </div>
+  <script>
+    import { createClient } from '@supabase/supabase-js'
+
+    const root = document.getElementById('root')!
+    const supabase = createClient(root.dataset.url!, root.dataset.key!)
+    const status = document.getElementById('status')!
+
+    const params = new URLSearchParams(location.search)
+    const code = params.get('code')
+    const callbackUrl = params.get('callback')
+
+    if (code && callbackUrl) {
+      // Returning from OAuth — exchange code (PKCE verifier is in localStorage)
+      status.textContent = 'Exchanging code…'
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+      if (error || !data.session) {
+        status.textContent = 'Auth failed: ' + (error?.message ?? 'no session')
+      } else {
+        // Ask server to issue a CLI token using this access token
+        status.textContent = 'Issuing token…'
+        const res = await fetch('/api/auth/cli-token', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${data.session.access_token}` }
+        })
+        if (!res.ok) {
+          status.textContent = 'Token issuance failed: ' + res.status
+        } else {
+          const { token, username } = await res.json()
+          const dest = new URL(callbackUrl)
+          dest.searchParams.set('token', token)
+          dest.searchParams.set('username', username)
+          status.textContent = 'Done! You can close this tab.'
+          window.location.href = dest.toString()
+        }
+      }
+    } else if (callbackUrl) {
+      // First visit — start OAuth
+      status.textContent = 'Redirecting to GitHub…'
+      const redirectTo = new URL('/cli-auth', location.origin)
+      redirectTo.searchParams.set('callback', callbackUrl)
+      await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: { redirectTo: redirectTo.toString() }
+      })
+    } else {
+      status.textContent = 'Missing callback parameter.'
+    }
+  </script>
+</Base>
