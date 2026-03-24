@@ -32,12 +32,16 @@ export const GET: APIRoute = async ({ request }) => {
     })
   }
 
+  const cookiesToSet: { name: string; value: string; options: Record<string, unknown> }[] = []
+
   const supabase = createServerClient(supabaseUrl, supabaseKey, {
     cookies: {
       getAll() {
         return parseCookieHeader(request.headers.get('Cookie') ?? '')
       },
-      setAll() {},
+      setAll(cookies) {
+        cookiesToSet.push(...cookies)
+      },
     },
   })
 
@@ -51,15 +55,16 @@ export const GET: APIRoute = async ({ request }) => {
     })
   }
 
-  const cookieName = `${supabaseUrl.split('://')[1]}.auth-token`
-  const cookieValue = encodeURIComponent(JSON.stringify(data.session))
-  const maxAge = data.session.expires_in ?? 3600
-
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: next,
-      'Set-Cookie': `${cookieName}=${cookieValue}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Lax; Secure`,
-    },
+  const headers = new Headers({ Location: next })
+  cookiesToSet.forEach(({ name, value, options }) => {
+    const maxAge = typeof options['maxAge'] === 'number' ? options['maxAge'] : (data.session.expires_in ?? 3600)
+    const path = typeof options['path'] === 'string' ? options['path'] : '/'
+    const sameSite = typeof options['sameSite'] === 'string' ? options['sameSite'] : 'Lax'
+    // No HttpOnly — profile page reads session via document.cookie in the browser
+    let cookie = `${name}=${value}; Path=${path}; Max-Age=${maxAge}; SameSite=${sameSite}`
+    if (options['secure']) cookie += '; Secure'
+    headers.append('Set-Cookie', cookie)
   })
+
+  return new Response(null, { status: 302, headers })
 }
