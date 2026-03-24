@@ -1,15 +1,15 @@
 import { createClient } from '@supabase/supabase-js'
 
 const url = process.env['SUPABASE_URL']
-const serviceKey = process.env['SUPABASE_SERVICE_KEY']
-const anonKey = process.env['SUPABASE_ANON_KEY']
+const secretKey = process.env['SUPABASE_SECRET_KEY']
+const publishableKey = process.env['SUPABASE_PUBLISHABLE_KEY']
 
-if (!url || !serviceKey || !anonKey) {
-  throw new Error('Missing SUPABASE_URL, SUPABASE_SERVICE_KEY, or SUPABASE_ANON_KEY')
+if (!url || !secretKey || !publishableKey) {
+  throw new Error('Missing SUPABASE_URL, SUPABASE_SECRET_KEY, or SUPABASE_PUBLISHABLE_KEY')
 }
 
 // Service client: bypasses RLS, used server-side for publish/auth operations
-export const supabase = createClient(url, serviceKey)
+export const supabase = createClient(url, secretKey)
 
-// Anon client: used for Auth flows (OAuth sign-in)
-export const supabaseAnon = createClient(url, anonKey)
+// Publishable client: used for Auth flows (OAuth sign-in)
+export const supabaseAnon = createClient(url, publishableKey)
