@@ -205,12 +205,12 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
   </div>
 
   <script>
-    import { createClient } from '@supabase/supabase-js'
+    import { createBrowserClientWithCookies } from '../lib/client'
 
     const container = document.getElementById('profile-container') as HTMLDivElement
     const supabaseUrl = container.dataset.url!
     const supabaseKey = container.dataset.key!
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    const supabase = createBrowserClientWithCookies(supabaseUrl, supabaseKey)
 
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()

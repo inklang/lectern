@@ -36,15 +36,12 @@ export const GET: APIRoute = async ({ request, cookies, redirect }) => {
     },
   })
 
-  const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
 
   if (exchangeError) {
     console.error('OAuth callback error:', exchangeError)
     return redirect(`/login?error=${encodeURIComponent(exchangeError.message)}`)
   }
-
-  console.log('OAuth session created, user:', data.session?.user?.id)
-  console.log('Cookies after exchange:', cookies.getAll().map(c => c.name))
 
   return redirect(next)
 }
