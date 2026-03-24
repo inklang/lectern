@@ -55,12 +55,12 @@ const { title, description = 'The Ink package registry' } = Astro.props
     .header-left {
       display: flex;
       align-items: center;
-      gap: 2rem;
+      gap: 1.5rem;
     }
 
     header a.wordmark {
       font-family: var(--font-mono);
-      font-size: 0.95rem;
+      font-size: 1rem;
       font-weight: 600;
       color: var(--text);
       text-decoration: none;
@@ -79,6 +79,7 @@ const { title, description = 'The Ink package registry' } = Astro.props
       padding: 0.25rem 0.75rem;
       border-radius: 6px;
       transition: color 0.15s, background 0.15s;
+      letter-spacing: 0.01em;
     }
 
     header nav a:hover {
@@ -108,7 +109,7 @@ const { title, description = 'The Ink package registry' } = Astro.props
     #login-btn {
       font-size: 0.8125rem;
       padding: 0.35rem 0.875rem;
-      border-radius: 6px;
+      border-radius: 8px;
       border: 1px solid var(--border);
       background: transparent;
       color: var(--text);
@@ -120,15 +121,15 @@ const { title, description = 'The Ink package registry' } = Astro.props
 
     #login-btn:hover {
       background: var(--surface);
-      border-color: var(--muted-2);
+      border-color: var(--accent);
     }
 
     main {
       flex: 1;
-      max-width: 780px;
+      max-width: 860px;
       width: 100%;
       margin: 0 auto;
-      padding: 2.5rem 2rem;
+      padding: 4rem 2rem;
     }
 
     footer {
