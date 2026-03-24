@@ -1,8 +1,33 @@
 ---
 import Base from '../layouts/Base.astro'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 
+const supabase = createServerClient(
+  import.meta.env.SUPABASE_URL ?? '',
+  import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? '',
+  {
+    cookies: {
+      getAll() {
+        return parseCookieHeader(Astro.request.headers.get('Cookie') ?? '')
+      },
+      setAll() {},
+    },
+  }
+)
+
+const { data: { session } } = await supabase.auth.getSession()
+
+if (!session) {
+  return Astro.redirect('/login')
+}
+
+const user = session.user
+const username = user.user_metadata?.user_name ?? 'User'
+const email = user.email ?? ''
+const avatar = user.user_metadata?.avatar_url ?? ''
 const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
 const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
+const accessToken = session.access_token
 ---
 <Base title="Profile">
   <style>
@@ -182,13 +207,24 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
     }
   </style>
 
-  <div class="profile-wrap" id="profile-container" data-url={supabaseUrl} data-key={supabaseKey}>
+  <div class="profile-wrap" id="profile-container" data-url={supabaseUrl} data-key={supabaseKey} data-token={accessToken}>
     <h1>profile</h1>
 
-    <!-- Account Section -->
+    <!-- Account Section (server-rendered) -->
     <div class="section" id="account-section">
       <div class="section-title">Account</div>
-      <div class="loading">Loading…</div>
+      <div class="account-info">
+        <div class="info-row">
+          <div class="info-label">GitHub Username</div>
+          <div class="info-value">{username}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">Email</div>
+          <div class="info-value">{email}</div>
+        </div>
+      </div>
+      {avatar && <img src={avatar} alt="Avatar" class="avatar" />}
+      <button class="btn btn-signout" id="signout-btn">Sign Out</button>
     </div>
 
     <!-- Your Packages Section -->
@@ -205,48 +241,23 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
   </div>
 
   <script>
-    import { createBrowserClientWithCookies } from '../lib/client'
+    import { createClient } from '@supabase/supabase-js'
 
     const container = document.getElementById('profile-container') as HTMLDivElement
     const supabaseUrl = container.dataset.url!
     const supabaseKey = container.dataset.key!
-    const supabase = createBrowserClientWithCookies(supabaseUrl, supabaseKey)
+    const accessToken = container.dataset.token!
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      global: { headers: { Authorization: `Bearer ${accessToken}` } },
+      auth: { persistSession: false },
+    })
+
+    document.getElementById('signout-btn')?.addEventListener('click', async () => {
+      await fetch('/api/auth/logout', { method: 'POST' })
+      window.location.href = '/'
+    })
 
     async function load() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        window.location.href = '/login'
-        return
-      }
-
-      const user = session.user
-      const username = user.user_metadata?.user_name ?? 'User'
-      const email = user.email ?? ''
-      const avatar = user.user_metadata?.avatar_url ?? ''
-
-      // Account Section
-      const accountSection = document.getElementById('account-section')!
-      accountSection.innerHTML = `
-        <div class="section-title">Account</div>
-        <div class="account-info">
-          <div class="info-row">
-            <div class="info-label">GitHub Username</div>
-            <div class="info-value">${escapeHtml(username)}</div>
-          </div>
-          <div class="info-row">
-            <div class="info-label">Email</div>
-            <div class="info-value">${escapeHtml(email)}</div>
-          </div>
-        </div>
-        ${avatar ? `<img src="${escapeHtml(avatar)}" alt="Avatar" class="avatar" />` : ''}
-        <button class="btn btn-signout" id="signout-btn">Sign Out</button>
-      `
-
-      document.getElementById('signout-btn')?.addEventListener('click', async () => {
-        await fetch('/api/auth/logout', { method: 'POST' })
-        window.location.href = '/'
-      })
-
       // Your Packages Section
       const packagesSection = document.getElementById('packages-section')!
       try {
