@@ -1,11 +1,28 @@
 ---
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
+
 interface Props {
   title: string
   description?: string
 }
 const { title, description = 'The Ink package registry' } = Astro.props
-const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
-const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
+
+const supabase = createServerClient(
+  import.meta.env.SUPABASE_URL ?? '',
+  import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? '',
+  {
+    cookies: {
+      getAll() {
+        return parseCookieHeader(Astro.request.headers.get('Cookie') ?? '')
+      },
+      setAll() {},
+    },
+  }
+)
+
+const { data: { session } } = await supabase.auth.getSession()
+const avatar = session?.user.user_metadata?.avatar_url ?? null
+const username = session?.user.user_metadata?.user_name ?? null
 ---
 <!doctype html>
 <html lang="en">
@@ -95,35 +112,42 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
       gap: 0.75rem;
     }
 
-    #login-status {
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
-
-    #login-status a {
-      color: var(--muted);
-      text-decoration: none;
-    }
-
-    #login-status a:hover { color: var(--text); }
-
-    #login-btn {
+    .nav-login {
       font-size: 0.8125rem;
       padding: 0.35rem 0.875rem;
       border-radius: 8px;
       border: 1px solid var(--border);
       background: transparent;
       color: var(--text);
-      cursor: pointer;
-      font-family: var(--font-sans);
       text-decoration: none;
       transition: background 0.15s, border-color 0.15s;
     }
 
-    #login-btn:hover {
+    .nav-login:hover {
       background: var(--surface);
       border-color: var(--accent);
+      opacity: 1;
+    }
+
+    .nav-avatar {
+      display: flex;
+      align-items: center;
+      text-decoration: none;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      transition: border-color 0.15s;
+    }
+
+    .nav-avatar:hover {
+      border-color: var(--accent);
+      opacity: 1;
+    }
+
+    .nav-avatar img {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 50%;
+      display: block;
     }
 
     main {
@@ -159,9 +183,17 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
         <a href="https://inklang.org" target="_blank" rel="noopener">docs</a>
       </nav>
     </div>
-    <div class="header-right" id="auth-nav" data-url={supabaseUrl} data-key={supabaseKey}>
-      <a href="/login" id="login-link">login</a>
-      <a href="/profile" id="profile-link" style="display:none"></a>
+    <div class="header-right">
+      {session ? (
+        <a href="/profile" class="nav-avatar" title={username ?? 'profile'}>
+          {avatar
+            ? <img src={avatar} alt={username ?? 'avatar'} />
+            : <span style="width:2rem;height:2rem;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:var(--muted)">{(username ?? 'U')[0].toUpperCase()}</span>
+          }
+        </a>
+      ) : (
+        <a href="/login" class="nav-login">login</a>
+      )}
     </div>
   </header>
   <main>
@@ -170,25 +202,5 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
   <footer>
     lectern — the ink package registry
   </footer>
-  <script>
-    import { createClient } from '@supabase/supabase-js'
-
-    const nav = document.getElementById('auth-nav')!
-    const supabaseUrl = nav.dataset.url!
-    const supabaseKey = nav.dataset.key!
-    const supabase = createClient(supabaseUrl, supabaseKey)
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        const loginLink = document.getElementById('login-link')!
-        const profileLink = document.getElementById('profile-link')!
-        const username = session.user.user_metadata?.user_name ?? 'profile'
-
-        loginLink.style.display = 'none'
-        profileLink.textContent = username
-        profileLink.style.display = ''
-      }
-    })
-  </script>
 </body>
 </html>
