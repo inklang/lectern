@@ -30,7 +30,7 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
 const accessToken = session.access_token
 ---
 <Base title="Profile">
-  <style>
+  <style is:global>
     h1 {
       font-family: var(--font-mono);
       font-size: 1.25rem;
