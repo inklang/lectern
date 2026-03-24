@@ -56,19 +56,25 @@ import Base from '../layouts/Base.astro'
       font-size: 0.875rem;
       font-family: var(--font-sans);
       cursor: pointer;
-      border: 1px solid var(--border);
-      background: var(--text);
-      color: var(--bg);
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
       font-weight: 500;
-      transition: opacity 0.15s;
+      transition: opacity 0.15s, border-color 0.15s, color 0.15s;
     }
 
-    .btn:hover { opacity: 0.85; }
+    .btn:hover { opacity: 0.9; }
     .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
     .btn-outline {
       background: transparent;
       color: var(--text);
+    }
+
+    .btn-outline:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      opacity: 1;
     }
 
     .identity-box {

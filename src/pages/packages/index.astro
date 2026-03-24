@@ -34,7 +34,7 @@ const packages = allPackages.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * 
 
     .page-header h1 {
       font-family: var(--font-mono);
-      font-size: 1.1rem;
+      font-size: 1.25rem;
       font-weight: 600;
       letter-spacing: -0.02em;
     }
@@ -51,16 +51,18 @@ const packages = allPackages.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * 
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 1rem 0;
-      border-bottom: 1px solid var(--border);
+      padding: 1rem 1.25rem;
+      margin-bottom: 0.5rem;
       text-decoration: none;
       color: var(--text);
       gap: 1rem;
-      transition: opacity 0.1s;
+      transition: border-color 0.15s;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
     }
 
-    .pkg-card:hover { opacity: 0.7; }
-    .pkg-card:last-child { border-bottom: none; }
+    .pkg-card:hover { border-color: var(--accent); opacity: 1; }
 
     .pkg-left { display: flex; flex-direction: column; gap: 0.25rem; }
 
@@ -125,13 +127,13 @@ const packages = allPackages.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * 
       background: var(--surface);
       color: var(--text);
       opacity: 1;
-      border-color: var(--muted-2);
+      border-color: var(--accent);
     }
 
     .page-btn.active {
-      background: var(--text);
-      color: var(--bg);
-      border-color: var(--text);
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
     }
 
     .page-btn.disabled {
