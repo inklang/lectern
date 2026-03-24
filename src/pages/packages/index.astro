@@ -141,6 +141,20 @@ const packages = allPackages.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * 
       opacity: 0.25;
       pointer-events: none;
     }
+
+    .search-bar { margin-bottom: 1.5rem; }
+    .search-bar input {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--text);
+      outline: none;
+    }
+    .search-bar input:focus { border-color: var(--accent); }
   </style>
 
   <div class="page-header">
@@ -148,10 +162,19 @@ const packages = allPackages.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * 
     <span class="count">{allPackages.length} total</span>
   </div>
 
-  {packages.length === 0
-    ? <p class="empty">no packages published yet.</p>
-    : <>
-        <div class="pkg-list">
+  <div class="search-bar">
+    <input
+      id="search-input"
+      type="search"
+      placeholder="Search packages…"
+      autocomplete="off"
+    />
+  </div>
+
+  <div id="pkg-list" class="pkg-list">
+    {packages.length === 0
+      ? <p class="empty">no packages published yet.</p>
+      : <>
           {packages.map(pkg => (
             <a class="pkg-card" href={`/packages/${pkg.name}`}>
               <div class="pkg-left">
@@ -165,30 +188,73 @@ const packages = allPackages.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * 
               </div>
             </a>
           ))}
-        </div>
 
-        {totalPages > 1 && (
-          <nav class="pagination" aria-label="Pagination">
-            <a
-              class={`page-btn${clampedPage === 1 ? ' disabled' : ''}`}
-              href={`/packages?page=${clampedPage - 1}`}
-              aria-label="Previous page"
-            >←</a>
-
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+          {totalPages > 1 && (
+            <nav class="pagination" aria-label="Pagination">
               <a
-                class={`page-btn${p === clampedPage ? ' active' : ''}`}
-                href={`/packages?page=${p}`}
-              >{p}</a>
-            ))}
+                class={`page-btn${clampedPage === 1 ? ' disabled' : ''}`}
+                href={`/packages?page=${clampedPage - 1}`}
+                aria-label="Previous page"
+              >←</a>
 
-            <a
-              class={`page-btn${clampedPage === totalPages ? ' disabled' : ''}`}
-              href={`/packages?page=${clampedPage + 1}`}
-              aria-label="Next page"
-            >→</a>
-          </nav>
-        )}
-      </>
-  }
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                <a
+                  class={`page-btn${p === clampedPage ? ' active' : ''}`}
+                  href={`/packages?page=${p}`}
+                >{p}</a>
+              ))}
+
+              <a
+                class={`page-btn${clampedPage === totalPages ? ' disabled' : ''}`}
+                href={`/packages?page=${clampedPage + 1}`}
+                aria-label="Next page"
+              >→</a>
+            </nav>
+          )}
+        </>
+    }
+  </div>
+
+  <script>
+    const input = document.getElementById('search-input') as HTMLInputElement
+    const list = document.getElementById('pkg-list') as HTMLDivElement
+    // Capture initial HTML before any search modifies it
+    const initialHtml = list.innerHTML
+
+    let debounce: ReturnType<typeof setTimeout>
+
+    input.addEventListener('input', () => {
+      clearTimeout(debounce)
+      const q = input.value.trim()
+
+      if (!q) {
+        list.innerHTML = initialHtml
+        return
+      }
+
+      debounce = setTimeout(async () => {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
+        const results = await res.json() as Array<{ name: string; version: string; description: string | null }>
+
+        if (!results.length) {
+          list.innerHTML = '<p class="empty">no results.</p>'
+          return
+        }
+
+        function esc(s: string): string {
+          return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+        }
+
+        list.innerHTML = results.map(pkg => `
+          <a class="pkg-card" href="/packages/${esc(pkg.name)}">
+            <div class="pkg-left">
+              <span class="pkg-name">${esc(pkg.name)}</span>
+              ${pkg.description ? `<span class="pkg-description">${esc(pkg.description)}</span>` : ''}
+            </div>
+            <span class="pkg-ver">v${esc(pkg.version)}</span>
+          </a>
+        `).join('')
+      }, 300)
+    })
+  </script>
 </Base>
