@@ -1,0 +1,27 @@
+---
+import Base from '../../layouts/Base.astro'
+const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
+const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
+---
+<Base title="Signing in…">
+  <p id="status" style="font-family:var(--font-mono);color:var(--muted)">Signing in…</p>
+  <div id="root" data-url={supabaseUrl} data-key={supabaseKey}></div>
+  <script>
+    import { createClient } from '@supabase/supabase-js'
+    const root = document.getElementById('root')!
+    const supabase = createClient(root.dataset.url!, root.dataset.key!)
+
+    const code = new URL(window.location.href).searchParams.get('code')
+    if (code) {
+      supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+        if (error) {
+          document.getElementById('status')!.textContent = 'Sign-in failed: ' + error.message
+        } else {
+          window.location.href = '/profile'
+        }
+      })
+    } else {
+      window.location.href = '/profile'
+    }
+  </script>
+</Base>
