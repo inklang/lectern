@@ -1,91 +1,96 @@
 import type { APIRoute } from 'astro'
-import { PackageStore } from '../../../../store.js'
+import { extractBearer, resolveToken } from '../../../../lib/tokens.js'
+import { getPackageOwner, createPackage, insertVersion, versionExists } from '../../../../lib/db.js'
+import { uploadTarball } from '../../../../lib/storage.js'
 import { extractDependencies } from '../../../../tar.js'
-import { createHash, verify } from 'crypto'
-import fs from 'fs'
 
-const store = new PackageStore(process.env['STORAGE_DIR'] ?? './storage')
-
-function fingerprint(publicKeyB64: string): string {
-  const der = Buffer.from(publicKeyB64, 'base64')
-  return createHash('sha256').update(der).digest('hex').slice(0, 16)
-}
-
-function verifySignature(data: Buffer, signatureB64: string, publicKeyB64: string): boolean {
-  try {
-    const keyDer = Buffer.from(publicKeyB64, 'base64')
-    const sig = Buffer.from(signatureB64, 'base64')
-    return verify(null, data, { key: keyDer, format: 'der', type: 'spki' }, sig)
-  } catch {
-    return false
-  }
-}
-
-export const GET: APIRoute = ({ params }) => {
+export const GET: APIRoute = async ({ params }) => {
   const { name, version } = params
   if (!name || !version) return new Response('Bad request', { status: 400 })
 
-  const tarball = store.getTarballPath(name, version)
-  if (!tarball) return new Response(`${name}@${version} not found`, { status: 404 })
-
-  return new Response(fs.readFileSync(tarball), {
-    headers: { 'Content-Type': 'application/gzip' }
-  })
+  // Redirect to Supabase Storage public URL via storage helper
+  const { supabase } = await import('../../../../lib/supabase.js')
+  const { data: urlData } = supabase.storage
+    .from('tarballs')
+    .getPublicUrl(`${name}/${version}.tar.gz`)
+  return Response.redirect(urlData.publicUrl, 302)
 }
 
 export const PUT: APIRoute = async ({ params, request }) => {
   const { name, version } = params
   if (!name || !version) return new Response('Bad request', { status: 400 })
 
-  const publicKey = request.headers.get('x-ink-public-key')
-  const signature = request.headers.get('x-ink-signature')
-
-  if (!publicKey || !signature) {
-    return new Response(JSON.stringify({ error: 'Missing X-Ink-Public-Key or X-Ink-Signature headers. Run `quill login` first.' }), { status: 401 })
+  // Auth
+  const raw = extractBearer(request.headers.get('authorization'))
+  if (!raw) {
+    return new Response(JSON.stringify({ error: 'Missing Authorization header. Run `quill login` first.' }), { status: 401 })
   }
 
-  const fp = fingerprint(publicKey)
-
-  // Key must be registered
-  if (!store.hasKey(fp)) {
-    return new Response(JSON.stringify({ error: `Unknown key ${fp}. Run \`quill login\` to register.` }), { status: 401 })
-  }
-
-  // Key stored on server must match what was sent
-  const storedKey = store.getPublicKey(fp)
-  if (storedKey !== publicKey) {
-    return new Response(JSON.stringify({ error: 'Public key mismatch' }), { status: 401 })
-  }
-
-  const data = Buffer.from(await request.arrayBuffer())
-  if (!data.length) return new Response(JSON.stringify({ error: 'Empty body' }), { status: 400 })
-
-  // Verify signature
-  if (!verifySignature(data, signature, publicKey)) {
-    return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 401 })
+  const userId = await resolveToken(raw)
+  if (!userId) {
+    return new Response(JSON.stringify({ error: 'Invalid or expired token. Run `quill login`.' }), { status: 401 })
   }
 
   // Ownership check
-  const owner = store.getOwner(name)
-  if (owner && owner !== fp) {
-    return new Response(JSON.stringify({ error: `Package ${name} is owned by a different key` }), { status: 403 })
+  const owner = await getPackageOwner(name)
+  if (owner && owner !== userId) {
+    return new Response(JSON.stringify({ error: `Package ${name} is owned by a different account` }), { status: 403 })
   }
 
-  if (store.hasVersion(name, version)) {
+  // Duplicate check
+  if (await versionExists(name, version)) {
     return new Response(JSON.stringify({ error: `${name}@${version} already exists` }), { status: 409 })
   }
 
+  // Parse body — multipart or legacy raw gzip. Do NOT read arrayBuffer() here;
+  // it can only be consumed once and is read inside each branch below.
+  const contentType = request.headers.get('content-type') ?? ''
+  let tarballData: Buffer
+  let description: string | null = null
+  let readme: string | null = null
   let dependencies: Record<string, string> = {}
-  try { dependencies = await extractDependencies(data) } catch {}
 
-  store.saveTarball(name, version, data)
+  if (contentType.includes('multipart/form-data')) {
+    const formData = await request.formData()
+    const tarballFile = formData.get('tarball') as File | null
+    if (!tarballFile) return new Response(JSON.stringify({ error: 'Missing tarball' }), { status: 400 })
+    tarballData = Buffer.from(await tarballFile.arrayBuffer())
+    description = (formData.get('description') as string | null) ?? null
+    readme = (formData.get('readme') as string | null) ?? null
+    try { dependencies = await extractDependencies(tarballData) } catch {}
+  } else {
+    // Legacy: raw gzip body (backwards compat — remove after one release cycle)
+    tarballData = Buffer.from(await request.arrayBuffer())
+    if (!tarballData.length) return new Response(JSON.stringify({ error: 'Empty body' }), { status: 400 })
+    try { dependencies = await extractDependencies(tarballData) } catch {}
+  }
+
+  // Upload to Supabase Storage
+  const tarballUrl = await uploadTarball(name, version, tarballData)
+
+  // Create package record on first publish
+  if (!owner) await createPackage(name, userId)
+
+  // Insert version row (embedding added async after response)
+  await insertVersion({
+    package_name: name,
+    version,
+    description,
+    readme,
+    dependencies,
+    tarball_url: tarballUrl,
+    embedding: null,
+  })
+
+  // Trigger embedding generation non-blocking — implemented in Task 16
+  generateAndStoreEmbedding(name, version, description, readme).catch(() => {})
 
   const baseUrl = process.env['BASE_URL'] ?? 'http://localhost:4321'
-  const url = `${baseUrl}/api/packages/${name}/${version}`
-  store.registerVersion(name, version, url, dependencies)
-
-  // Set owner on first publish
-  if (!owner) store.setOwner(name, fp)
-
-  return new Response(JSON.stringify({ name, version, url }), { status: 201 })
+  return new Response(JSON.stringify({ name, version, url: `${baseUrl}/api/packages/${name}/${version}` }), { status: 201 })
 }
+
+// Placeholder — wired up in Task 16
+async function generateAndStoreEmbedding(
+  _name: string, _version: string,
+  _description: string | null, _readme: string | null
+): Promise<void> {}
