@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro'
 import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 
-export const GET: APIRoute = async ({ request, cookies, redirect }) => {
+export const GET: APIRoute = async ({ request, redirect }) => {
   const url = new URL(request.url)
   const code = url.searchParams.get('code')
   const next = url.searchParams.get('next') ?? '/profile'
@@ -29,19 +29,32 @@ export const GET: APIRoute = async ({ request, cookies, redirect }) => {
         return parseCookieHeader(request.headers.get('Cookie') ?? '')
       },
       setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value, options }) => {
-          cookies.set(name, value, options)
-        })
+        // Can't modify the request headers - we handle this via the
+        // Response cookies below by capturing the session from exchangeCodeForSession
       },
     },
   })
 
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+  const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
 
   if (exchangeError) {
     console.error('OAuth callback error:', exchangeError)
     return redirect(`/login?error=${encodeURIComponent(exchangeError.message)}`)
   }
 
-  return redirect(next)
+  if (!data.session) {
+    return redirect('/login?error=no_session')
+  }
+
+  // Manually construct the redirect with Set-Cookie headers from the session
+  const sessionCookieName = `${supabaseUrl.split('://')[1]}.auth-token`
+  const sessionCookie = `${sessionCookieName}=${encodeURIComponent(JSON.stringify(data.session))}; Path=/; Max-Age=${data.session.expires_in}; HttpOnly; SameSite=Lax; Secure`
+
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: next,
+      'Set-Cookie': sessionCookie,
+    },
+  })
 }
