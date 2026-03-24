@@ -4,6 +4,8 @@ interface Props {
   description?: string
 }
 const { title, description = 'The Ink package registry' } = Astro.props
+const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
+const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
 ---
 <!doctype html>
 <html lang="en">
@@ -157,9 +159,9 @@ const { title, description = 'The Ink package registry' } = Astro.props
         <a href="https://inklang.org" target="_blank" rel="noopener">docs</a>
       </nav>
     </div>
-    <div class="header-right">
-      <span id="login-status"></span>
-      <a id="login-btn" href="/login">login</a>
+    <div class="header-right" id="auth-nav" data-url={supabaseUrl} data-key={supabaseKey}>
+      <a href="/login" id="login-link">login</a>
+      <a href="/profile" id="profile-link" style="display:none"></a>
     </div>
   </header>
   <main>
@@ -169,20 +171,24 @@ const { title, description = 'The Ink package registry' } = Astro.props
     lectern — the ink package registry
   </footer>
   <script>
-    const fp = localStorage.getItem('quill_fingerprint')
-    const loginBtn = document.getElementById('login-btn')
-    const loginStatus = document.getElementById('login-status')
-    if (fp && loginBtn && loginStatus) {
-      loginStatus.innerHTML = `<a href="/login">${fp.slice(0, 8)}···</a>`
-      loginBtn.textContent = 'logout'
-      loginBtn.removeAttribute('href')
-      loginBtn.addEventListener('click', () => {
-        localStorage.removeItem('quill_fingerprint')
-        localStorage.removeItem('quill_public_key')
-        localStorage.removeItem('quill_private_key')
-        window.location.reload()
-      })
-    }
+    import { createClient } from '@supabase/supabase-js'
+
+    const nav = document.getElementById('auth-nav')!
+    const supabaseUrl = nav.dataset.url!
+    const supabaseKey = nav.dataset.key!
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        const loginLink = document.getElementById('login-link')!
+        const profileLink = document.getElementById('profile-link')!
+        const username = session.user.user_metadata?.user_name ?? 'profile'
+
+        loginLink.style.display = 'none'
+        profileLink.textContent = username
+        profileLink.style.display = ''
+      }
+    })
   </script>
 </body>
 </html>

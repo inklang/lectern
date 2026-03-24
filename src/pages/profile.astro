@@ -1,0 +1,347 @@
+---
+import Base from '../layouts/Base.astro'
+
+const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
+const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
+---
+<Base title="Profile">
+  <style>
+    .profile-wrap {
+      max-width: 860px;
+    }
+
+    h1 {
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 2rem;
+    }
+
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .section-title {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 1.25rem;
+    }
+
+    .account-info {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .info-row {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .info-label {
+      font-size: 0.775rem;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .info-value {
+      font-size: 0.95rem;
+      color: var(--text);
+      word-break: break-all;
+    }
+
+    .avatar {
+      width: 3rem;
+      height: 3rem;
+      border-radius: 8px;
+      object-fit: cover;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1.1rem;
+      border-radius: 7px;
+      font-size: 0.875rem;
+      font-family: var(--font-sans);
+      cursor: pointer;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 500;
+      transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-outline {
+      background: transparent;
+      color: #f87171;
+      border-color: #f87171;
+    }
+
+    .btn-outline:hover {
+      opacity: 0.8;
+    }
+
+    .btn-signout {
+      background: transparent;
+      border-color: var(--muted);
+      color: var(--muted);
+    }
+
+    .btn-signout:hover {
+      border-color: var(--text);
+      color: var(--text);
+    }
+
+    .packages-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .package-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.875rem;
+    }
+
+    .package-name {
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .package-name:hover {
+      opacity: 0.8;
+    }
+
+    .package-date {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .tokens-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .token-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.875rem;
+    }
+
+    .token-id {
+      font-family: var(--font-mono);
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .token-dates {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .empty-message {
+      font-size: 0.875rem;
+      color: var(--muted);
+      padding: 1rem 0;
+    }
+
+    .loading {
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+  </style>
+
+  <div class="profile-wrap" id="profile-container" data-url={supabaseUrl} data-key={supabaseKey}>
+    <h1>profile</h1>
+
+    <!-- Account Section -->
+    <div class="section" id="account-section">
+      <div class="section-title">Account</div>
+      <div class="loading">Loading…</div>
+    </div>
+
+    <!-- Your Packages Section -->
+    <div class="section" id="packages-section">
+      <div class="section-title">Your Packages</div>
+      <div class="loading">Loading…</div>
+    </div>
+
+    <!-- CLI Tokens Section -->
+    <div class="section" id="tokens-section">
+      <div class="section-title">CLI Tokens</div>
+      <div class="loading">Loading…</div>
+    </div>
+  </div>
+
+  <script>
+    import { createClient } from '@supabase/supabase-js'
+
+    const container = document.getElementById('profile-container') as HTMLDivElement
+    const supabaseUrl = container.dataset.url!
+    const supabaseKey = container.dataset.key!
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
+    async function load() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        window.location.href = '/login'
+        return
+      }
+
+      const user = session.user
+      const username = user.user_metadata?.user_name ?? 'User'
+      const email = user.email ?? ''
+      const avatar = user.user_metadata?.avatar_url ?? ''
+
+      // Account Section
+      const accountSection = document.getElementById('account-section')!
+      accountSection.innerHTML = `
+        <div class="section-title">Account</div>
+        <div class="account-info">
+          <div class="info-row">
+            <div class="info-label">GitHub Username</div>
+            <div class="info-value">${escapeHtml(username)}</div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">Email</div>
+            <div class="info-value">${escapeHtml(email)}</div>
+          </div>
+        </div>
+        ${avatar ? `<img src="${escapeHtml(avatar)}" alt="Avatar" class="avatar" />` : ''}
+        <button class="btn btn-signout" id="signout-btn">Sign Out</button>
+      `
+
+      document.getElementById('signout-btn')?.addEventListener('click', async () => {
+        await supabase.auth.signOut()
+        window.location.href = '/'
+      })
+
+      // Your Packages Section
+      const packagesSection = document.getElementById('packages-section')!
+      try {
+        const { data: packages } = await supabase
+          .from('packages')
+          .select('name, created_at')
+          .order('created_at', { ascending: false })
+
+        if (packages && packages.length > 0) {
+          const packagesList = packages.map((pkg: any) => {
+            const date = formatDate(new Date(pkg.created_at))
+            return `
+              <div class="package-item">
+                <a href="/packages/${encodeURIComponent(pkg.name)}" class="package-name">${escapeHtml(pkg.name)}</a>
+                <span class="package-date">${date}</span>
+              </div>
+            `
+          }).join('')
+          packagesSection.innerHTML = `<div class="section-title">Your Packages</div><div class="packages-list">${packagesList}</div>`
+        } else {
+          packagesSection.innerHTML = `<div class="section-title">Your Packages</div><p class="empty-message">No packages published yet.</p>`
+        }
+      } catch (e) {
+        packagesSection.innerHTML = `<div class="section-title">Your Packages</div><p class="empty-message">Error loading packages.</p>`
+      }
+
+      // CLI Tokens Section
+      const tokensSection = document.getElementById('tokens-section')!
+      try {
+        const { data: tokens } = await supabase
+          .from('cli_tokens')
+          .select('id, created_at, last_used')
+          .order('created_at', { ascending: false })
+
+        if (tokens && tokens.length > 0) {
+          const tokensList = tokens.map((token: any) => {
+            const created = formatDate(new Date(token.created_at))
+            const lastUsed = token.last_used ? formatDate(new Date(token.last_used)) : 'Never'
+            const tokenId = token.id.slice(0, 8)
+            return `
+              <div class="token-item" data-token-id="${escapeHtml(token.id)}">
+                <div>
+                  <div class="token-id">${tokenId}…</div>
+                  <div class="token-dates">Created ${created} · Last used ${lastUsed}</div>
+                </div>
+                <button class="btn btn-outline revoke-btn" data-token-id="${escapeHtml(token.id)}">Revoke</button>
+              </div>
+            `
+          }).join('')
+          tokensSection.innerHTML = `<div class="section-title">CLI Tokens</div><div class="tokens-list">${tokensList}</div>`
+
+          // Add revoke listeners
+          document.querySelectorAll('.revoke-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+              const tokenId = (e.target as HTMLElement).getAttribute('data-token-id')!
+              const btn = e.target as HTMLButtonElement
+              btn.disabled = true
+              btn.textContent = 'Revoking…'
+              try {
+                await supabase.from('cli_tokens').delete().eq('id', tokenId)
+                const item = document.querySelector(`[data-token-id="${tokenId}"]`)
+                if (item) item.remove()
+              } catch (e) {
+                btn.disabled = false
+                btn.textContent = 'Revoke'
+              }
+            })
+          })
+        } else {
+          tokensSection.innerHTML = `<div class="section-title">CLI Tokens</div><p class="empty-message">No CLI tokens created yet.</p>`
+        }
+      } catch (e) {
+        tokensSection.innerHTML = `<div class="section-title">CLI Tokens</div><p class="empty-message">Error loading tokens.</p>`
+      }
+    }
+
+    function formatDate(date: Date): string {
+      const now = new Date()
+      const diff = now.getTime() - date.getTime()
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+      const hours = Math.floor(diff / (1000 * 60 * 60))
+      const minutes = Math.floor(diff / (1000 * 60))
+
+      if (days > 0) return `${days}d ago`
+      if (hours > 0) return `${hours}h ago`
+      if (minutes > 0) return `${minutes}m ago`
+      return 'just now'
+    }
+
+    function escapeHtml(str: string): string {
+      const div = document.createElement('div')
+      div.textContent = str
+      return div.innerHTML
+    }
+
+    load()
+  </script>
+</Base>
