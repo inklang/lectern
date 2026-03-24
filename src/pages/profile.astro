@@ -159,6 +159,76 @@ const accessToken = session.access_token
 
     .btn-danger:hover { color: #fca5a5; border-color: #fca5a5; }
 
+    /* ── onboarding ──────────────────────────── */
+    .onboarding {
+      border-top: 1px solid var(--border);
+      padding-top: 1.25rem;
+    }
+
+    .onboarding-title {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 1.25rem;
+    }
+
+    .steps {
+      list-style: none;
+      counter-reset: steps;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .steps li {
+      counter-increment: steps;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      padding-left: 1.5rem;
+      position: relative;
+    }
+
+    .steps li::before {
+      content: counter(steps);
+      position: absolute;
+      left: 0;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--muted-2);
+      top: 0.1rem;
+    }
+
+    .step-label {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .code-snippet {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.4rem 0.75rem;
+      color: var(--text);
+      display: block;
+      width: fit-content;
+    }
+
+    .code-inline {
+      font-family: var(--font-mono);
+      font-size: 0.775rem;
+      color: var(--text);
+    }
+
+    /* ── tokens blurb ─────────────────────────── */
+    .tokens-blurb {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 0.875rem;
+    }
+
     /* ── token reveal ─────────────────────────── */
     .token-reveal {
       display: flex;
@@ -274,7 +344,26 @@ const accessToken = session.access_token
           `).join('')
           packagesSection.innerHTML = `<div class="section-heading">packages</div><div class="row-list">${rows}</div>`
         } else {
-          packagesSection.innerHTML = `<div class="section-heading">packages</div><p class="empty">no packages published yet.</p>`
+          packagesSection.innerHTML = `
+            <div class="section-heading">packages</div>
+            <div class="onboarding">
+              <p class="onboarding-title">publish your first package</p>
+              <ol class="steps">
+                <li>
+                  <span class="step-label">install quill</span>
+                  <code class="code-snippet">npm install -g @inklang/quill</code>
+                </li>
+                <li>
+                  <span class="step-label">authenticate — create a token below, then run</span>
+                  <code class="code-snippet">quill login &lt;token&gt;</code>
+                </li>
+                <li>
+                  <span class="step-label">publish from your package directory</span>
+                  <code class="code-snippet">quill publish</code>
+                </li>
+              </ol>
+            </div>
+          `
         }
       } catch {
         packagesSection.innerHTML = `<div class="section-heading">packages</div><p class="empty">error loading packages.</p>`
@@ -286,7 +375,7 @@ const accessToken = session.access_token
     }
 
     async function renderTokens(tokensSection: HTMLElement) {
-      // Preserve any existing reveal box
+      // Preserve any existing reveal box across re-renders
       const existingReveal = tokensSection.querySelector('.token-reveal-wrap')?.cloneNode(true) as HTMLElement | null
 
       try {
@@ -301,6 +390,7 @@ const accessToken = session.access_token
             <button class="btn" id="new-token-btn">+ new token</button>
           </div>
         `
+        const blurb = `<p class="tokens-blurb">tokens let the quill CLI authenticate as you when publishing packages.</p>`
 
         if (tokens && tokens.length > 0) {
           const rows = tokens.map((token: any) => {
@@ -316,15 +406,14 @@ const accessToken = session.access_token
               </div>
             `
           }).join('')
-          tokensSection.innerHTML = `${heading}<div class="row-list">${rows}</div>`
+          tokensSection.innerHTML = `${heading}${blurb}<div class="row-list">${rows}</div>`
         } else {
-          tokensSection.innerHTML = `${heading}<p class="empty">no cli tokens yet.</p>`
+          tokensSection.innerHTML = `${heading}${blurb}<p class="empty">no tokens yet — create one to start publishing.</p>`
         }
 
         // Re-insert reveal if it existed
         if (existingReveal) {
-          const heading = tokensSection.querySelector('.section-heading')!
-          heading.after(existingReveal)
+          tokensSection.querySelector('.tokens-blurb')!.after(existingReveal)
           tokensSection.querySelector('#copy-token-btn')?.addEventListener('click', handleCopy)
         }
 
@@ -369,13 +458,14 @@ const accessToken = session.access_token
         const wrap = document.createElement('div')
         wrap.className = 'token-reveal-wrap'
         wrap.innerHTML = `
-          <p class="token-reveal-note">copy this token now — it won't be shown again.</p>
+          <p class="token-reveal-note">save this token — it won't be shown again.</p>
           <div class="token-reveal">
             <span class="token-reveal-val" title="${escapeHtml(token)}">${escapeHtml(token)}</span>
             <button class="btn" id="copy-token-btn">copy</button>
           </div>
+          <p class="token-reveal-note" style="margin-top:0.5rem">then authenticate the cli: <code class="code-inline">quill login ${escapeHtml(token)}</code></p>
         `
-        tokensSection.querySelector('.section-heading')!.after(wrap)
+        tokensSection.querySelector('.tokens-blurb')!.after(wrap)
         tokensSection.querySelector('#copy-token-btn')?.addEventListener('click', handleCopy)
 
         await renderTokens(tokensSection)
