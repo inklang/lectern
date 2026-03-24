@@ -33,3 +33,4 @@ pnpm-debug.log*
 
 # registry data (server-local)
 storage/
+.superpowers/
