@@ -1,0 +1,558 @@
+---
+import Base from '../../../../layouts/Base.astro'
+import { getOrgBySlug, isOrgAdmin, getOrgMembers, getOrgTeams } from '../../../../lib/orgs.js'
+
+const { slug } = Astro.params
+const org = await getOrgBySlug(slug!)
+
+if (!org) return Astro.redirect('/packages')
+
+const { supabaseAnon } = await import('../../../../lib/supabase.js')
+const { data: sessionData } = await supabaseAnon.auth.getSession()
+if (!sessionData?.session) return Astro.redirect('/login')
+
+const isAdmin = await isOrgAdmin(org.id, sessionData.session.user.id)
+if (!isAdmin) return Astro.redirect(`/orgs/${slug}`)
+
+const members = await getOrgMembers(org.id)
+const teams = await getOrgTeams(org.id)
+
+// Get user info for each member
+const userIds = members.map(m => m.user_id)
+let userMap: Record<string, { user_name?: string; email?: string }> = {}
+if (userIds.length > 0) {
+  const { data: users } = await supabaseAnon
+    .from('users')
+    .select('id, user_name, email')
+    .in('id', userIds)
+  if (users) {
+    for (const u of users) {
+      userMap[u.id] = { user_name: u.user_name, email: u.email }
+    }
+  }
+}
+
+// Get team member counts
+const teamIds = teams.map(t => t.id)
+let teamMemberCounts: Record<string, number> = {}
+if (teamIds.length > 0) {
+  const { data: teamMembers } = await supabaseAnon
+    .from('org_team_members')
+    .select('team_id')
+    .in('team_id', teamIds)
+  if (teamMembers) {
+    for (const m of teamMembers) {
+      teamMemberCounts[m.team_id] = (teamMemberCounts[m.team_id] ?? 0) + 1
+    }
+  }
+}
+
+const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
+const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
+---
+<Base title={`${org.name} Settings`}>
+  <style>
+    .settings-wrap {
+      max-width: 720px;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      margin-bottom: 1.5rem;
+      transition: color 0.15s;
+    }
+
+    .back-link:hover {
+      color: var(--text);
+    }
+
+    .page-header {
+      margin-bottom: 2rem;
+    }
+
+    .page-header h1 {
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .page-header .org-slug {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.25rem;
+    }
+
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .section-title {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 1.25rem;
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .form-label {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.775rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .form-input, .form-textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .form-input:focus, .form-textarea:focus {
+      border-color: var(--accent);
+    }
+
+    .form-textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1.1rem;
+      border-radius: 7px;
+      font-size: 0.875rem;
+      font-family: var(--font-sans);
+      cursor: pointer;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 500;
+      transition: opacity 0.15s;
+    }
+
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-outline {
+      background: transparent;
+      color: #f87171;
+      border-color: #f87171;
+    }
+
+    .btn-outline:hover {
+      opacity: 0.8;
+    }
+
+    .btn-sm {
+      padding: 0.3rem 0.75rem;
+      font-size: 0.8rem;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .error-message {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      color: #f87171;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+
+    .success-message {
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      color: #4ade80;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+
+    .member-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .member-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+
+    .member-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .member-name {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .member-email {
+      font-size: 0.775rem;
+      color: var(--muted);
+    }
+
+    .role-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .role-badge.owner {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .role-badge.admin {
+      background: rgba(251, 191, 36, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(251, 191, 36, 0.3);
+    }
+
+    .role-badge.member {
+      background: rgba(34, 197, 94, 0.1);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .role-select {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.3rem 0.6rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text);
+      cursor: pointer;
+      outline: none;
+    }
+
+    .role-select:focus {
+      border-color: var(--accent);
+    }
+
+    .invite-url-box {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .invite-url-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    .copy-btn {
+      padding: 0.6rem 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .copy-btn:hover {
+      border-color: var(--accent);
+      background: var(--bg);
+    }
+
+    .empty {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      padding: 1rem 0;
+    }
+  </style>
+
+  <div class="settings-wrap" id="settings-container" data-url={supabaseUrl} data-key={supabaseKey}>
+    <a class="back-link" href={`/orgs/${org.slug}`}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      <span id="org-name">{org.name}</span>
+    </a>
+
+    <div class="page-header">
+      <h1>settings</h1>
+      <div class="org-slug">@{org.slug}</div>
+    </div>
+
+    <!-- General Section -->
+    <div class="section" id="general-section">
+      <div class="section-title">General</div>
+      <div id="general-error" style="display:none" class="error-message"></div>
+      <div id="general-success" style="display:none" class="success-message"></div>
+      <div class="form-group">
+        <label class="form-label" for="org-name-input">name</label>
+        <input
+          id="org-name-input"
+          class="form-input"
+          type="text"
+          value={org.name}
+          maxlength="64"
+        />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="org-desc-input">description</label>
+        <textarea
+          id="org-desc-input"
+          class="form-textarea"
+          maxlength="256"
+        >{org.description ?? ''}</textarea>
+      </div>
+      <button id="save-general-btn" class="btn">Save Changes</button>
+    </div>
+
+    <!-- Members Section -->
+    <div class="section" id="members-section">
+      <div class="section-title">Members</div>
+      <div id="members-error" style="display:none" class="error-message"></div>
+      <div class="member-list" id="members-list">
+        {members.map(member => {
+          const userInfo = userMap[member.user_id]
+          return (
+            <div class="member-item" data-user-id={member.user_id} data-role={member.role}>
+              <div class="member-info">
+                <span class="member-name">{userInfo?.user_name ?? member.user_id.slice(0, 8)}</span>
+                {userInfo?.email && <span class="member-email">{userInfo.email}</span>}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+
+    <!-- Teams Section -->
+    <div class="section" id="teams-section">
+      <div class="section-title">Teams</div>
+      <div class="member-list">
+        {teams.map(team => (
+          <div class="member-item">
+            <div class="member-info">
+              <span class="member-name">{team.name}</span>
+            </div>
+            <span class="member-email">{teamMemberCounts[team.id] ?? 0} member{(teamMemberCounts[team.id] ?? 0) !== 1 ? 's' : ''}</span>
+          </div>
+        ))}
+        {teams.length === 0 && <p class="empty">No teams created yet.</p>}
+      </div>
+    </div>
+
+    <!-- Invite Section -->
+    <div class="section" id="invite-section">
+      <div class="section-title">Generate Invite Link</div>
+      <div id="invite-error" style="display:none" class="error-message"></div>
+      <p style="font-size: 0.875rem; color: var(--muted); margin-bottom: 1rem;">
+        Generate an invite link to share with users who want to join your organization.
+      </p>
+      <button id="generate-invite-btn" class="btn">Generate Invite Link</button>
+      <div id="invite-url-box" class="invite-url-box" style="display:none">
+        <input
+          id="invite-url-input"
+          class="invite-url-input"
+          type="text"
+          readonly
+        />
+        <button id="copy-invite-btn" class="copy-btn">Copy</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    import { createClient } from '@supabase/supabase-js'
+
+    const container = document.getElementById('settings-container')!
+    const supabaseUrl = container.dataset.url!
+    const supabaseKey = container.dataset.key!
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
+    // Get slug from URL
+    const slug = window.location.pathname.replace('/orgs/', '').replace('/settings', '')
+
+    async function getSession() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        window.location.href = '/login'
+        return null
+      }
+      return session
+    }
+
+    // General section
+    const saveGeneralBtn = document.getElementById('save-general-btn')!
+    const generalError = document.getElementById('general-error')!
+    const generalSuccess = document.getElementById('general-success')!
+    const orgNameInput = document.getElementById('org-name-input') as HTMLInputElement
+    const orgDescInput = document.getElementById('org-desc-input') as HTMLTextAreaElement
+
+    saveGeneralBtn.addEventListener('click', async () => {
+      const session = await getSession()
+      if (!session) return
+
+      saveGeneralBtn.disabled = true
+      saveGeneralBtn.textContent = 'Saving…'
+      generalError.style.display = 'none'
+      generalSuccess.style.display = 'none'
+
+      const name = orgNameInput.value.trim()
+      const description = orgDescInput.value.trim()
+
+      if (!name) {
+        generalError.textContent = 'Name is required.'
+        generalError.style.display = 'block'
+        saveGeneralBtn.disabled = false
+        saveGeneralBtn.textContent = 'Save Changes'
+        return
+      }
+
+      try {
+        const res = await fetch(`/api/orgs/${encodeURIComponent(slug)}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ name, description }),
+        })
+
+        if (res.ok) {
+          generalSuccess.textContent = 'Changes saved successfully.'
+          generalSuccess.style.display = 'block'
+          // Update the back link org name
+          const orgNameEl = document.getElementById('org-name')
+          if (orgNameEl) orgNameEl.textContent = name
+        } else {
+          const data = await res.json().catch(() => ({}))
+          generalError.textContent = data?.error ?? 'Failed to save changes.'
+          generalError.style.display = 'block'
+        }
+      } catch (e) {
+        generalError.textContent = 'An unexpected error occurred.'
+        generalError.style.display = 'block'
+      }
+
+      saveGeneralBtn.disabled = false
+      saveGeneralBtn.textContent = 'Save Changes'
+    })
+
+    // Invite section
+    const generateInviteBtn = document.getElementById('generate-invite-btn')!
+    const inviteError = document.getElementById('invite-error')!
+    const inviteUrlBox = document.getElementById('invite-url-box')!
+    const inviteUrlInput = document.getElementById('invite-url-input') as HTMLInputElement
+    const copyBtn = document.getElementById('copy-btn')!
+
+    generateInviteBtn.addEventListener('click', async () => {
+      const session = await getSession()
+      if (!session) return
+
+      generateInviteBtn.disabled = true
+      generateInviteBtn.textContent = 'Generating…'
+      inviteError.style.display = 'none'
+
+      try {
+        const res = await fetch(`/api/orgs/${encodeURIComponent(slug)}/invite`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({}),
+        })
+
+        if (res.ok) {
+          const data = await res.json()
+          inviteUrlInput.value = data.url
+          inviteUrlBox.style.display = 'flex'
+        } else {
+          const data = await res.json().catch(() => ({}))
+          inviteError.textContent = data?.error ?? 'Failed to generate invite.'
+          inviteError.style.display = 'block'
+        }
+      } catch (e) {
+        inviteError.textContent = 'An unexpected error occurred.'
+        inviteError.style.display = 'block'
+      }
+
+      generateInviteBtn.disabled = false
+      generateInviteBtn.textContent = 'Generate Invite Link'
+    })
+
+    copyBtn.addEventListener('click', () => {
+      inviteUrlInput.select()
+      document.execCommand('copy')
+      copyBtn.textContent = 'Copied!'
+      setTimeout(() => { copyBtn.textContent = 'Copy' }, 2000)
+    })
+  </script>
+</Base>

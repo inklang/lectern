@@ -1,0 +1,286 @@
+---
+import Base from '../../layouts/Base.astro'
+
+const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
+const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
+
+const { data: sessionData } = await (await import('../../lib/supabase.js')).supabaseAnon.auth.getSession()
+if (!sessionData?.session) return Astro.redirect('/login?return=/orgs/new')
+---
+<Base title="Create Organization">
+  <style>
+    .page-header {
+      margin-bottom: 2rem;
+    }
+
+    .page-header h1 {
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .form-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-label {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.775rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .form-input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .form-input:focus {
+      border-color: var(--accent);
+    }
+
+    .form-input.error {
+      border-color: #f87171;
+    }
+
+    .form-textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .form-hint {
+      font-size: 0.775rem;
+      color: var(--muted);
+      margin-top: 0.4rem;
+    }
+
+    .slug-preview {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-top: 0.4rem;
+    }
+
+    .slug-preview span {
+      color: var(--text);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-family: var(--font-sans);
+      cursor: pointer;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 500;
+      transition: opacity 0.15s;
+    }
+
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .error-message {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      color: #f87171;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      margin-bottom: 1.5rem;
+      transition: color 0.15s;
+    }
+
+    .back-link:hover {
+      color: var(--text);
+    }
+  </style>
+
+  <div id="new-org-container" data-url={supabaseUrl} data-key={supabaseKey}>
+    <a class="back-link" href="/packages">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      back
+    </a>
+
+    <div class="page-header">
+      <h1>create organization</h1>
+    </div>
+
+    <div class="form-card">
+      <div id="form-error" style="display:none" class="error-message"></div>
+
+      <form id="org-form">
+        <div class="form-group">
+          <label class="form-label" for="slug-input">slug</label>
+          <input
+            id="slug-input"
+            class="form-input"
+            type="text"
+            placeholder="my-org"
+            autocomplete="off"
+            spellcheck="false"
+            pattern="[a-z0-9-]+"
+            minlength="3"
+            maxlength="32"
+            required
+          />
+          <div class="slug-preview">lectern.sh/orgs/<span id="slug-preview-text">—</span></div>
+          <div class="form-hint">lowercase letters, numbers, and hyphens only</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="name-input">name</label>
+          <input
+            id="name-input"
+            class="form-input"
+            type="text"
+            placeholder="My Organization"
+            maxlength="64"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="desc-input">description <span style="opacity:0.5">(optional)</span></label>
+          <textarea
+            id="desc-input"
+            class="form-input form-textarea"
+            placeholder="A brief description of your organization"
+            maxlength="256"
+          ></textarea>
+        </div>
+
+        <button id="submit-btn" class="btn" type="submit">Create Organization</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    import { createClient } from '@supabase/supabase-js'
+
+    const container = document.getElementById('new-org-container')!
+    const supabaseUrl = container.dataset.url!
+    const supabaseKey = container.dataset.key!
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
+    const form = document.getElementById('org-form') as HTMLFormElement
+    const slugInput = document.getElementById('slug-input') as HTMLInputElement
+    const nameInput = document.getElementById('name-input') as HTMLInputElement
+    const descInput = document.getElementById('desc-input') as HTMLTextAreaElement
+    const slugPreview = document.getElementById('slug-preview-text')!
+    const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement
+    const formError = document.getElementById('form-error')!
+
+    // Auto-lowercase slug input
+    slugInput.addEventListener('input', () => {
+      const val = slugInput.value.toLowerCase().replace(/[^a-z0-9-]/g, '')
+      slugInput.value = val
+      slugPreview.textContent = val || '—'
+    })
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault()
+      formError.style.display = 'none'
+      submitBtn.disabled = true
+      submitBtn.textContent = 'Creating…'
+
+      const slug = slugInput.value.trim()
+      const name = nameInput.value.trim()
+      const description = descInput.value.trim()
+
+      // Client-side validation
+      if (!/^[a-z0-9-]+$/.test(slug)) {
+        formError.textContent = 'Slug must be lowercase letters, numbers, and hyphens only.'
+        formError.style.display = 'block'
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Create Organization'
+        return
+      }
+
+      if (slug.length < 3 || slug.length > 32) {
+        formError.textContent = 'Slug must be 3-32 characters.'
+        formError.style.display = 'block'
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Create Organization'
+        return
+      }
+
+      if (!name) {
+        formError.textContent = 'Name is required.'
+        formError.style.display = 'block'
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Create Organization'
+        return
+      }
+
+      try {
+        // Get session for Bearer token
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          window.location.href = '/login?return=/orgs/new'
+          return
+        }
+
+        const res = await fetch('/api/orgs', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ slug, name, description }),
+        })
+
+        if (res.ok) {
+          window.location.href = `/orgs/${encodeURIComponent(slug)}`
+          return
+        }
+
+        const data = await res.json().catch(() => ({}))
+        const errorMsg = data?.error ?? 'Failed to create organization'
+        formError.textContent = errorMsg
+        formError.style.display = 'block'
+      } catch (err) {
+        formError.textContent = 'An unexpected error occurred. Please try again.'
+        formError.style.display = 'block'
+      }
+
+      submitBtn.disabled = false
+      submitBtn.textContent = 'Create Organization'
+    })
+  </script>
+</Base>
