@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.astro/
+storage/
+.env
+.env.production
+.claude/
+.idea/
+.vscode/
+.worktrees/
+*.log

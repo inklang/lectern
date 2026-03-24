@@ -1,0 +1,15 @@
+services:
+  lectern:
+    image: ghcr.io/inklang/lectern:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4321:4321"
+    volumes:
+      - lectern-storage:/data
+    environment:
+      BASE_URL: ${BASE_URL:-https://packages.inklang.org}
+      LECTERN_TOKENS: ${LECTERN_TOKENS}
+      STORAGE_DIR: /data
+
+volumes:
+  lectern-storage:
