@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro'
-import { createServerClient, parseCookieHeader, serializeCookieHeader } from '@supabase/ssr'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 
-export const GET: APIRoute = async ({ request, redirect }) => {
+export const GET: APIRoute = async ({ request, cookies, redirect }) => {
   const url = new URL(request.url)
   const code = url.searchParams.get('code')
   const next = url.searchParams.get('next') ?? '/profile'
@@ -30,20 +30,17 @@ export const GET: APIRoute = async ({ request, redirect }) => {
       },
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value, options }) => {
-          request.headers.append(
-            'Set-Cookie',
-            serializeCookieHeader(name, value, options)
-          )
+          cookies.set(name, value, options)
         })
       },
     },
   })
 
-  const { error } = await supabase.auth.exchangeCodeForSession(code)
+  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
 
-  if (error) {
-    console.error('OAuth callback error:', error)
-    return redirect(`/login?error=${encodeURIComponent(error.message)}`)
+  if (exchangeError) {
+    console.error('OAuth callback error:', exchangeError)
+    return redirect(`/login?error=${encodeURIComponent(exchangeError.message)}`)
   }
 
   return redirect(next)
