@@ -1,0 +1,187 @@
+---
+interface Props {
+  title: string
+  description?: string
+}
+const { title, description = 'The Ink package registry' } = Astro.props
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content={description} />
+  <title>{title} — Lectern</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #09090b;
+      --surface: #18181b;
+      --border: #3f3f46;
+      --text: #fafafa;
+      --muted: #a1a1aa;
+      --muted-2: #71717a;
+      --accent: #8b5cf6;
+      --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
+      --font-sans: ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 0.9375rem;
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      height: 3.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 10;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+    }
+
+    header a.wordmark {
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+      text-decoration: none;
+      letter-spacing: -0.02em;
+    }
+
+    header nav {
+      display: flex;
+      gap: 0.25rem;
+    }
+
+    header nav a {
+      font-size: 0.875rem;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 0.25rem 0.75rem;
+      border-radius: 6px;
+      transition: color 0.15s, background 0.15s;
+    }
+
+    header nav a:hover {
+      color: var(--text);
+      background: var(--surface);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    #login-status {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    #login-status a {
+      color: var(--muted);
+      text-decoration: none;
+    }
+
+    #login-status a:hover { color: var(--text); }
+
+    #login-btn {
+      font-size: 0.8125rem;
+      padding: 0.35rem 0.875rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+      font-family: var(--font-sans);
+      text-decoration: none;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    #login-btn:hover {
+      background: var(--surface);
+      border-color: var(--muted-2);
+    }
+
+    main {
+      flex: 1;
+      max-width: 780px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 2.5rem 2rem;
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.25rem 2rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted-2);
+      text-align: center;
+    }
+
+    a { color: var(--text); }
+    a:hover { opacity: 0.8; }
+
+    .mono { font-family: var(--font-mono); }
+    .muted { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <a class="wordmark" href="/">lectern</a>
+      <nav>
+        <a href="/packages">packages</a>
+        <a href="https://inklang.org" target="_blank" rel="noopener">docs</a>
+      </nav>
+    </div>
+    <div class="header-right">
+      <span id="login-status"></span>
+      <a id="login-btn" href="/login">login</a>
+    </div>
+  </header>
+  <main>
+    <slot />
+  </main>
+  <footer>
+    lectern — the ink package registry
+  </footer>
+  <script>
+    const fp = localStorage.getItem('quill_fingerprint')
+    const loginBtn = document.getElementById('login-btn')
+    const loginStatus = document.getElementById('login-status')
+    if (fp && loginBtn && loginStatus) {
+      loginStatus.innerHTML = `<a href="/login">${fp.slice(0, 8)}···</a>`
+      loginBtn.textContent = 'logout'
+      loginBtn.removeAttribute('href')
+      loginBtn.addEventListener('click', () => {
+        localStorage.removeItem('quill_fingerprint')
+        localStorage.removeItem('quill_public_key')
+        localStorage.removeItem('quill_private_key')
+        window.location.reload()
+      })
+    }
+  </script>
+</body>
+</html>
