@@ -1,0 +1,38 @@
+---
+import { supabaseAnon } from '../lib/supabase.js'
+import { issueToken } from '../lib/tokens.js'
+
+const url = new URL(Astro.request.url)
+const callbackUrl = url.searchParams.get('callback')
+
+// Step 2: OAuth returned with code — exchange for session
+const code = url.searchParams.get('code')
+if (code) {
+  const { data, error } = await supabaseAnon.auth.exchangeCodeForSession(code)
+  if (!error && data.session && callbackUrl) {
+    const userId = data.session.user.id
+    const username = data.session.user.user_metadata?.['user_name'] as string ?? 'unknown'
+    const token = await issueToken(userId)
+    const redirect = new URL(callbackUrl)
+    redirect.searchParams.set('token', token)
+    redirect.searchParams.set('username', username)
+    return Astro.redirect(redirect.toString())
+  }
+}
+
+// Step 1: No session — kick off GitHub OAuth
+if (!callbackUrl) {
+  return new Response('Missing callback parameter', { status: 400 })
+}
+
+const redirectTo = new URL('/cli-auth', Astro.url.origin)
+redirectTo.searchParams.set('callback', callbackUrl)
+
+const { data } = await supabaseAnon.auth.signInWithOAuth({
+  provider: 'github',
+  options: { redirectTo: redirectTo.toString() }
+})
+
+if (data.url) return Astro.redirect(data.url)
+---
+<p>Something went wrong. Please try again.</p>
