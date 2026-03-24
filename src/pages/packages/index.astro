@@ -1,0 +1,190 @@
+---
+import Base from '../../layouts/Base.astro'
+import { PackageStore } from '../../store.js'
+
+const PAGE_SIZE = 20
+
+const store = new PackageStore(process.env['STORAGE_DIR'] ?? './storage')
+const index = store.readIndex()
+
+const allPackages = Object.entries(index.packages)
+  .map(([name, versions]) => {
+    const sorted = Object.values(versions).sort((a, b) =>
+      new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+    )
+    return { name, latest: sorted[0], versionCount: sorted.length }
+  })
+  .sort((a, b) =>
+    new Date(b.latest.publishedAt).getTime() - new Date(a.latest.publishedAt).getTime()
+  )
+
+const page = Math.max(1, parseInt(Astro.url.searchParams.get('page') ?? '1'))
+const totalPages = Math.max(1, Math.ceil(allPackages.length / PAGE_SIZE))
+const clampedPage = Math.min(page, totalPages)
+const packages = allPackages.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE)
+---
+<Base title="Packages">
+  <style>
+    .page-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 2rem;
+    }
+
+    .page-header h1 {
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .count {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .pkg-list { display: flex; flex-direction: column; }
+
+    .pkg-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 0;
+      border-bottom: 1px solid var(--border);
+      text-decoration: none;
+      color: var(--text);
+      gap: 1rem;
+      transition: opacity 0.1s;
+    }
+
+    .pkg-card:hover { opacity: 0.7; }
+    .pkg-card:last-child { border-bottom: none; }
+
+    .pkg-left { display: flex; flex-direction: column; gap: 0.25rem; }
+
+    .pkg-name {
+      font-family: var(--font-mono);
+      font-size: 0.9375rem;
+      font-weight: 500;
+    }
+
+    .pkg-versions {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .pkg-right { text-align: right; flex-shrink: 0; }
+
+    .pkg-ver {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--text);
+    }
+
+    .pkg-date {
+      font-family: var(--font-mono);
+      font-size: 0.775rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+
+    .empty {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      padding: 3rem 0;
+    }
+
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25rem;
+      margin-top: 2.5rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .page-btn {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      text-decoration: none;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      min-width: 2rem;
+      text-align: center;
+    }
+
+    .page-btn:hover {
+      background: var(--surface);
+      color: var(--text);
+      opacity: 1;
+      border-color: var(--muted-2);
+    }
+
+    .page-btn.active {
+      background: var(--text);
+      color: var(--bg);
+      border-color: var(--text);
+    }
+
+    .page-btn.disabled {
+      opacity: 0.25;
+      pointer-events: none;
+    }
+  </style>
+
+  <div class="page-header">
+    <h1>packages</h1>
+    <span class="count">{allPackages.length} total</span>
+  </div>
+
+  {packages.length === 0
+    ? <p class="empty">no packages published yet.</p>
+    : <>
+        <div class="pkg-list">
+          {packages.map(pkg => (
+            <a class="pkg-card" href={`/packages/${pkg.name}`}>
+              <div class="pkg-left">
+                <span class="pkg-name">{pkg.name}</span>
+                <span class="pkg-versions">{pkg.versionCount} version{pkg.versionCount !== 1 ? 's' : ''}</span>
+              </div>
+              <div class="pkg-right">
+                <div class="pkg-ver">v{pkg.latest.version}</div>
+                <div class="pkg-date">{new Date(pkg.latest.publishedAt).toLocaleDateString()}</div>
+              </div>
+            </a>
+          ))}
+        </div>
+
+        {totalPages > 1 && (
+          <nav class="pagination" aria-label="Pagination">
+            <a
+              class={`page-btn${clampedPage === 1 ? ' disabled' : ''}`}
+              href={`/packages?page=${clampedPage - 1}`}
+              aria-label="Previous page"
+            >←</a>
+
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+              <a
+                class={`page-btn${p === clampedPage ? ' active' : ''}`}
+                href={`/packages?page=${p}`}
+              >{p}</a>
+            ))}
+
+            <a
+              class={`page-btn${clampedPage === totalPages ? ' disabled' : ''}`}
+              href={`/packages?page=${clampedPage + 1}`}
+              aria-label="Next page"
+            >→</a>
+          </nav>
+        )}
+      </>
+  }
+</Base>

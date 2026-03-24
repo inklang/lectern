@@ -26,5 +26,10 @@ pnpm-debug.log*
 # jetbrains setting folder
 .idea/
 
+# editor / tool dirs
+.vscode/
+.claude/
+.playwright-mcp/
+
 # registry data (server-local)
 storage/

@@ -1,0 +1,273 @@
+---
+import Base from '../layouts/Base.astro'
+---
+<Base title="Login">
+  <style>
+    .login-wrap {
+      max-width: 480px;
+    }
+
+    h1 {
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-bottom: 2.5rem;
+      line-height: 1.6;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .card-title {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .card p {
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-bottom: 1.25rem;
+      line-height: 1.6;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1.1rem;
+      border-radius: 7px;
+      font-size: 0.875rem;
+      font-family: var(--font-sans);
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--text);
+      color: var(--bg);
+      font-weight: 500;
+      transition: opacity 0.15s;
+    }
+
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+    }
+
+    .identity-box {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .identity-box.visible { display: block; }
+
+    .fp-display {
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      margin: 0.75rem 0;
+      word-break: break-all;
+    }
+
+    .fp-label {
+      font-size: 0.775rem;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .status {
+      font-size: 0.8125rem;
+      color: var(--muted);
+      margin-top: 1rem;
+      font-family: var(--font-mono);
+    }
+
+    .status.ok { color: #4ade80; }
+    .status.err { color: #f87171; }
+
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0.75rem 0;
+    }
+
+    .logout-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .cli-note {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+    }
+
+    .cli-note p {
+      font-size: 0.8375rem;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    .code {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 0.15rem 0.4rem;
+      color: var(--text);
+    }
+  </style>
+
+  <div class="login-wrap">
+    <h1>login</h1>
+    <p class="subtitle">
+      Your identity is a cryptographic keypair — no passwords or accounts needed.
+      Generate one here or use <span class="code">quill login</span> in your terminal.
+    </p>
+
+    <!-- Logged-in state -->
+    <div id="identity-box" class="identity-box">
+      <p class="fp-label">key fingerprint</p>
+      <div id="fp-display" class="fp-display"></div>
+      <p class="status ok" id="reg-status"></p>
+      <hr class="divider" />
+      <div class="logout-row">
+        <span style="font-size:0.8rem;color:var(--muted)">Keys are stored in your browser only.</span>
+        <button class="btn btn-outline" id="logout-btn" style="font-size:0.8rem;padding:0.35rem 0.875rem">logout</button>
+      </div>
+    </div>
+
+    <!-- Generate new keypair -->
+    <div id="generate-card" class="card">
+      <p class="card-title">generate keypair</p>
+      <p>Creates a new Ed25519 keypair and registers your public key with the registry. Your private key never leaves your browser.</p>
+      <button class="btn" id="generate-btn">generate &amp; login</button>
+      <p class="status" id="generate-status"></p>
+    </div>
+
+    <div class="cli-note">
+      <p>
+        Already logged in with the CLI? Your CLI key (<span class="code">~/.quillrc</span>)
+        and browser key are separate identities. Use <span class="code">quill login</span> for publishing —
+        the browser identity is for viewing your packages on the web.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const REGISTRY = (window as any).__LECTERN_REGISTRY__ ?? window.location.origin
+
+    function buf2b64(buf: ArrayBuffer): string {
+      return btoa(String.fromCharCode(...new Uint8Array(buf)))
+    }
+
+    async function sha256Hex(buf: ArrayBuffer): Promise<string> {
+      const hash = await crypto.subtle.digest('SHA-256', buf)
+      return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')
+    }
+
+    function showIdentity(fp: string, status: string) {
+      const identityBox = document.getElementById('identity-box')!
+      const generateCard = document.getElementById('generate-card')!
+      const fpDisplay = document.getElementById('fp-display')!
+      const regStatus = document.getElementById('reg-status')!
+
+      fpDisplay.textContent = fp
+      regStatus.textContent = status
+      identityBox.classList.add('visible')
+      generateCard.style.display = 'none'
+    }
+
+    // Check existing login
+    const existingFp = localStorage.getItem('quill_fingerprint')
+    if (existingFp) {
+      showIdentity(existingFp, '✓ registered')
+    }
+
+    // Logout
+    document.getElementById('logout-btn')?.addEventListener('click', () => {
+      localStorage.removeItem('quill_fingerprint')
+      localStorage.removeItem('quill_public_key')
+      localStorage.removeItem('quill_private_key')
+      window.location.reload()
+    })
+
+    // Generate keypair
+    document.getElementById('generate-btn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('generate-btn') as HTMLButtonElement
+      const status = document.getElementById('generate-status')!
+      btn.disabled = true
+      btn.textContent = 'generating…'
+      status.className = 'status'
+      status.textContent = ''
+
+      try {
+        const keyPair = await crypto.subtle.generateKey(
+          { name: 'Ed25519' } as any,
+          true,
+          ['sign', 'verify']
+        )
+
+        const pubDer = await crypto.subtle.exportKey('spki', keyPair.publicKey)
+        const privDer = await crypto.subtle.exportKey('pkcs8', keyPair.privateKey)
+        const pubB64 = buf2b64(pubDer)
+        const privB64 = buf2b64(privDer)
+        const fpHex = await sha256Hex(pubDer)
+        const fp = fpHex.slice(0, 16)
+
+        status.textContent = 'registering with registry…'
+
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ publicKey: pubB64, fingerprint: fp }),
+        })
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          throw new Error(body.error ?? `Server error ${res.status}`)
+        }
+
+        localStorage.setItem('quill_fingerprint', fp)
+        localStorage.setItem('quill_public_key', pubB64)
+        localStorage.setItem('quill_private_key', privB64)
+
+        showIdentity(fp, '✓ registered')
+      } catch (e: any) {
+        status.className = 'status err'
+        status.textContent = e.message ?? 'something went wrong'
+        btn.disabled = false
+        btn.textContent = 'generate & login'
+      }
+    })
+  </script>
+</Base>
