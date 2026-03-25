@@ -1,6 +1,6 @@
 ---
 import Base from '../../../../layouts/Base.astro'
-import { getOrgBySlug, isOrgAdmin, getOrgMembers, getOrgTeams } from '../../../../lib/orgs.js'
+import { getOrgBySlug, isOrgAdmin, isOrgOwner, getOrgMembers, getOrgTeams, getOrgInvites } from '../../../../lib/orgs.js'
 
 const { slug } = Astro.params
 const org = await getOrgBySlug(slug!)
@@ -11,11 +11,14 @@ const { supabaseAnon } = await import('../../../../lib/supabase.js')
 const { data: sessionData } = await supabaseAnon.auth.getSession()
 if (!sessionData?.session) return Astro.redirect('/login')
 
-const isAdmin = await isOrgAdmin(org.id, sessionData.session.user.id)
+const currentUserId = sessionData.session.user.id
+const isAdmin = await isOrgAdmin(org.id, currentUserId)
+const isOwner = await isOrgOwner(org.id, currentUserId)
 if (!isAdmin) return Astro.redirect(`/orgs/${slug}`)
 
 const members = await getOrgMembers(org.id)
 const teams = await getOrgTeams(org.id)
+const invites = await getOrgInvites(org.id)
 
 // Get user info for each member
 const userIds = members.map(m => m.user_id)
@@ -28,6 +31,21 @@ if (userIds.length > 0) {
   if (users) {
     for (const u of users) {
       userMap[u.id] = { user_name: u.user_name, email: u.email }
+    }
+  }
+}
+
+// Get user info for invite creators
+const inviteCreatorIds = [...new Set(invites.map(i => i.created_by))]
+let inviteCreatorMap: Record<string, { user_name?: string; email?: string }> = {}
+if (inviteCreatorIds.length > 0) {
+  const { data: inviteCreators } = await supabaseAnon
+    .from('users')
+    .select('id, user_name, email')
+    .in('id', inviteCreatorIds)
+  if (inviteCreators) {
+    for (const u of inviteCreators) {
+      inviteCreatorMap[u.id] = { user_name: u.user_name, email: u.email }
     }
   }
 }
@@ -347,6 +365,10 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
       <div class="org-slug">@{org.slug}</div>
     </div>
 
+    <div style="margin-bottom: 1.5rem; display: flex; gap: 0.5rem;">
+      <a href={`/orgs/${org.slug}/settings/audit`} style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); text-decoration: none; padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); transition: border-color 0.15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">View Audit Log</a>
+    </div>
+
     <!-- General Section -->
     <div class="section" id="general-section">
       <div class="section-title">General</div>
@@ -377,14 +399,31 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
     <div class="section" id="members-section">
       <div class="section-title">Members</div>
       <div id="members-error" style="display:none" class="error-message"></div>
+      <div id="members-success" style="display:none" class="success-message"></div>
       <div class="member-list" id="members-list">
         {members.map(member => {
           const userInfo = userMap[member.user_id]
+          const isCurrentUser = member.user_id === currentUserId
           return (
             <div class="member-item" data-user-id={member.user_id} data-role={member.role}>
               <div class="member-info">
-                <span class="member-name">{userInfo?.user_name ?? member.user_id.slice(0, 8)}</span>
+                <span class="member-name">
+                  {userInfo?.user_name ?? member.user_id.slice(0, 8)}
+                  {isCurrentUser && <span style="color: var(--muted); font-size: 0.75rem;"> (you)</span>}
+                </span>
                 {userInfo?.email && <span class="member-email">{userInfo.email}</span>}
+              </div>
+              <div class="btn-group">
+                <span class={`role-badge ${member.role}`}>{member.role}</span>
+                {!isCurrentUser && member.role !== 'owner' && (
+                  <>
+                    <select class="role-select" data-user-id={member.user_id}>
+                      <option value="admin" selected={member.role === 'admin'}>admin</option>
+                      <option value="member" selected={member.role === 'member'}>member</option>
+                    </select>
+                    <button class="btn btn-outline btn-sm remove-member-btn" data-user-id={member.user_id}>Remove</button>
+                  </>
+                )}
               </div>
             </div>
           )
@@ -395,23 +434,57 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
     <!-- Teams Section -->
     <div class="section" id="teams-section">
       <div class="section-title">Teams</div>
+      <div id="teams-error" style="display:none" class="error-message"></div>
       <div class="member-list">
         {teams.map(team => (
-          <div class="member-item">
+          <div class="member-item" data-team-id={team.id}>
             <div class="member-info">
-              <span class="member-name">{team.name}</span>
+              <a href={`/orgs/${org.slug}/settings/teams/${team.id}`} class="member-name" style="text-decoration: none; color: var(--text);">{team.name}</a>
+              <span class="member-email">{teamMemberCounts[team.id] ?? 0} member{(teamMemberCounts[team.id] ?? 0) !== 1 ? 's' : ''}</span>
             </div>
-            <span class="member-email">{teamMemberCounts[team.id] ?? 0} member{(teamMemberCounts[team.id] ?? 0) !== 1 ? 's' : ''}</span>
+            <div class="btn-group">
+              <a href={`/orgs/${org.slug}/settings/teams/${team.id}`} class="btn btn-sm">Manage</a>
+            </div>
           </div>
         ))}
         {teams.length === 0 && <p class="empty">No teams created yet.</p>}
       </div>
     </div>
 
-    <!-- Invite Section -->
+    <!-- Pending Invites Section -->
+    <div class="section" id="invites-section">
+      <div class="section-title">Pending Invites</div>
+      <div id="invites-error" style="display:none" class="error-message"></div>
+      <div id="invites-success" style="display:none" class="success-message"></div>
+      <div class="member-list" id="invites-list">
+        {invites.length === 0 && <p class="empty">No pending invites.</p>}
+        {invites.map(invite => {
+          const creator = inviteCreatorMap[invite.created_by]
+          const isExpired = invite.expires_at && new Date(invite.expires_at) < new Date()
+          const isExhausted = invite.max_uses !== null && invite.use_count >= invite.max_uses
+          return (
+            <div class="member-item" data-token={invite.token}>
+              <div class="member-info">
+                <span class="member-name">{invite.token.slice(0, 8)}...</span>
+                <span class="member-email">
+                  Created by {creator?.user_name ?? invite.created_by.slice(0, 8)}
+                  {isExpired && <span style="color: #f87171;"> (expired)</span>}
+                  {isExhausted && <span style="color: #fbbf24;"> (exhausted)</span>}
+                  {invite.max_uses !== null && <span> ({invite.use_count}/{invite.max_uses} uses)</span>}
+                  {invite.expires_at && <span> expires {new Date(invite.expires_at).toLocaleDateString()}</span>}
+                </span>
+              </div>
+              <button class="btn btn-outline btn-sm cancel-invite-btn" data-token={invite.token}>Cancel</button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+
+    <!-- Generate Invite Section -->
     <div class="section" id="invite-section">
       <div class="section-title">Generate Invite Link</div>
-      <div id="invite-error" style="display:none" class="error-message"></div>
+      <div id="generate-invite-error" style="display:none" class="error-message"></div>
       <p style="font-size: 0.875rem; color: var(--muted); margin-bottom: 1rem;">
         Generate an invite link to share with users who want to join your organization.
       </p>
@@ -426,6 +499,39 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
         <button id="copy-invite-btn" class="copy-btn">Copy</button>
       </div>
     </div>
+
+    <!-- Webhooks Section -->
+    <div class="section" id="webhooks-section">
+      <div class="section-title">Webhooks</div>
+      <div id="webhooks-error" style="display:none" class="error-message"></div>
+      <div id="webhooks-success" style="display:none" class="success-message"></div>
+      <p style="font-size: 0.875rem; color: var(--muted); margin-bottom: 1rem;">
+        Configure webhooks to receive notifications when packages are published.
+      </p>
+      <div class="form-group">
+        <label class="form-label" for="webhook-url-input">Endpoint URL</label>
+        <input id="webhook-url-input" class="form-input" type="url" placeholder="https://example.com/webhook" />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="webhook-events-input">Events (comma-separated)</label>
+        <input id="webhook-events-input" class="form-input" type="text" placeholder="package.published" />
+      </div>
+      <button id="add-webhook-btn" class="btn" style="margin-bottom: 1rem;">Add Webhook</button>
+      <div class="member-list" id="webhooks-list"></div>
+    </div>
+
+    <!-- Danger Zone Section -->
+    {isOwner && (
+      <div class="section" id="danger-section" style="border-color: rgba(239, 68, 68, 0.3);">
+        <div class="section-title" style="color: #f87171;">Danger Zone</div>
+        <div id="delete-error" style="display:none" class="error-message"></div>
+        <div id="delete-success" style="display:none" class="success-message"></div>
+        <p style="font-size: 0.875rem; color: var(--muted); margin-bottom: 1rem;">
+          Permanently delete this organization and all its data. This action cannot be undone.
+        </p>
+        <button id="delete-org-btn" class="btn btn-outline">Delete Organization</button>
+      </div>
+    )}
   </div>
 
   <script>
@@ -507,7 +613,7 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
 
     // Invite section
     const generateInviteBtn = document.getElementById('generate-invite-btn')!
-    const inviteError = document.getElementById('invite-error')!
+    const generateInviteError = document.getElementById('generate-invite-error')!
     const inviteUrlBox = document.getElementById('invite-url-box')!
     const inviteUrlInput = document.getElementById('invite-url-input') as HTMLInputElement
     const copyBtn = document.getElementById('copy-btn')!
@@ -518,7 +624,7 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
 
       generateInviteBtn.disabled = true
       generateInviteBtn.textContent = 'Generating…'
-      inviteError.style.display = 'none'
+      generateInviteError.style.display = 'none'
 
       try {
         const res = await fetch(`/api/orgs/${encodeURIComponent(slug)}/invite`, {
@@ -534,14 +640,16 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
           const data = await res.json()
           inviteUrlInput.value = data.url
           inviteUrlBox.style.display = 'flex'
+          // Reload to show new invite in the list
+          window.location.reload()
         } else {
           const data = await res.json().catch(() => ({}))
-          inviteError.textContent = data?.error ?? 'Failed to generate invite.'
-          inviteError.style.display = 'block'
+          generateInviteError.textContent = data?.error ?? 'Failed to generate invite.'
+          generateInviteError.style.display = 'block'
         }
       } catch (e) {
-        inviteError.textContent = 'An unexpected error occurred.'
-        inviteError.style.display = 'block'
+        generateInviteError.textContent = 'An unexpected error occurred.'
+        generateInviteError.style.display = 'block'
       }
 
       generateInviteBtn.disabled = false
@@ -554,5 +662,304 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
       copyBtn.textContent = 'Copied!'
       setTimeout(() => { copyBtn.textContent = 'Copy' }, 2000)
     })
+
+    // Members section - role change
+    document.querySelectorAll('.role-select').forEach(select => {
+      select.addEventListener('change', async (e) => {
+        const target = e.target as HTMLSelectElement
+        const userId = target.dataset.userId
+        const newRole = target.value
+        const session = await getSession()
+        if (!session) return
+
+        const membersError = document.getElementById('members-error')!
+        const membersSuccess = document.getElementById('members-success')!
+
+        try {
+          const res = await fetch(`/api/orgs/${encodeURIComponent(slug)}/members/${userId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ role: newRole }),
+          })
+
+          if (res.ok) {
+            membersSuccess.textContent = 'Role updated successfully.'
+            membersSuccess.style.display = 'block'
+            membersError.style.display = 'none'
+            // Update the badge
+            const memberItem = target.closest('.member-item') as HTMLElement
+            const badge = memberItem?.querySelector('.role-badge')
+            if (badge) {
+              badge.className = `role-badge ${newRole}`
+              badge.textContent = newRole
+            }
+          } else {
+            const data = await res.json().catch(() => ({}))
+            membersError.textContent = data?.error ?? 'Failed to update role.'
+            membersError.style.display = 'block'
+            membersSuccess.style.display = 'none'
+          }
+        } catch (e) {
+          membersError.textContent = 'An unexpected error occurred.'
+          membersError.style.display = 'block'
+          membersSuccess.style.display = 'none'
+        }
+      })
+    })
+
+    // Members section - remove member
+    document.querySelectorAll('.remove-member-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const target = e.target as HTMLButtonElement
+        const userId = target.dataset.userId
+        if (!confirm('Are you sure you want to remove this member?')) return
+
+        const session = await getSession()
+        if (!session) return
+
+        const membersError = document.getElementById('members-error')!
+        const membersSuccess = document.getElementById('members-success')!
+
+        try {
+          const res = await fetch(`/api/orgs/${encodeURIComponent(slug)}/members/${userId}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          })
+
+          if (res.ok) {
+            membersSuccess.textContent = 'Member removed successfully.'
+            membersSuccess.style.display = 'block'
+            membersError.style.display = 'none'
+            // Remove the member item from the DOM
+            const memberItem = target.closest('.member-item') as HTMLElement
+            if (memberItem) memberItem.remove()
+          } else {
+            const data = await res.json().catch(() => ({}))
+            membersError.textContent = data?.error ?? 'Failed to remove member.'
+            membersError.style.display = 'block'
+            membersSuccess.style.display = 'none'
+          }
+        } catch (e) {
+          membersError.textContent = 'An unexpected error occurred.'
+          membersError.style.display = 'block'
+          membersSuccess.style.display = 'none'
+        }
+      })
+    })
+
+    // Invites section - cancel invite
+    document.querySelectorAll('.cancel-invite-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const target = e.target as HTMLButtonElement
+        const token = target.dataset.token
+        if (!confirm('Are you sure you want to cancel this invite?')) return
+
+        const session = await getSession()
+        if (!session) return
+
+        const invitesError = document.getElementById('invites-error')!
+        const invitesSuccess = document.getElementById('invites-success')!
+
+        try {
+          const res = await fetch(`/api/orgs/${encodeURIComponent(slug)}/invites/${token}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          })
+
+          if (res.ok) {
+            invitesSuccess.textContent = 'Invite cancelled successfully.'
+            invitesSuccess.style.display = 'block'
+            invitesError.style.display = 'none'
+            // Remove the invite item from the DOM
+            const inviteItem = target.closest('.member-item') as HTMLElement
+            if (inviteItem) inviteItem.remove()
+          } else {
+            const data = await res.json().catch(() => ({}))
+            invitesError.textContent = data?.error ?? 'Failed to cancel invite.'
+            invitesError.style.display = 'block'
+            invitesSuccess.style.display = 'none'
+          }
+        } catch (e) {
+          invitesError.textContent = 'An unexpected error occurred.'
+          invitesError.style.display = 'block'
+          invitesSuccess.style.display = 'none'
+        }
+      })
+    })
+
+    // Delete org button
+    const deleteOrgBtn = document.getElementById('delete-org-btn')
+    if (deleteOrgBtn) {
+      deleteOrgBtn.addEventListener('click', async () => {
+        if (!confirm('Are you sure you want to delete this organization? This action cannot be undone.')) return
+        if (!confirm('This will permanently delete all packages, teams, and data associated with this organization. Continue?')) return
+
+        const session = await getSession()
+        if (!session) return
+
+        const deleteError = document.getElementById('delete-error')!
+        const deleteSuccess = document.getElementById('delete-success')!
+
+        try {
+          const res = await fetch(`/api/orgs/${encodeURIComponent(slug)}/delete`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          })
+
+          if (res.ok) {
+            window.location.href = '/packages'
+          } else {
+            const data = await res.json().catch(() => ({}))
+            deleteError.textContent = data?.error ?? 'Failed to delete organization.'
+            deleteError.style.display = 'block'
+            deleteSuccess.style.display = 'none'
+          }
+        } catch (e) {
+          deleteError.textContent = 'An unexpected error occurred.'
+          deleteError.style.display = 'block'
+          deleteSuccess.style.display = 'none'
+        }
+      })
+    }
+
+    // --- Webhooks ---
+    const webhooksError = document.getElementById('webhooks-error')!
+    const webhooksSuccess = document.getElementById('webhooks-success')!
+    const webhooksList = document.getElementById('webhooks-list')!
+    const webhookUrlInput = document.getElementById('webhook-url-input') as HTMLInputElement
+    const webhookEventsInput = document.getElementById('webhook-events-input') as HTMLInputElement
+    const addWebhookBtn = document.getElementById('add-webhook-btn')!
+
+    interface Webhook {
+      id: string
+      url: string
+      events: string[]
+      active: boolean
+    }
+
+    async function loadWebhooks() {
+      const session = await getSession()
+      if (!session) return
+      webhooksList.innerHTML = '<p class="empty">Loading…</p>'
+      try {
+        const res = await fetch(`/api/orgs/${encodeURIComponent(slug)}/webhooks`, {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        })
+        if (!res.ok) throw new Error('Failed to load')
+        const webhooks: Webhook[] = await res.json()
+        renderWebhooks(webhooks)
+      } catch {
+        webhooksList.innerHTML = '<p class="empty">Failed to load webhooks.</p>'
+      }
+    }
+
+    function renderWebhooks(webhooks: Webhook[]) {
+      if (webhooks.length === 0) {
+        webhooksList.innerHTML = '<p class="empty">No webhooks configured.</p>'
+        return
+      }
+      webhooksList.innerHTML = webhooks.map(w => `
+        <div class="member-item" data-webhook-id="${w.id}">
+          <div class="member-info">
+            <span class="member-name">${escapeHtml(w.url)}</span>
+            <span class="member-email">${w.events.join(', ')}</span>
+          </div>
+          <button class="btn btn-outline btn-sm delete-webhook-btn">Delete</button>
+        </div>
+      `).join('')
+
+      webhooksList.querySelectorAll('.delete-webhook-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const id = (e.target as HTMLElement).closest('.member-item')!.dataset.webhookId!
+          const session = await getSession()
+          if (!session) return
+          ;(e.target as HTMLButtonElement).disabled = true
+          try {
+            const res = await fetch(`/api/orgs/${encodeURIComponent(slug)}/webhooks/${id}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${session.access_token}` },
+            })
+            if (res.ok) {
+              showWebhookSuccess('Webhook deleted.')
+              loadWebhooks()
+            } else {
+              const data = await res.json().catch(() => ({}))
+              showWebhookError(data?.error ?? 'Failed to delete webhook.')
+            }
+          } catch {
+            showWebhookError('Failed to delete webhook.')
+          }
+        })
+      })
+    }
+
+    function showWebhookError(msg: string) {
+      webhooksError.textContent = msg
+      webhooksError.style.display = 'block'
+      webhooksSuccess.style.display = 'none'
+    }
+
+    function showWebhookSuccess(msg: string) {
+      webhooksSuccess.textContent = msg
+      webhooksSuccess.style.display = 'block'
+      webhooksError.style.display = 'none'
+    }
+
+    addWebhookBtn.addEventListener('click', async () => {
+      const session = await getSession()
+      if (!session) return
+      const url = webhookUrlInput.value.trim()
+      const eventsStr = webhookEventsInput.value.trim()
+      if (!url || !eventsStr) {
+        showWebhookError('URL and events are required.')
+        return
+      }
+      const events = eventsStr.split(',').map(e => e.trim()).filter(Boolean)
+      if (events.length === 0) {
+        showWebhookError('At least one event is required.')
+        return
+      }
+      addWebhookBtn.disabled = true
+      webhooksError.style.display = 'none'
+      webhooksSuccess.style.display = 'none'
+      try {
+        const res = await fetch(`/api/orgs/${encodeURIComponent(slug)}/webhooks`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ url, events }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          webhookUrlInput.value = ''
+          webhookEventsInput.value = ''
+          showWebhookSuccess(`Webhook created. Secret: ${data.secret} — save this, it won't be shown again.`)
+          loadWebhooks()
+        } else {
+          const data = await res.json().catch(() => ({}))
+          showWebhookError(data?.error ?? 'Failed to create webhook.')
+        }
+      } catch {
+        showWebhookError('Failed to create webhook.')
+      }
+      addWebhookBtn.disabled = false
+    })
+
+    function escapeHtml(str: string) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    }
+
+    loadWebhooks()
   </script>
 </Base>

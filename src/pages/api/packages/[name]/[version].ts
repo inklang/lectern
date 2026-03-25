@@ -4,10 +4,17 @@ import { canUserPublish } from '../../../../lib/authz.js'
 import { getPackageOwner, createPackage, insertVersion, versionExists } from '../../../../lib/db.js'
 import { uploadTarball } from '../../../../lib/storage.js'
 import { extractDependencies } from '../../../../tar.js'
+import { deliverWebhook } from '../../../../lib/webhooks.js'
+import { checkRateLimit, rateLimitHeaders, rateLimitResponse } from '../../../../lib/ratelimit.js'
+import { logAuditEvent } from '../../../../lib/audit.js'
 
-export const GET: APIRoute = async ({ params }) => {
+export const GET: APIRoute = async ({ params, request }) => {
   const { name, version } = params
   if (!name || !version) return new Response('Bad request', { status: 400 })
+
+  // Log download and increment counter (fire and forget, don't block redirect)
+  const { logDownload } = await import('../../../../lib/db.js')
+  logDownload(name, version, request.headers.get('authorization') ?? null).catch(() => {})
 
   // Redirect to Supabase Storage public URL via storage helper
   const { supabase } = await import('../../../../lib/supabase.js')
@@ -32,6 +39,13 @@ export const PUT: APIRoute = async ({ params, request }) => {
     return new Response(JSON.stringify({ error: 'Invalid or expired token. Run `quill login`.' }), { status: 401 })
   }
 
+  // Rate limit check: 30/min for authenticated publish
+  const endpoint = `PUT /api/packages/${name}/*`
+  const rateLimit = await checkRateLimit(userId, null, endpoint, 30, 60)
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit)
+  }
+
   // Permission check: if version already exists, verify publisher has access
   if (await versionExists(name, version)) {
     if (!(await canUserPublish(userId, name))) {
@@ -46,7 +60,10 @@ export const PUT: APIRoute = async ({ params, request }) => {
   let tarballData: Buffer
   let description: string | null = null
   let readme: string | null = null
+  let author: string | null = null
+  let license: string | null = null
   let dependencies: Record<string, string> = {}
+  let tags: string[] = []
 
   if (contentType.includes('multipart/form-data')) {
     const formData = await request.formData()
@@ -55,7 +72,24 @@ export const PUT: APIRoute = async ({ params, request }) => {
     tarballData = Buffer.from(await tarballFile.arrayBuffer())
     description = (formData.get('description') as string | null) ?? null
     readme = (formData.get('readme') as string | null) ?? null
+    author = (formData.get('author') as string | null) ?? null
+    license = (formData.get('license') as string | null) ?? null
     try { dependencies = await extractDependencies(tarballData) } catch {}
+
+    // Parse tags: can be JSON array string or repeated form fields
+    const tagsVal = formData.get('tags')
+    if (tagsVal) {
+      if (typeof tagsVal === 'string') {
+        try { tags = JSON.parse(tagsVal) } catch { tags = [] }
+      } else {
+        // File — ignore
+      }
+    }
+    // Also support repeated form fields: tags=a&tags=b
+    const tagsAll = formData.getAll('tags')
+    if (tagsAll.length > 1) {
+      tags = tagsAll.map(t => String(t).trim().toLowerCase()).filter(Boolean)
+    }
   } else {
     // Legacy: raw gzip body (backwards compat — remove after one release cycle)
     tarballData = Buffer.from(await request.arrayBuffer())
@@ -93,16 +127,53 @@ export const PUT: APIRoute = async ({ params, request }) => {
     version,
     description,
     readme,
+    author,
+    license,
     dependencies,
     tarball_url: tarballUrl,
     embedding: null,
   })
 
+  // Add tags if provided (fire and forget)
+  if (tags.length > 0) {
+    const { addPackageTag } = await import('../../../../lib/db.js')
+    for (const tag of tags.slice(0, 20)) {
+      if (tag.length <= 50) addPackageTag(name, tag).catch(() => {})
+    }
+  }
+
   // Trigger embedding generation non-blocking — implemented in Task 16
   generateAndStoreEmbedding(name, version, description, readme).catch(() => {})
 
+  // Fire webhook for package.published event (fire and forget)
+  deliverWebhook(ownerType === 'org' ? actualOwnerId : null, 'package.published', {
+    package: name,
+    version,
+    description,
+    published_by: userId,
+    owner_type: ownerType,
+    owner_id: actualOwnerId,
+  }).catch(() => {})
+
+  // Log audit event (fire and forget)
+  logAuditEvent({
+    orgId: ownerType === 'org' ? actualOwnerId : null,
+    userId,
+    action: 'package.publish',
+    resourceType: 'package',
+    resourceId: `${name}@${version}`,
+    details: { name, version, owner_type: ownerType },
+    ipAddress: request.headers.get('x-forwarded-for') ?? null,
+    userAgent: request.headers.get('user-agent') ?? null,
+  }).catch(() => {})
+
   const baseUrl = process.env['BASE_URL'] ?? 'http://localhost:4321'
-  return new Response(JSON.stringify({ name, version, url: `${baseUrl}/api/packages/${name}/${version}` }), { status: 201 })
+  const resp = new Response(JSON.stringify({ name, version, url: `${baseUrl}/api/packages/${name}/${version}` }), { status: 201 })
+  // Add rate limit headers to successful response
+  for (const [k, v] of Object.entries(rateLimitHeaders(rateLimit))) {
+    resp.headers.set(k, v)
+  }
+  return resp
 }
 
 import { embedText } from '../../../../lib/embed.js'

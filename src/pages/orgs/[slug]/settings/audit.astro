@@ -1,0 +1,419 @@
+---
+import Base from '../../../../layouts/Base.astro'
+import { getOrgBySlug, isOrgAdmin } from '../../../../lib/orgs.js'
+
+const { slug } = Astro.params
+const org = await getOrgBySlug(slug!)
+
+if (!org) return Astro.redirect('/packages')
+
+const { supabaseAnon } = await import('../../../../lib/supabase.js')
+const { data: sessionData } = await supabaseAnon.auth.getSession()
+if (!sessionData?.session) return Astro.redirect('/login')
+
+const isAdmin = await isOrgAdmin(org.id, sessionData.session.user.id)
+if (!isAdmin) return Astro.redirect(`/orgs/${slug}`)
+
+const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
+const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
+
+// Fetch initial audit log
+const { queryAuditLog } = await import('../../../../lib/audit.js')
+const { entries: initialEntries } = await queryAuditLog({ orgId: org.id, limit: 50 })
+const initialData = JSON.stringify(initialEntries)
+---
+
+<Base title={`${org.name} — Audit Log`}>
+  <style>
+    .settings-wrap {
+      max-width: 860px;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      margin-bottom: 1.5rem;
+      transition: color 0.15s;
+    }
+
+    .back-link:hover {
+      color: var(--text);
+    }
+
+    .page-header {
+      margin-bottom: 2rem;
+    }
+
+    .page-header h1 {
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .page-header .org-slug {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.25rem;
+    }
+
+    .filters {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .filter-input {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 0.875rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text);
+      outline: none;
+    }
+
+    .filter-input:focus {
+      border-color: var(--accent);
+    }
+
+    .filter-select {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 0.875rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text);
+      cursor: pointer;
+      outline: none;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1.1rem;
+      border-radius: 7px;
+      font-size: 0.875rem;
+      font-family: var(--font-sans);
+      cursor: pointer;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 500;
+      transition: opacity 0.15s;
+    }
+
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .audit-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .audit-table th {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-align: left;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .audit-table td {
+      padding: 0.875rem 1rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.875rem;
+    }
+
+    .audit-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .action-badge {
+      display: inline-flex;
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .action-badge.publish {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .action-badge.create {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .action-badge.update {
+      background: rgba(251, 191, 36, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(251, 191, 36, 0.3);
+    }
+
+    .action-badge.delete {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .action-badge.role_change {
+      background: rgba(139, 92, 246, 0.15);
+      color: #a78bfa;
+      border: 1px solid rgba(139, 92, 246, 0.3);
+    }
+
+    .action-badge.other {
+      background: rgba(161, 161, 170, 0.15);
+      color: var(--muted);
+      border: 1px solid rgba(161, 161, 170, 0.3);
+    }
+
+    .resource-id {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .timestamp {
+      font-family: var(--font-mono);
+      font-size: 0.775rem;
+      color: var(--muted);
+    }
+
+    .user-id {
+      font-family: var(--font-mono);
+      font-size: 0.775rem;
+      color: var(--muted);
+    }
+
+    .empty {
+      text-align: center;
+      padding: 3rem 0;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    .pagination {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1.5rem;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .pagination button {
+      padding: 0.4rem 0.875rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    .pagination button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .pagination button:hover:not(:disabled) {
+      border-color: var(--accent);
+    }
+
+    .pagination span {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+  </style>
+
+  <div class="settings-wrap" id="audit-container" data-url={supabaseUrl} data-key={supabaseKey}>
+    <a class="back-link" href={`/orgs/${org.slug}/settings`}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      <span>{org.name} Settings</span>
+    </a>
+
+    <div class="page-header">
+      <h1>audit log</h1>
+      <div class="org-slug">@{org.slug}</div>
+    </div>
+
+    <div class="filters">
+      <select id="filter-action" class="filter-select">
+        <option value="">All actions</option>
+        <option value="package.publish">package.publish</option>
+        <option value="org.create">org.create</option>
+        <option value="org.update">org.update</option>
+        <option value="member.add">member.add</option>
+        <option value="member.remove">member.remove</option>
+        <option value="member.role_change">member.role_change</option>
+        <option value="team.create">team.create</option>
+        <option value="invite.create">invite.create</option>
+        <option value="webhook.create">webhook.create</option>
+        <option value="webhook.update">webhook.update</option>
+        <option value="webhook.delete">webhook.delete</option>
+      </select>
+      <input id="filter-from" type="date" class="filter-input" placeholder="From date" />
+      <input id="filter-to" type="date" class="filter-input" placeholder="To date" />
+      <button id="apply-filters-btn" class="btn">Apply Filters</button>
+    </div>
+
+    <div id="audit-entries">
+      <table class="audit-table">
+        <thead>
+          <tr>
+            <th>Action</th>
+            <th>Resource</th>
+            <th>User</th>
+            <th>IP Address</th>
+            <th>Timestamp</th>
+          </tr>
+        </thead>
+        <tbody id="audit-body">
+          <!-- Populated by JS -->
+        </tbody>
+      </table>
+    </div>
+
+    <div id="empty-message" class="empty" style="display: none;">No audit entries found.</div>
+
+    <div class="pagination">
+      <button id="prev-btn" disabled>Previous</button>
+      <span id="page-info">Page 1</span>
+      <button id="next-btn" disabled>Next</button>
+    </div>
+  </div>
+
+  <script>
+    import { createClient } from '@supabase/supabase-js'
+
+    const container = document.getElementById('audit-container')!
+    const supabaseUrl = container.dataset.url!
+    const supabaseKey = container.dataset.key!
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
+    const slug = window.location.pathname.replace('/orgs/', '').replace('/settings/audit', '')
+
+    let offset = 0
+    const limit = 50
+
+    async function getSession() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        window.location.href = '/login'
+        return null
+      }
+      return session
+    }
+
+    function getActionClass(action: string) {
+      if (action.includes('publish') || action.includes('create')) return 'publish create'
+      if (action.includes('update') || action.includes('role_change')) return 'update'
+      if (action.includes('delete') || action.includes('remove')) return 'delete'
+      if (action.includes('role_change')) return 'role_change'
+      return 'other'
+    }
+
+    function renderEntries(entries: any[]) {
+      const tbody = document.getElementById('audit-body')!
+      const emptyMsg = document.getElementById('empty-message')!
+
+      if (entries.length === 0) {
+        tbody.innerHTML = ''
+        emptyMsg.style.display = 'block'
+        return
+      }
+
+      emptyMsg.style.display = 'none'
+      tbody.innerHTML = entries.map(entry => `
+        <tr>
+          <td><span class="action-badge ${getActionClass(entry.action)}">${entry.action}</span></td>
+          <td>
+            <span class="resource-id" title="${entry.resource_id ?? ''}">${entry.resource_id ?? '—'}</span>
+          </td>
+          <td><span class="user-id">${(entry.user_id ?? '').slice(0, 8)}...</span></td>
+          <td><span class="user-id">${entry.ip_address ?? '—'}</span></td>
+          <td><span class="timestamp">${new Date(entry.created_at).toLocaleString()}</span></td>
+        </tr>
+      `).join('')
+    }
+
+    async function loadAudit(resetOffset = true) {
+      if (resetOffset) offset = 0
+
+      const session = await getSession()
+      if (!session) return
+
+      const action = (document.getElementById('filter-action') as HTMLSelectElement).value
+      const from = (document.getElementById('filter-from') as HTMLInputElement).value
+      const to = (document.getElementById('filter-to') as HTMLInputElement).value
+
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+      if (action) params.set('action', action)
+      if (from) params.set('from', new Date(from).toISOString())
+      if (to) params.set('to', new Date(to).toISOString())
+
+      const res = await fetch(`/api/orgs/${encodeURIComponent(slug)}/audit?${params}`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
+
+      if (!res.ok) {
+        console.error('Failed to load audit log')
+        return
+      }
+
+      const { entries } = await res.json()
+      renderEntries(entries)
+
+      // Update pagination
+      const prevBtn = document.getElementById('prev-btn') as HTMLButtonElement
+      const nextBtn = document.getElementById('next-btn') as HTMLButtonElement
+      const pageInfo = document.getElementById('page-info')!
+
+      prevBtn.disabled = offset === 0
+      nextBtn.disabled = entries.length < limit
+      pageInfo.textContent = `Page ${Math.floor(offset / limit) + 1}`
+    }
+
+    document.getElementById('apply-filters-btn')!.addEventListener('click', () => loadAudit(true))
+    document.getElementById('prev-btn')!.addEventListener('click', () => {
+      offset = Math.max(0, offset - limit)
+      loadAudit(false)
+    })
+    document.getElementById('next-btn')!.addEventListener('click', () => {
+      offset += limit
+      loadAudit(false)
+    })
+
+    loadAudit(true)
+  </script>
+</Base>

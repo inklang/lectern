@@ -1,6 +1,6 @@
 ---
 import Base from '../layouts/Base.astro'
-import { listAllPackages } from '../lib/db.js'
+import { listAllPackages, getTrendingPackages } from '../lib/db.js'
 
 const allPackagesMap = await listAllPackages()
 const packages = Object.entries(allPackagesMap)
@@ -12,6 +12,8 @@ const recent = packages
   )
   .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
   .slice(0, 6)
+
+const trending = await getTrendingPackages(7, 5).catch(() => [])
 ---
 <Base title="Home">
   <style>
@@ -134,6 +136,57 @@ const recent = packages
       color: var(--muted);
       padding: 2rem 0;
     }
+
+    .trending-list { display: flex; flex-direction: column; }
+
+    .trending-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.25rem;
+      margin-bottom: 0.5rem;
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color 0.15s;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      gap: 1rem;
+    }
+
+    .trending-row:hover { border-color: var(--accent); opacity: 1; }
+
+    .trending-rank {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--accent);
+      min-width: 1.5rem;
+    }
+
+    .trending-name {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      flex: 1;
+    }
+
+    .trending-dl {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .home-sections {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      margin-top: 3rem;
+    }
+
+    .home-section { }
+
+    @media (max-width: 768px) {
+      .home-sections { grid-template-columns: 1fr; }
+    }
   </style>
 
   <div class="hero">
@@ -155,17 +208,37 @@ const recent = packages
     </div>
   </div>
 
-  <p class="section-heading">recently published</p>
-  {recent.length === 0
-    ? <p class="empty">no packages yet.</p>
-    : <div class="pkg-list">
-        {recent.map(pkg => (
-          <a class="pkg-row" href={`/packages/${pkg.name}`}>
-            <span class="pkg-name">{pkg.name}</span>
-            <span class="pkg-meta">v{pkg.version} &middot; {new Date(pkg.published_at).toLocaleDateString()}</span>
-          </a>
-        ))}
-      </div>
-  }
-  {recent.length > 0 && <a class="view-all" href="/packages">view all packages →</a>}
+  <div class="home-sections">
+    <div class="home-section">
+      <p class="section-heading">recently published</p>
+      {recent.length === 0
+        ? <p class="empty">no packages yet.</p>
+        : <div class="pkg-list">
+            {recent.map(pkg => (
+              <a class="pkg-row" href={`/packages/${pkg.name}`}>
+                <span class="pkg-name">{pkg.name}</span>
+                <span class="pkg-meta">v{pkg.version} &middot; {new Date(pkg.published_at).toLocaleDateString()}</span>
+              </a>
+            ))}
+          </div>
+      }
+      {recent.length > 0 && <a class="view-all" href="/packages">view all packages →</a>}
+    </div>
+
+    <div class="home-section">
+      <p class="section-heading">trending this week</p>
+      {trending.length === 0
+        ? <p class="empty">no download data yet.</p>
+        : <div class="trending-list">
+            {trending.map((pkg, i) => (
+              <a class="trending-row" href={`/packages/${pkg.package_name}`}>
+                <span class="trending-rank">#{i + 1}</span>
+                <span class="trending-name">{pkg.package_name}</span>
+                <span class="trending-dl">{pkg.download_count} dl</span>
+              </a>
+            ))}
+          </div>
+      }
+    </div>
+  </div>
 </Base>

@@ -8,6 +8,7 @@ dist/
 
 # dependencies
 node_modules/
+settings.json
 
 # logs
 npm-debug.log*

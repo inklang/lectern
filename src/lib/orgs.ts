@@ -302,3 +302,51 @@ export async function useInvite(token: string, joiningUserId: string): Promise<{
 
   return { orgId: invite.org_id }
 }
+
+export async function deleteOrg(orgId: string): Promise<void> {
+  const { error } = await supabase
+    .from('orgs')
+    .delete()
+    .eq('id', orgId)
+  if (error) throw error
+}
+
+export async function getOrgInvites(orgId: string): Promise<Array<{ id: string; token: string; created_by: string; created_at: string; expires_at: string | null; max_uses: number | null; use_count: number }>> {
+  const { data, error } = await supabase
+    .from('org_invites')
+    .select('id, token, created_by, created_at, expires_at, max_uses, use_count')
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function cancelInvite(orgId: string, token: string): Promise<void> {
+  const { error } = await supabase
+    .from('org_invites')
+    .delete()
+    .eq('org_id', orgId)
+    .eq('token', token)
+  if (error) throw error
+}
+
+export async function deleteOrgTeam(orgId: string, teamId: string): Promise<void> {
+  const { error } = await supabase
+    .from('org_teams')
+    .delete()
+    .eq('id', teamId)
+    .eq('org_id', orgId)
+  if (error) throw error
+}
+
+export async function updateOrgTeam(orgId: string, teamId: string, name: string): Promise<OrgTeam> {
+  const { data, error } = await supabase
+    .from('org_teams')
+    .update({ name })
+    .eq('id', teamId)
+    .eq('org_id', orgId)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}

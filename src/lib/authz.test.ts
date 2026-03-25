@@ -11,9 +11,11 @@ vi.mock('./supabase.js', () => ({
 }))
 
 describe('authz API surface', () => {
-  it('exports canUserPublish and getPackageOrgSlug', async () => {
+  it('exports canUserPublish, canUserRead, canUserDeprecate, and getPackageOrgSlug', async () => {
     const authz = await import('./authz.js')
     expect(typeof authz.canUserPublish).toBe('function')
+    expect(typeof authz.canUserRead).toBe('function')
+    expect(typeof authz.canUserDeprecate).toBe('function')
     expect(typeof authz.getPackageOrgSlug).toBe('function')
   })
 })

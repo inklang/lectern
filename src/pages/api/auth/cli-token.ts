@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro'
 import { supabase } from '../../../lib/supabase.js'
 import { issueToken, extractBearer } from '../../../lib/tokens.js'
+import { logAuditEvent } from '../../../lib/audit.js'
 
 export const POST: APIRoute = async ({ request }) => {
   const accessToken = extractBearer(request.headers.get('Authorization'))
@@ -11,6 +12,16 @@ export const POST: APIRoute = async ({ request }) => {
 
   const token = await issueToken(user.id)
   const username = (user.user_metadata?.['user_name'] as string) ?? 'unknown'
+
+  // Log audit event
+  logAuditEvent({
+    userId: user.id,
+    action: 'token.create',
+    resourceType: 'token',
+    resourceId: user.id,
+    ipAddress: request.headers.get('x-forwarded-for') ?? null,
+    userAgent: request.headers.get('user-agent') ?? null,
+  }).catch(() => {})
 
   return new Response(JSON.stringify({ token, username }), {
     status: 200,

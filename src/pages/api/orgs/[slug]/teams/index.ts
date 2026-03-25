@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro'
 import { extractBearer, resolveToken } from '../../../../../lib/tokens.js'
 import { getOrgBySlug, getOrgTeams, createOrgTeam, isOrgAdmin } from '../../../../../lib/orgs.js'
+import { logAuditEvent } from '../../../../../lib/audit.js'
 
 export const GET: APIRoute = async ({ params }) => {
   const { slug } = params
@@ -32,6 +33,19 @@ export const POST: APIRoute = async ({ params, request }) => {
 
   try {
     const team = await createOrgTeam(org.id, name)
+
+    // Log audit event
+    logAuditEvent({
+      orgId: org.id,
+      userId,
+      action: 'team.create',
+      resourceType: 'team',
+      resourceId: team.id,
+      details: { name },
+      ipAddress: request.headers.get('x-forwarded-for') ?? null,
+      userAgent: request.headers.get('user-agent') ?? null,
+    }).catch(() => {})
+
     return new Response(JSON.stringify(team), { status: 201, headers: { 'Content-Type': 'application/json' } })
   } catch (e: any) {
     if (e.code === '23505') return new Response(JSON.stringify({ error: 'team already exists' }), { status: 409, headers: { 'Content-Type': 'application/json' } })

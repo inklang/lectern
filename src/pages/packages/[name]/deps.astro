@@ -1,0 +1,377 @@
+---
+import Base from '../../../layouts/Base.astro'
+import { getPackageVersions, getPackageDependents, getVersionDependencies } from '../../../lib/db.js'
+
+const { name } = Astro.params
+const versions = await getPackageVersions(name!)
+
+if (versions.length === 0) return Astro.redirect('/packages')
+
+const latest = versions[0]
+const dependents = await getPackageDependents(name!)
+const dependencies = await getVersionDependencies(name!, latest.version)
+
+// Build nodes and links for the graph
+interface Node {
+  id: string
+  type: 'self' | 'dependency' | 'dependent'
+}
+
+interface Link {
+  source: string
+  target: string
+  type: 'depends-on' | 'depended-by'
+}
+
+const nodes: Node[] = [{ id: name!, type: 'self' }]
+const links: Link[] = []
+
+// Add dependency nodes (packages this package depends on)
+for (const dep of Object.keys(dependencies)) {
+  nodes.push({ id: dep, type: 'dependency' })
+  links.push({ source: name!, target: dep, type: 'depends-on' })
+}
+
+// Add dependent nodes (packages that depend on this package)
+const depPkgNames = [...new Set(dependents.map(d => d.package_name))]
+for (const depName of depPkgNames) {
+  if (depName !== name) {
+    nodes.push({ id: depName, type: 'dependent' })
+    links.push({ source: depName, target: name!, type: 'depended-by' })
+  }
+}
+
+const graphData = { nodes, links }
+---
+
+<Base title={`Dependencies — ${name}`} description={`Dependency graph for ${name}`}>
+  <style>
+    .back {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      display: inline-block;
+      margin-bottom: 2rem;
+    }
+    .back:hover { color: var(--text); opacity: 1; }
+
+    .page-header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.75rem;
+      margin-bottom: 2rem;
+    }
+
+    .page-title {
+      font-family: var(--font-mono);
+      font-size: 1.5rem;
+      font-weight: 600;
+      letter-spacing: -0.04em;
+    }
+
+    .pkg-name { color: var(--accent); }
+
+    .controls {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .view-btn {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.4rem 0.8rem;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .view-btn:hover { color: var(--text); border-color: var(--text); }
+
+    .view-btn.active {
+      background: var(--accent);
+      color: var(--bg);
+      border-color: var(--accent);
+    }
+
+    .graph-container {
+      width: 100%;
+      height: 400px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--surface);
+    }
+
+    .graph-container svg { width: 100%; height: 100%; }
+
+    .node-circle { cursor: pointer; transition: r 0.2s; }
+    .node-circle:hover { r: 10; }
+
+    .node-self { fill: var(--accent); }
+    .node-dependency { fill: var(--border); stroke: var(--muted); }
+    .node-dependent { fill: var(--warning, #f59e0b); stroke: var(--muted); }
+
+    .link-depends-on { stroke: var(--muted); stroke-opacity: 0.4; }
+    .link-depended-by { stroke: var(--warning, #f59e0b); stroke-opacity: 0.4; }
+
+    .node-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      fill: var(--text);
+      text-anchor: middle;
+      pointer-events: none;
+    }
+
+    .legend {
+      display: flex;
+      gap: 1.5rem;
+      margin-top: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .legend-item { display: flex; align-items: center; gap: 0.4rem; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+    .stats-row {
+      display: flex;
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+    }
+
+    .stat { display: flex; flex-direction: column; gap: 0.25rem; }
+    .stat-value { font-size: 1.25rem; font-weight: 600; color: var(--text); }
+    .stat-label { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .no-data {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 3rem;
+    }
+  </style>
+
+  <a class="back" href={`/packages/${name}`}>← {name}</a>
+
+  <div class="page-header">
+    <div class="page-title">Dependency graph for <span class="pkg-name">{name}</span></div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat">
+      <span class="stat-value">{Object.keys(dependencies).length}</span>
+      <span class="stat-label">depends on</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value">{depPkgNames.length}</span>
+      <span class="stat-label">depended by</span>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="view-btn active" data-view="both">both</button>
+    <button class="view-btn" data-view="depends-on">depends on</button>
+    <button class="view-btn" data-view="depended-by">depended by</button>
+  </div>
+
+  {graphData.nodes.length > 1 ? (
+    <div class="graph-container" id="graph"></div>
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-dot" style="background: var(--accent)"></div>
+        <span>{name}</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background: var(--border); stroke: var(--muted); border: 1px solid var(--muted)"></div>
+        <span>depends on</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background: #f59e0b"></div>
+        <span>depended by</span>
+      </div>
+    </div>
+  ) : (
+    <div class="no-data">No dependency data available</div>
+  )}
+
+  <script define:vars={{ graphData }}>
+    // Simple force-directed graph using SVG
+    const container = document.getElementById('graph')
+    if (container && graphData.nodes.length > 1) {
+      const width = container.clientWidth
+      const height = container.clientHeight
+
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      svg.setAttribute('viewBox', `0 0 ${width} ${height}`)
+      container.appendChild(svg)
+
+      // Create nodes with random positions
+      const nodeMap = new Map()
+      graphData.nodes.forEach((node, i) => {
+        const angle = (2 * Math.PI * i) / graphData.nodes.length
+        const radius = Math.min(width, height) * 0.3
+        nodeMap.set(node.id, {
+          ...node,
+          x: width / 2 + radius * Math.cos(angle),
+          y: height / 2 + radius * Math.sin(angle),
+          vx: 0,
+          vy: 0
+        })
+      })
+
+      // Create links
+      const linkMap = new Map()
+      graphData.links.forEach(link => {
+        const key = `${link.source}-${link.target}`
+        if (!linkMap.has(key)) linkMap.set(key, [])
+        linkMap.get(key).push(link)
+      })
+
+      function createLinkEl(link) {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+        line.setAttribute('stroke', link.type === 'depends-on' ? '#6b7280' : '#f59e0b')
+        line.setAttribute('stroke-opacity', '0.4')
+        line.setAttribute('stroke-width', '1.5')
+        return line
+      }
+
+      function createNodeEl(node) {
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+        circle.setAttribute('r', node.type === 'self' ? '8' : '6')
+        circle.setAttribute('fill', node.type === 'self' ? '#6366f1' : node.type === 'dependency' ? '#374151' : '#f59e0b')
+        circle.setAttribute('stroke', '#9ca3af')
+        circle.setAttribute('stroke-width', '1')
+        circle.style.cursor = 'pointer'
+        circle.style.transition = 'r 0.2s'
+
+        circle.addEventListener('mouseenter', () => circle.setAttribute('r', '10'))
+        circle.addEventListener('mouseleave', () => circle.setAttribute('r', node.type === 'self' ? '8' : '6'))
+        circle.addEventListener('click', () => {
+          if (node.type !== 'self') window.location.href = `/packages/${node.id}`
+        })
+
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+        text.setAttribute('y', node.type === 'self' ? '-14' : '-10')
+        text.setAttribute('text-anchor', 'middle')
+        text.setAttribute('fill', '#e5e7eb')
+        text.setAttribute('font-size', '10')
+        text.setAttribute('font-family', 'monospace')
+        text.textContent = node.id.length > 15 ? node.id.slice(0, 12) + '...' : node.id
+        text.style.pointerEvents = 'none'
+
+        g.appendChild(circle)
+        g.appendChild(text)
+        return g
+      }
+
+      const linkEls = graphData.links.map(createLinkEl)
+      const nodeEls = new Map()
+      graphData.nodes.forEach(node => {
+        nodeEls.set(node.id, createNodeEl(node))
+      })
+
+      linkEls.forEach(el => svg.appendChild(el))
+      nodeEls.forEach(el => svg.appendChild(el))
+
+      // Simple force simulation
+      const alpha = 1
+      const alphaDecay = 0.02
+      const alphaMin = 0.01
+
+      function simulate() {
+        // Apply forces
+        graphData.nodes.forEach((node, i) => {
+          const n = nodeMap.get(node.id)
+
+          // Center gravity
+          n.vx += (width / 2 - n.x) * 0.01
+          n.vy += (height / 2 - n.y) * 0.01
+
+          // Node repulsion
+          graphData.nodes.forEach((other, j) => {
+            if (i === j) return
+            const o = nodeMap.get(other.id)
+            const dx = n.x - o.x
+            const dy = n.y - o.y
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1
+            const force = 50 / (dist * dist)
+            n.vx += (dx / dist) * force
+            n.vy += (dy / dist) * force
+          })
+        })
+
+        // Link attraction
+        graphData.links.forEach(link => {
+          const s = nodeMap.get(link.source)
+          const t = nodeMap.get(link.target)
+          const dx = t.x - s.x
+          const dy = t.y - s.y
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1
+          const force = (dist - 80) * 0.05
+          s.vx += (dx / dist) * force
+          s.vy += (dy / dist) * force
+          t.vx -= (dx / dist) * force
+          t.vy -= (dy / dist) * force
+        })
+
+        // Apply velocity and damping
+        graphData.nodes.forEach(node => {
+          const n = nodeMap.get(node.id)
+          n.vx *= 0.8
+          n.vy *= 0.8
+          n.x += n.vx
+          n.y += n.vy
+
+          // Bounds
+          n.x = Math.max(20, Math.min(width - 20, n.x))
+          n.y = Math.max(20, Math.min(height - 20, n.y))
+        })
+
+        // Update DOM
+        graphData.links.forEach((link, i) => {
+          const s = nodeMap.get(link.source)
+          const t = nodeMap.get(link.target)
+          const el = linkEls[i]
+          el.setAttribute('x1', s.x)
+          el.setAttribute('y1', s.y)
+          el.setAttribute('x2', t.x)
+          el.setAttribute('y2', t.y)
+        })
+
+        nodeEls.forEach((el, id) => {
+          const n = nodeMap.get(id)
+          el.setAttribute('transform', `translate(${n.x}, ${n.y})`)
+        })
+      }
+
+      // Run simulation
+      for (let i = 0; i < 100; i++) simulate()
+
+      // View filtering
+      let currentView = 'both'
+      const viewBtns = document.querySelectorAll('.view-btn')
+
+      viewBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          viewBtns.forEach(b => b.classList.remove('active'))
+          btn.classList.add('active')
+          currentView = btn.dataset.view
+
+          graphData.links.forEach((link, i) => {
+            const show = currentView === 'both' || link.type === currentView
+            linkEls[i].style.display = show ? '' : 'none'
+          })
+        })
+      })
+    }
+  </script>
+</Base>

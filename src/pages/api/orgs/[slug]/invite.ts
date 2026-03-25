@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro'
 import { extractBearer, resolveToken } from '../../../../lib/tokens.js'
 import { getOrgBySlug, isOrgAdmin, createInvite } from '../../../../lib/orgs.js'
+import { logAuditEvent } from '../../../../lib/audit.js'
 
 export const POST: APIRoute = async ({ params, request }) => {
   const { slug } = params
@@ -19,5 +20,18 @@ export const POST: APIRoute = async ({ params, request }) => {
   const { expiresInHours, maxUses } = body
 
   const invite = await createInvite(org.id, userId, expiresInHours, maxUses)
+
+  // Log audit event
+  logAuditEvent({
+    orgId: org.id,
+    userId,
+    action: 'invite.create',
+    resourceType: 'invite',
+    resourceId: invite.token,
+    details: { expiresInHours, maxUses },
+    ipAddress: request.headers.get('x-forwarded-for') ?? null,
+    userAgent: request.headers.get('user-agent') ?? null,
+  }).catch(() => {})
+
   return new Response(JSON.stringify(invite), { status: 201, headers: { 'Content-Type': 'application/json' } })
 }

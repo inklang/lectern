@@ -1,26 +1,55 @@
 ---
 import Base from '../../layouts/Base.astro'
-import { listAllPackages } from '../../lib/db.js'
+import { listAllPackages, listTags, getPackagesByTag } from '../../lib/db.js'
 
 const PAGE_SIZE = 20
 
-const allPackagesMap = await listAllPackages()
-
-const allPackages = Object.entries(allPackagesMap)
-  .map(([name, versions]) => {
-    const sorted = Object.values(versions).sort((a, b) =>
-      new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
-    )
-    return { name, latest: sorted[0], versionCount: sorted.length }
-  })
-  .sort((a, b) =>
-    new Date(b.latest.published_at).getTime() - new Date(a.latest.published_at).getTime()
-  )
-
+const selectedTag = Astro.url.searchParams.get('tag') ?? null
 const page = Math.max(1, parseInt(Astro.url.searchParams.get('page') ?? '1'))
-const totalPages = Math.max(1, Math.ceil(allPackages.length / PAGE_SIZE))
+
+let allPackages: Array<{ name: string; latest: any; versionCount: number }> = []
+let totalCount = 0
+
+if (selectedTag) {
+  // Tag-filtered view: fetch packages for this tag
+  const pkgs = await getPackagesByTag(selectedTag, 100, 0).catch(() => [])
+  // Build the same shape as allPackages
+  const { listAllPackages: lap } = await import('../../lib/db.js')
+  const allMap = await lap()
+  allPackages = pkgs
+    .filter(p => allMap[p.package_name])
+    .map(p => {
+      const versions = allMap[p.package_name]
+      const sorted = Object.values(versions).sort((a: any, b: any) =>
+        new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
+      )
+      return { name: p.package_name, latest: sorted[0], versionCount: sorted.length }
+    })
+    .sort((a, b) =>
+      new Date(b.latest.published_at).getTime() - new Date(a.latest.published_at).getTime()
+    )
+  totalCount = allPackages.length
+} else {
+  const allPackagesMap = await listAllPackages()
+  const entries = Object.entries(allPackagesMap)
+  allPackages = entries
+    .map(([name, versions]) => {
+      const sorted = Object.values(versions).sort((a: any, b: any) =>
+        new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
+      )
+      return { name, latest: sorted[0], versionCount: sorted.length }
+    })
+    .sort((a, b) =>
+      new Date(b.latest.published_at).getTime() - new Date(a.latest.published_at).getTime()
+    )
+  totalCount = entries.length
+}
+
+const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
 const clampedPage = Math.min(page, totalPages)
 const packages = allPackages.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE)
+
+const allTags = await listTags().catch(() => [])
 ---
 <Base title="Packages">
   <style>
@@ -42,6 +71,17 @@ const packages = allPackages.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * 
       font-family: var(--font-mono);
       font-size: 0.8rem;
       color: var(--muted);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 200px;
+      gap: 2.5rem;
+      align-items: start;
+    }
+
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; }
     }
 
     .pkg-list { display: flex; flex-direction: column; }
@@ -155,12 +195,87 @@ const packages = allPackages.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * 
       outline: none;
     }
     .search-bar input:focus { border-color: var(--accent); }
+
+    .sidebar-heading {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .sidebar-tags {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .tag-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.3rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      text-decoration: none;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+
+    .tag-link:hover {
+      background: var(--surface);
+      color: var(--text);
+      opacity: 1;
+      border-color: var(--border);
+    }
+
+    .tag-link.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--surface);
+    }
+
+    .tag-count {
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    .tag-filter-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      padding: 0.3rem 0.65rem;
+      border-radius: 6px;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+    }
+
+    .tag-filter-remove {
+      text-decoration: none;
+      color: var(--muted);
+      margin-left: 0.25rem;
+    }
+    .tag-filter-remove:hover { color: var(--text); }
   </style>
 
   <div class="page-header">
     <h1>packages</h1>
-    <span class="count">{allPackages.length} total</span>
+    <span class="count">{totalCount} total</span>
   </div>
+
+  {selectedTag && (
+    <div class="tag-filter-badge">
+      <span>filtered by: {selectedTag}</span>
+      <a class="tag-filter-remove" href="/packages">×</a>
+    </div>
+  )}
 
   <div class="search-bar">
     <input
@@ -171,48 +286,65 @@ const packages = allPackages.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * 
     />
   </div>
 
-  <div id="pkg-list" class="pkg-list">
-    {packages.length === 0
-      ? <p class="empty">no packages published yet.</p>
-      : <>
-          {packages.map(pkg => (
-            <a class="pkg-card" href={`/packages/${pkg.name}`}>
-              <div class="pkg-left">
-                <span class="pkg-name">{pkg.name}</span>
-                <span class="pkg-versions">{pkg.versionCount} version{pkg.versionCount !== 1 ? 's' : ''}</span>
-                {pkg.latest.description && <span class="pkg-description">{pkg.latest.description}</span>}
-              </div>
-              <div class="pkg-right">
-                <div class="pkg-ver">v{pkg.latest.version}</div>
-                <div class="pkg-date">{new Date(pkg.latest.published_at).toLocaleDateString()}</div>
-              </div>
-            </a>
-          ))}
-
-          {totalPages > 1 && (
-            <nav class="pagination" aria-label="Pagination">
-              <a
-                class={`page-btn${clampedPage === 1 ? ' disabled' : ''}`}
-                href={`/packages?page=${clampedPage - 1}`}
-                aria-label="Previous page"
-              >←</a>
-
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                <a
-                  class={`page-btn${p === clampedPage ? ' active' : ''}`}
-                  href={`/packages?page=${p}`}
-                >{p}</a>
+  <div class="layout">
+    <div>
+      <div id="pkg-list" class="pkg-list">
+        {packages.length === 0
+          ? <p class="empty">{selectedTag ? 'no packages with this tag.' : 'no packages published yet.'}</p>
+          : <>
+              {packages.map(pkg => (
+                <a class="pkg-card" href={`/packages/${pkg.name}`}>
+                  <div class="pkg-left">
+                    <span class="pkg-name">{pkg.name}</span>
+                    <span class="pkg-versions">{pkg.versionCount} version{pkg.versionCount !== 1 ? 's' : ''}</span>
+                    {pkg.latest.description && <span class="pkg-description">{pkg.latest.description}</span>}
+                  </div>
+                  <div class="pkg-right">
+                    <div class="pkg-ver">v{pkg.latest.version}</div>
+                    <div class="pkg-date">{new Date(pkg.latest.published_at).toLocaleDateString()}</div>
+                  </div>
+                </a>
               ))}
 
-              <a
-                class={`page-btn${clampedPage === totalPages ? ' disabled' : ''}`}
-                href={`/packages?page=${clampedPage + 1}`}
-                aria-label="Next page"
-              >→</a>
-            </nav>
-          )}
-        </>
-    }
+              {totalPages > 1 && (
+                <nav class="pagination" aria-label="Pagination">
+                  <a
+                    class={`page-btn${clampedPage === 1 ? ' disabled' : ''}`}
+                    href={`/packages?page=${clampedPage - 1}${selectedTag ? '&tag=' + encodeURIComponent(selectedTag) : ''}`}
+                    aria-label="Previous page"
+                  >←</a>
+
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                    <a
+                      class={`page-btn${p === clampedPage ? ' active' : ''}`}
+                      href={`/packages?page=${p}${selectedTag ? '&tag=' + encodeURIComponent(selectedTag) : ''}`}
+                    >{p}</a>
+                  ))}
+
+                  <a
+                    class={`page-btn${clampedPage === totalPages ? ' disabled' : ''}`}
+                    href={`/packages?page=${clampedPage + 1}${selectedTag ? '&tag=' + encodeURIComponent(selectedTag) : ''}`}
+                    aria-label="Next page"
+                  >→</a>
+                </nav>
+              )}
+            </>
+        }
+      </div>
+    </div>
+
+    <aside>
+      <p class="sidebar-heading">filter by tag</p>
+      <div class="sidebar-tags">
+        <a class={`tag-link${!selectedTag ? ' active' : ''}`} href="/packages">all packages</a>
+        {allTags.map(t => (
+          <a class={`tag-link${selectedTag === t.name ? ' active' : ''}`} href={`/packages?tag=${encodeURIComponent(t.name)}`}>
+            <span>{t.name}</span>
+            <span class="tag-count">{t.package_count}</span>
+          </a>
+        ))}
+      </div>
+    </aside>
   </div>
 
   <script>

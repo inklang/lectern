@@ -5,9 +5,12 @@ export interface PackageVersion {
   version: string
   description: string | null
   readme: string | null
+  author: string | null
+  license: string | null
   dependencies: Record<string, string>
   tarball_url: string
   published_at: string
+  download_count?: number
 }
 
 export interface PackageRow {
@@ -78,4 +81,261 @@ export async function versionExists(name: string, version: string): Promise<bool
     .eq('version', version)
     .single()
   return !!data
+}
+
+export interface PackageDependentsResult {
+  package_name: string
+  version: string
+  dep_version: string | null
+}
+
+// Returns packages/versions that depend on the given package name
+// The JSONB column stores deps as {"pkgName": "versionRange", ...}
+// We filter client-side since the @> operator checks full value containment
+export async function getPackageDependents(pkgName: string): Promise<PackageDependentsResult[]> {
+  const { data, error } = await supabase
+    .from('package_versions')
+    .select('package_name, version, dependencies')
+  if (error) throw error
+
+  // Filter to only those whose dependencies include pkgName
+  return (data ?? [])
+    .filter(row => (row.dependencies as Record<string, string>)?.hasOwnProperty(pkgName))
+    .map(row => {
+      const depVersion = (row.dependencies as Record<string, string>)?.[pkgName] ?? null
+      return {
+        package_name: row.package_name,
+        version: row.version,
+        dep_version: depVersion,
+      }
+    })
+}
+
+// Returns the dependency tree for a specific version
+export async function getVersionDependencies(name: string, version: string): Promise<Record<string, string>> {
+  const { data, error } = await supabase
+    .from('package_versions')
+    .select('dependencies')
+    .eq('package_name', name)
+    .eq('version', version)
+    .single()
+  if (error) throw error
+  return (data?.dependencies as Record<string, string>) ?? {}
+}
+
+// Logs a download event and increments the version's download_count.
+// authHeader is optional; if provided and resolves to a user, logs the user_id.
+export async function logDownload(
+  name: string,
+  version: string,
+  authHeader: string | null
+): Promise<void> {
+  const { extractBearer, resolveToken } = await import('./tokens.js')
+  let userId: string | null = null
+  if (authHeader) {
+    const token = extractBearer(authHeader)
+    if (token) userId = await resolveToken(token)
+  }
+
+  // Insert log entry
+  await supabase.from('download_logs').insert({
+    package_name: name,
+    version,
+    user_id: userId ?? undefined,
+  })
+
+  // Atomically increment the counter on package_versions
+  await supabase.rpc('increment_download_count', { pkg_name: name, ver: version })
+}
+
+// Returns download stats for a package: total (from version rows), last7d, last30d (from logs)
+export async function getPackageStats(name: string): Promise<{ total: number; last7d: number; last30d: number }> {
+  const { data, error } = await supabase.rpc('get_package_stats', { pkg_name: name })
+  if (error) throw error
+  return data as { total: number; last7d: number; last30d: number }
+}
+
+export interface TrendingPackage {
+  package_name: string
+  download_count: number
+  latest_version: string
+  description: string | null
+}
+
+// Returns top N trending packages over the given window in days.
+export async function getTrendingPackages(windowDays = 7, limitCount = 5): Promise<TrendingPackage[]> {
+  const { data, error } = await supabase.rpc('get_trending_packages', {
+    window_days: windowDays,
+    limit_count: limitCount,
+  })
+  if (error) throw error
+  return (data as TrendingPackage[]) ?? []
+}
+
+// ─── Tags ────────────────────────────────────────────────────────────────────
+
+export interface TagWithCount {
+  name: string
+  package_count: number
+}
+
+export interface PackageTagResult {
+  package_name: string
+  version: string
+  description: string | null
+  published_at: string
+}
+
+// List all tags with package counts.
+export async function listTags(): Promise<TagWithCount[]> {
+  const { data, error } = await supabase.rpc('list_tags')
+  if (error) throw error
+  return (data as TagWithCount[]) ?? []
+}
+
+// Get tags for a specific package.
+export async function getPackageTags(pkgName: string): Promise<string[]> {
+  const { data, error } = await supabase.rpc('get_package_tags', { pkg_name: pkgName })
+  if (error) throw error
+  return (data as { tag: string }[]).map(r => r.tag)
+}
+
+// Add a tag to a package. Creates the tag if it doesn't exist.
+export async function addPackageTag(pkgName: string, tag: string): Promise<void> {
+  // Upsert the tag (idempotent)
+  await supabase.from('tags').upsert({ name: tag }).catch(() => {})
+  const { error } = await supabase.from('package_tags').insert({ package_name: pkgName, tag })
+  if (error) throw error
+}
+
+// Remove a tag from a package.
+export async function removePackageTag(pkgName: string, tag: string): Promise<void> {
+  const { error } = await supabase
+    .from('package_tags')
+    .delete()
+    .eq('package_name', pkgName)
+    .eq('tag', tag)
+  if (error) throw error
+}
+
+// Get packages filtered by a specific tag.
+export async function getPackagesByTag(
+  tag: string,
+  limit = 20,
+  offset = 0
+): Promise<PackageTagResult[]> {
+  const { data, error } = await supabase.rpc('get_packages_by_tag', {
+    p_tag: tag,
+    p_limit: limit,
+    p_offset: offset,
+  })
+  if (error) throw error
+  return (data as PackageTagResult[]) ?? []
+}
+
+// ─── Deprecation ─────────────────────────────────────────────────────────────
+
+export interface PackageDeprecation {
+  deprecated: boolean
+  deprecation_message: string | null
+  deprecated_at: string | null
+  deprecated_by: string | null
+}
+
+// Returns deprecation info for a package
+export async function getPackageDeprecation(name: string): Promise<PackageDeprecation | null> {
+  const { data, error } = await supabase
+    .from('packages')
+    .select('deprecated, deprecation_message, deprecated_at, deprecated_by')
+    .eq('name', name)
+    .single()
+  if (error) throw error
+  if (!data) return null
+  return {
+    deprecated: data.deprecated ?? false,
+    deprecation_message: data.deprecation_message ?? null,
+    deprecated_at: data.deprecated_at ?? null,
+    deprecated_by: data.deprecated_by ?? null,
+  }
+}
+
+// Sets the deprecation status of a package
+export async function setPackageDeprecation(
+  name: string,
+  deprecated: boolean,
+  message: string | null,
+  userId: string
+): Promise<void> {
+  const updates: Record<string, unknown> = {
+    deprecated,
+    deprecated_by: deprecated ? userId : null,
+    deprecated_at: deprecated ? new Date().toISOString() : null,
+  }
+  if (message !== undefined) {
+    updates.deprecation_message = deprecated ? (message || null) : null
+  }
+
+  const { error } = await supabase
+    .from('packages')
+    .update(updates)
+    .eq('name', name)
+  if (error) throw error
+}
+
+// ─── Security Advisories ───────────────────────────────────────────────────────
+
+export interface PackageAdvisory {
+  id: string
+  package_name: string
+  advisory_id: string
+  cve: string | null
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  title: string
+  affected_versions: string
+  fixed_version: string | null
+  advisory_url: string
+  source: string
+  fetched_at: string
+  published_at: string | null
+}
+
+// Returns all advisories for a specific package
+export async function getPackageAdvisories(pkgName: string): Promise<PackageAdvisory[]> {
+  const { data, error } = await supabase
+    .from('package_advisories')
+    .select('*')
+    .eq('package_name', pkgName)
+    .order('severity', { ascending: false })
+  if (error) throw error
+  return (data as PackageAdvisory[]) ?? []
+}
+
+// Returns all advisories (paginated)
+export async function getAllAdvisories(
+  limitCount = 50,
+  offsetCount = 0
+): Promise<{ advisories: PackageAdvisory[]; total: number }> {
+  const { data, error, count } = await supabase
+    .from('package_advisories')
+    .select('*', { count: 'exact' })
+    .order('severity', { ascending: false })
+    .range(offsetCount, offsetCount + limitCount - 1)
+  if (error) throw error
+  return {
+    advisories: (data as PackageAdvisory[]) ?? [],
+    total: count ?? 0,
+  }
+}
+
+// Upserts an advisory for a package
+export async function upsertAdvisory(
+  advisory: Omit<PackageAdvisory, 'id' | 'fetched_at'>
+): Promise<void> {
+  const { error } = await supabase
+    .from('package_advisories')
+    .upsert(
+      { ...advisory, fetched_at: new Date().toISOString() },
+      { onConflict: 'package_name,advisory_id' }
+    )
+  if (error) throw error
 }

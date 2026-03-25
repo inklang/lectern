@@ -47,6 +47,50 @@ export async function canUserPublish(userId: string, packageName: string): Promi
 }
 
 /**
+ * Checks if a user can read a package's details/versions.
+ * - User-owned (owner_type = 'user'): allow only the owner
+ * - Org-owned (owner_type = 'org'): user must be org member AND have at least read permission
+ * - Package doesn't exist: return false
+ */
+export async function canUserRead(userId: string, packageName: string): Promise<boolean> {
+  const { data: pkg } = await supabase
+    .from('packages')
+    .select('owner_id, owner_type')
+    .eq('name', packageName)
+    .single()
+
+  if (!pkg) {
+    return false
+  }
+
+  if (pkg.owner_type === 'user') {
+    return pkg.owner_id === userId
+  }
+
+  if (pkg.owner_type === 'org') {
+    // Check org membership
+    const { data: member } = await supabase
+      .from('org_members')
+      .select('role')
+      .eq('org_id', pkg.owner_id)
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (!member) return false
+
+    // Check per-package permission via teams
+    try {
+      const perm = await getPackagePermissionForUser(pkg.owner_id, userId, packageName)
+      return perm === 'read' || perm === 'write' || perm === 'admin'
+    } catch {
+      return false // DB error — deny rather than leak error
+    }
+  }
+
+  return false
+}
+
+/**
  * Returns the org slug for an org-owned package, or null for user-owned.
  */
 export async function getPackageOrgSlug(packageName: string): Promise<string | null> {
@@ -65,4 +109,41 @@ export async function getPackageOrgSlug(packageName: string): Promise<string | n
     .single()
 
   return org?.slug ?? null
+}
+
+/**
+ * Checks if a user can deprecate/un-deprecate a package.
+ * - User-owned: allow iff userId === packages.owner_id
+ * - Org-owned: user must be org admin (owner or admin role)
+ * - Package doesn't exist: return false
+ */
+export async function canUserDeprecate(userId: string, packageName: string): Promise<boolean> {
+  const { data: pkg } = await supabase
+    .from('packages')
+    .select('owner_id, owner_type')
+    .eq('name', packageName)
+    .single()
+
+  if (!pkg) {
+    return false
+  }
+
+  if (pkg.owner_type === 'user') {
+    return pkg.owner_id === userId
+  }
+
+  if (pkg.owner_type === 'org') {
+    // For org-owned packages, only org admins can deprecate
+    const { data: member } = await supabase
+      .from('org_members')
+      .select('role')
+      .eq('org_id', pkg.owner_id)
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (!member) return false
+    return member.role === 'owner' || member.role === 'admin'
+  }
+
+  return false
 }

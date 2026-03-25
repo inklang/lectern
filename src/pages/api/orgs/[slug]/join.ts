@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro'
 import { extractBearer, resolveToken } from '../../../../lib/tokens.js'
 import { useInvite, addOrgMember, getOrgById } from '../../../../lib/orgs.js'
+import { logAuditEvent } from '../../../../lib/audit.js'
 
 export const POST: APIRoute = async ({ request }) => {
   const raw = extractBearer(request.headers.get('authorization'))
@@ -24,6 +25,19 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     const org = await getOrgById(result.orgId)
+
+    // Log audit event
+    logAuditEvent({
+      orgId: result.orgId,
+      userId,
+      action: 'invite.accept',
+      resourceType: 'member',
+      resourceId: userId,
+      details: { orgSlug: slug },
+      ipAddress: request.headers.get('x-forwarded-for') ?? null,
+      userAgent: request.headers.get('user-agent') ?? null,
+    }).catch(() => {})
+
     return new Response(JSON.stringify({ org }), { headers: { 'Content-Type': 'application/json' } })
   } catch (e: any) {
     return new Response(JSON.stringify({ error: 'failed to join org' }), { status: 500, headers: { 'Content-Type': 'application/json' } })

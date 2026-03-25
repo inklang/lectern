@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro'
 import { extractBearer, resolveToken } from '../../../../lib/tokens.js'
 import { getOrgBySlug, isOrgAdmin } from '../../../../lib/orgs.js'
+import { logAuditEvent } from '../../../../lib/audit.js'
 
 export const GET: APIRoute = async ({ params }) => {
   const { slug } = params
@@ -37,6 +38,18 @@ export const PUT: APIRoute = async ({ params, request }) => {
     .single()
 
   if (error) return new Response(JSON.stringify({ error: 'failed to update org' }), { status: 500, headers: { 'Content-Type': 'application/json' } })
+
+  // Log audit event
+  logAuditEvent({
+    orgId: org.id,
+    userId,
+    action: 'org.update',
+    resourceType: 'org',
+    resourceId: org.id,
+    details: { name, description },
+    ipAddress: request.headers.get('x-forwarded-for') ?? null,
+    userAgent: request.headers.get('user-agent') ?? null,
+  }).catch(() => {})
 
   return new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } })
 }

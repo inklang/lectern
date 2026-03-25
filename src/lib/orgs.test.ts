@@ -23,7 +23,8 @@ describe('orgs API surface', () => {
       'getOrgMembers', 'addOrgMember', 'removeOrgMember', 'updateOrgMemberRole',
       'getOrgTeams', 'createOrgTeam', 'getTeamMembers', 'addTeamMember', 'removeTeamMember',
       'getTeamsForPackage', 'setPackagePermission', 'getPackagePermissionForUser',
-      'isOrgAdmin', 'isOrgOwner', 'slugAvailable', 'createInvite', 'useInvite']
+      'isOrgAdmin', 'isOrgOwner', 'slugAvailable', 'createInvite', 'useInvite',
+      'deleteOrg', 'getOrgInvites', 'cancelInvite', 'deleteOrgTeam', 'updateOrgTeam']
     for (const fn of expected) {
       expect(typeof orgs[fn]).toBe('function')
     }

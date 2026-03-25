@@ -1,0 +1,561 @@
+---
+import Base from '../../../../../../layouts/Base.astro'
+import { getOrgBySlug, isOrgAdmin, getOrgTeams, getTeamMembers, getOrgMembers } from '../../../../../../lib/orgs.js'
+
+const { slug, teamId } = Astro.params
+if (!slug || !teamId) return Astro.redirect('/packages')
+
+const org = await getOrgBySlug(slug)
+if (!org) return Astro.redirect('/packages')
+
+const { supabaseAnon } = await import('../../../../../../lib/supabase.js')
+const { data: sessionData } = await supabaseAnon.auth.getSession()
+if (!sessionData?.session) return Astro.redirect('/login')
+
+const currentUserId = sessionData.session.user.id
+const isAdmin = await isOrgAdmin(org.id, currentUserId)
+if (!isAdmin) return Astro.redirect(`/orgs/${slug}`)
+
+// Get teams and find the requested team
+const teams = await getOrgTeams(org.id)
+const team = teams.find(t => t.id === teamId)
+if (!team) return Astro.redirect(`/orgs/${slug}/settings`)
+
+// Get team members
+const teamMembers = await getTeamMembers(team.id)
+
+// Get org members to check who's on the team
+const orgMembers = await getOrgMembers(org.id)
+
+// Get user info for team members
+const memberUserIds = teamMembers.map(m => m.user_id)
+let userMap: Record<string, { user_name?: string; email?: string }> = {}
+if (memberUserIds.length > 0) {
+  const { data: users } = await supabaseAnon
+    .from('users')
+    .select('id, user_name, email')
+    .in('id', memberUserIds)
+  if (users) {
+    for (const u of users) {
+      userMap[u.id] = { user_name: u.user_name, email: u.email }
+    }
+  }
+}
+
+// Get all org members who are not on this team (for adding members)
+const orgMemberUserIds = orgMembers.map(m => m.user_id)
+const teamMemberUserIds = teamMembers.map(m => m.user_id)
+const availableMembers = orgMembers.filter(m => !teamMemberUserIds.includes(m.user_id))
+
+const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
+const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
+---
+<Base title={`${team.name} - ${org.name} Settings`}>
+  <style>
+    .settings-wrap {
+      max-width: 720px;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      margin-bottom: 1.5rem;
+      transition: color 0.15s;
+    }
+
+    .back-link:hover {
+      color: var(--text);
+    }
+
+    .page-header {
+      margin-bottom: 2rem;
+    }
+
+    .page-header h1 {
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .page-header .team-slug {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.25rem;
+    }
+
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .section-title {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 1.25rem;
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .form-label {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.775rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .form-input, .form-select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .form-input:focus, .form-select:focus {
+      border-color: var(--accent);
+    }
+
+    .form-select {
+      cursor: pointer;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1.1rem;
+      border-radius: 7px;
+      font-size: 0.875rem;
+      font-family: var(--font-sans);
+      cursor: pointer;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 500;
+      transition: opacity 0.15s;
+    }
+
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-outline {
+      background: transparent;
+      color: #f87171;
+      border-color: #f87171;
+    }
+
+    .btn-outline:hover {
+      opacity: 0.8;
+    }
+
+    .btn-sm {
+      padding: 0.3rem 0.75rem;
+      font-size: 0.8rem;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .error-message {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      color: #f87171;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+
+    .success-message {
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      color: #4ade80;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+
+    .member-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .member-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+
+    .member-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .member-name {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .member-email {
+      font-size: 0.775rem;
+      color: var(--muted);
+    }
+
+    .empty {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      padding: 1rem 0;
+    }
+
+    .form-inline {
+      display: flex;
+      gap: 0.5rem;
+      align-items: flex-end;
+    }
+
+    .form-inline .form-group {
+      flex: 1;
+      margin-bottom: 0;
+    }
+  </style>
+
+  <div class="settings-wrap" id="settings-container" data-url={supabaseUrl} data-key={supabaseKey}>
+    <a class="back-link" href={`/orgs/${org.slug}/settings`}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      <span id="org-team-name">{org.name} / {team.name}</span>
+    </a>
+
+    <div class="page-header">
+      <h1>Team Settings</h1>
+      <div class="team-slug">{team.name}</div>
+    </div>
+
+    <!-- Team Info Section -->
+    <div class="section" id="team-section">
+      <div class="section-title">Team Name</div>
+      <div id="team-error" style="display:none" class="error-message"></div>
+      <div id="team-success" style="display:none" class="success-message"></div>
+      <div class="form-inline">
+        <div class="form-group">
+          <input
+            id="team-name-input"
+            class="form-input"
+            type="text"
+            value={team.name}
+            maxlength="64"
+          />
+        </div>
+        <button id="save-team-btn" class="btn">Save</button>
+      </div>
+    </div>
+
+    <!-- Team Members Section -->
+    <div class="section" id="members-section">
+      <div class="section-title">Members</div>
+      <div id="members-error" style="display:none" class="error-message"></div>
+      <div id="members-success" style="display:none" class="success-message"></div>
+      <div class="member-list" id="members-list">
+        {teamMembers.map(member => {
+          const userInfo = userMap[member.user_id]
+          const isCurrentUser = member.user_id === currentUserId
+          return (
+            <div class="member-item" data-user-id={member.user_id}>
+              <div class="member-info">
+                <span class="member-name">
+                  {userInfo?.user_name ?? member.user_id.slice(0, 8)}
+                  {isCurrentUser && <span style="color: var(--muted); font-size: 0.75rem;"> (you)</span>}
+                </span>
+                {userInfo?.email && <span class="member-email">{userInfo.email}</span>}
+              </div>
+              {!isCurrentUser && (
+                <button class="btn btn-outline btn-sm remove-member-btn" data-user-id={member.user_id}>Remove</button>
+              )}
+            </div>
+          )
+        })}
+        {teamMembers.length === 0 && <p class="empty">No members in this team yet.</p>}
+      </div>
+
+      <!-- Add Member Form -->
+      {availableMembers.length > 0 && (
+        <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+          <div class="form-inline">
+            <div class="form-group">
+              <select id="add-member-select" class="form-select">
+                <option value="">Select a member to add...</option>
+                {availableMembers.map(member => {
+                  const userInfo = userMap[member.user_id]
+                  return (
+                    <option value={member.user_id}>
+                      {userInfo?.user_name ?? member.user_id.slice(0, 8)} {userInfo?.email ? `(${userInfo.email})` : ''}
+                    </option>
+                  )
+                })}
+              </select>
+            </div>
+            <button id="add-member-btn" class="btn">Add</button>
+          </div>
+        </div>
+      )}
+    </div>
+
+    <!-- Danger Zone Section -->
+    <div class="section" id="danger-section" style="border-color: rgba(239, 68, 68, 0.3);">
+      <div class="section-title" style="color: #f87171;">Danger Zone</div>
+      <div id="delete-error" style="display:none" class="error-message"></div>
+      <div id="delete-success" style="display:none" class="success-message"></div>
+      <p style="font-size: 0.875rem; color: var(--muted); margin-bottom: 1rem;">
+        Permanently delete this team. This will remove all team members and package permissions.
+      </p>
+      <button id="delete-team-btn" class="btn btn-outline">Delete Team</button>
+    </div>
+  </div>
+
+  <script>
+    import { createClient } from '@supabase/supabase-js'
+
+    const container = document.getElementById('settings-container')!
+    const supabaseUrl = container.dataset.url!
+    const supabaseKey = container.dataset.key!
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
+    // Get slug and teamId from URL
+    const pathParts = window.location.pathname.replace('/orgs/', '').split('/')
+    const slug = pathParts[0]
+    const teamId = pathParts[3]
+
+    async function getSession() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        window.location.href = '/login'
+        return null
+      }
+      return session
+    }
+
+    // Team name section
+    const saveTeamBtn = document.getElementById('save-team-btn')!
+    const teamError = document.getElementById('team-error')!
+    const teamSuccess = document.getElementById('team-success')!
+    const teamNameInput = document.getElementById('team-name-input') as HTMLInputElement
+
+    saveTeamBtn.addEventListener('click', async () => {
+      const session = await getSession()
+      if (!session) return
+
+      saveTeamBtn.disabled = true
+      saveTeamBtn.textContent = 'Saving…'
+      teamError.style.display = 'none'
+      teamSuccess.style.display = 'none'
+
+      const name = teamNameInput.value.trim()
+      if (!name) {
+        teamError.textContent = 'Team name is required.'
+        teamError.style.display = 'block'
+        saveTeamBtn.disabled = false
+        saveTeamBtn.textContent = 'Save'
+        return
+      }
+
+      try {
+        const res = await fetch(`/api/orgs/${encodeURIComponent(slug)}/teams/${teamId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ name }),
+        })
+
+        if (res.ok) {
+          teamSuccess.textContent = 'Team name updated successfully.'
+          teamSuccess.style.display = 'block'
+          const orgTeamNameEl = document.getElementById('org-team-name')
+          if (orgTeamNameEl) {
+            const parts = orgTeamNameEl.textContent!.split(' / ')
+            orgTeamNameEl.textContent = `${parts[0]} / ${name}`
+          }
+        } else {
+          const data = await res.json().catch(() => ({}))
+          teamError.textContent = data?.error ?? 'Failed to update team name.'
+          teamError.style.display = 'block'
+        }
+      } catch (e) {
+        teamError.textContent = 'An unexpected error occurred.'
+        teamError.style.display = 'block'
+      }
+
+      saveTeamBtn.disabled = false
+      saveTeamBtn.textContent = 'Save'
+    })
+
+    // Add member
+    const addMemberBtn = document.getElementById('add-member-btn')!
+    const addMemberSelect = document.getElementById('add-member-select') as HTMLSelectElement
+    const membersError = document.getElementById('members-error')!
+    const membersSuccess = document.getElementById('members-success')!
+
+    addMemberBtn.addEventListener('click', async () => {
+      const session = await getSession()
+      if (!session) return
+
+      const userId = addMemberSelect.value
+      if (!userId) {
+        membersError.textContent = 'Please select a member to add.'
+        membersError.style.display = 'block'
+        return
+      }
+
+      try {
+        const res = await fetch(`/api/orgs/${encodeURIComponent(slug)}/teams/${teamNameInput.value}/members`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ userId }),
+        })
+
+        if (res.ok) {
+          membersSuccess.textContent = 'Member added successfully.'
+          membersSuccess.style.display = 'block'
+          membersError.style.display = 'none'
+          // Reload to update the list
+          window.location.reload()
+        } else {
+          const data = await res.json().catch(() => ({}))
+          membersError.textContent = data?.error ?? 'Failed to add member.'
+          membersError.style.display = 'block'
+          membersSuccess.style.display = 'none'
+        }
+      } catch (e) {
+        membersError.textContent = 'An unexpected error occurred.'
+        membersError.style.display = 'block'
+        membersSuccess.style.display = 'none'
+      }
+    })
+
+    // Remove member
+    document.querySelectorAll('.remove-member-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const target = e.target as HTMLButtonElement
+        const userId = target.dataset.userId
+        if (!confirm('Are you sure you want to remove this member from the team?')) return
+
+        const session = await getSession()
+        if (!session) return
+
+        try {
+          const url = new URL(`/api/orgs/${encodeURIComponent(slug)}/teams/${teamId}/members`, window.location.origin)
+          url.searchParams.set('userId', userId!)
+
+          const res = await fetch(url.toString(), {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          })
+
+          if (res.ok) {
+            membersSuccess.textContent = 'Member removed successfully.'
+            membersSuccess.style.display = 'block'
+            membersError.style.display = 'none'
+            // Remove the member item from the DOM
+            const memberItem = target.closest('.member-item') as HTMLElement
+            if (memberItem) memberItem.remove()
+          } else {
+            const data = await res.json().catch(() => ({}))
+            membersError.textContent = data?.error ?? 'Failed to remove member.'
+            membersError.style.display = 'block'
+            membersSuccess.style.display = 'none'
+          }
+        } catch (e) {
+          membersError.textContent = 'An unexpected error occurred.'
+          membersError.style.display = 'block'
+          membersSuccess.style.display = 'none'
+        }
+      })
+    })
+
+    // Delete team
+    const deleteTeamBtn = document.getElementById('delete-team-btn')!
+    const deleteError = document.getElementById('delete-error')!
+    const deleteSuccess = document.getElementById('delete-success')!
+
+    deleteTeamBtn.addEventListener('click', async () => {
+      if (!confirm('Are you sure you want to delete this team? This action cannot be undone.')) return
+
+      const session = await getSession()
+      if (!session) return
+
+      try {
+        const res = await fetch(`/api/orgs/${encodeURIComponent(slug)}/teams/${teamId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        })
+
+        if (res.ok) {
+          window.location.href = `/orgs/${encodeURIComponent(slug)}/settings`
+        } else {
+          const data = await res.json().catch(() => ({}))
+          deleteError.textContent = data?.error ?? 'Failed to delete team.'
+          deleteError.style.display = 'block'
+          deleteSuccess.style.display = 'none'
+        }
+      } catch (e) {
+        deleteError.textContent = 'An unexpected error occurred.'
+        deleteError.style.display = 'block'
+        deleteSuccess.style.display = 'none'
+      }
+    })
+  </script>
+</Base>

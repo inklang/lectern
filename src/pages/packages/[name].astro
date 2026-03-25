@@ -1,6 +1,6 @@
 ---
 import Base from '../../layouts/Base.astro'
-import { getPackageVersions, getPackageOwner } from '../../lib/db.js'
+import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags } from '../../lib/db.js'
 import { renderMarkdown } from '../../lib/markdown.js'
 
 const { name } = Astro.params
@@ -11,6 +11,11 @@ if (versions.length === 0) return Astro.redirect('/packages')
 const latest = versions[0]
 const owner = await getPackageOwner(name!)
 const readmeHtml = await renderMarkdown(latest.readme)
+const dependents = await getPackageDependents(name!)
+const stats = await getPackageStats(name!)
+const deprecation = await getPackageDeprecation(name!)
+const advisories = await getPackageAdvisories(name!)
+const tags = await getPackageTags(name!).catch(() => [])
 ---
 <Base title={name!} description={`${name} — Ink package`}>
   <style>
@@ -159,6 +164,199 @@ const readmeHtml = await renderMarkdown(latest.readme)
     .pkg-description { font-family: system-ui, sans-serif; font-size: 0.9rem; color: var(--muted); margin-top: 0.75rem; }
 
     .readme-body { font-family: system-ui, sans-serif; font-size: 0.9rem; line-height: 1.7; }
+
+    .dependents-link {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      display: inline-block;
+      margin-top: 0.5rem;
+    }
+    .dependents-link:hover { color: var(--text); opacity: 1; }
+
+    .downloads-total {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .download-count {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: right;
+      min-width: 5rem;
+    }
+
+    .deprecation-banner {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid #f59e0b;
+      border-radius: 8px;
+      padding: 0.875rem 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .deprecation-title {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #f59e0b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.25rem;
+    }
+
+    .deprecation-message {
+      font-family: system-ui, sans-serif;
+      font-size: 0.875rem;
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .advisories-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+    .advisory-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .advisory-badge {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      flex-shrink: 0;
+    }
+
+    .advisory-badge.critical { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid #ef4444; }
+    .advisory-badge.high { background: rgba(249, 115, 22, 0.15); color: #f97316; border: 1px solid #f97316; }
+    .advisory-badge.medium { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid #f59e0b; }
+    .advisory-badge.low { background: rgba(107, 114, 128, 0.15); color: #6b7280; border: 1px solid #6b7280; }
+
+    .advisory-content { flex: 1; min-width: 0; }
+
+    .advisory-title {
+      font-family: system-ui, sans-serif;
+      font-size: 0.875rem;
+      color: var(--text);
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+    }
+
+    .advisory-meta {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    .advisory-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.75rem;
+    }
+    .advisory-link:hover { text-decoration: underline; }
+
+    .no-advisories {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    .tags-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .tag-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.2rem 0.6rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-decoration: none;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .tag-chip:hover { border-color: var(--accent); color: var(--accent); opacity: 1; }
+
+    .badges-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .badge-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+    }
+
+    .badge-card-label {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .badge-preview {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 1rem;
+      min-height: 28px;
+    }
+
+    .badge-preview img, .badge-preview svg {
+      max-width: 100%;
+      height: auto;
+    }
+
+    .badge-code {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      word-break: break-all;
+      position: relative;
+    }
+
+    .badge-copy {
+      position: absolute;
+      right: 0.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+    }
+    .badge-copy:hover { color: var(--text); background: var(--border); }
   </style>
 
   <a class="back" href="/packages">← packages</a>
@@ -167,9 +365,28 @@ const readmeHtml = await renderMarkdown(latest.readme)
     <div class="pkg-name">{name}</div>
     <div class="pkg-meta-row">
       <span class="badge latest">v{latest.version}</span>
+      {latest.author && <span class="badge">{latest.author}</span>}
+      {latest.license && <span class="badge">{latest.license}</span>}
+      <span class="downloads-total">{stats.total.toLocaleString()} download{stats.total !== 1 ? 's' : ''}</span>
     </div>
     {latest.description && <p class="pkg-description">{latest.description}</p>}
+    {tags.length > 0 && (
+      <div class="tags-row">
+        {tags.map(tag => (
+          <a class="tag-chip" href={`/tags/${encodeURIComponent(tag)}`}>{tag}</a>
+        ))}
+      </div>
+    )}
   </div>
+
+  {deprecation?.deprecated && (
+    <div class="deprecation-banner">
+      <p class="deprecation-title">Deprecated</p>
+      {deprecation.deprecation_message && (
+        <p class="deprecation-message">{deprecation.deprecation_message}</p>
+      )}
+    </div>
+  )}
 
   <div class="section">
     <p class="section-heading">install</p>
@@ -212,6 +429,70 @@ const readmeHtml = await renderMarkdown(latest.readme)
   )}
 
   <div class="section">
+    <p class="section-heading">dependents</p>
+    <div class="deps-list">
+      {dependents.length > 0 ? (
+        <>
+          <div class="dep-item">
+            <span class="dep-name">{dependents.length} package{dependents.length !== 1 ? 's' : ''} depend{dependents.length === 1 ? 's' : ''} on this</span>
+          </div>
+          <a class="dependents-link" href={`/packages/${name}/deps`}>View dependency graph →</a>
+        </>
+      ) : (
+        <div class="no-deps">No packages depend on this one yet</div>
+      )}
+    </div>
+  </div>
+
+  {advisories.length > 0 && (
+    <div class="section">
+      <p class="section-heading">security advisories</p>
+      <div class="advisories-list">
+        {advisories.map(adv => (
+          <div class="advisory-item">
+            <span class={`advisory-badge ${adv.severity}`}>{adv.severity}</span>
+            <div class="advisory-content">
+              <p class="advisory-title">{adv.title}</p>
+              <p class="advisory-meta">
+                {adv.cve && <span>CVE: {adv.cve} | </span>}
+                <span>Affected: {adv.affected_versions}</span>
+                {adv.fixed_version && <span> | Fixed: {adv.fixed_version}</span>}
+              </p>
+            </div>
+            <a class="advisory-link" href={adv.advisory_url} target="_blank" rel="noopener">View →</a>
+          </div>
+        ))}
+      </div>
+    </div>
+  )}
+
+  <div class="section">
+    <p class="section-heading">badges</p>
+    <div class="badges-grid">
+      <div class="badge-card">
+        <p class="badge-card-label">version</p>
+        <div class="badge-preview">
+          <img src={`/api/badges/${encodeURIComponent(name ?? '')}/${encodeURIComponent(latest.version)}`} alt={`v${latest.version} badge`} />
+        </div>
+        <div class="badge-code">
+          <button class="badge-copy" data-copy="markdown">copy</button>
+          <code id="badge-version-md">![v${latest.version}]({Astro.url.origin}/api/badges/${encodeURIComponent(name ?? '')}/${encodeURIComponent(latest.version)})</code>
+        </div>
+      </div>
+      <div class="badge-card">
+        <p class="badge-card-label">downloads</p>
+        <div class="badge-preview">
+          <img src={`/api/badges/${encodeURIComponent(name ?? '')}/downloads`} alt="downloads badge" />
+        </div>
+        <div class="badge-code">
+          <button class="badge-copy" data-copy="markdown">copy</button>
+          <code id="badge-downloads-md">![downloads]({Astro.url.origin}/api/badges/${encodeURIComponent(name ?? '')}/downloads)</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
     <p class="section-heading">versions</p>
     <div class="versions-list">
       {versions.map((v, i) => (
@@ -220,9 +501,26 @@ const readmeHtml = await renderMarkdown(latest.readme)
             <span>v{v.version}</span>
             {i === 0 && <span class="version-tag">latest</span>}
           </div>
-          <span class="version-date">{new Date(v.published_at).toLocaleDateString()}</span>
+          <div style="display: flex; gap: 1rem; align-items: center;">
+            <span class="download-count">{(v.download_count ?? 0).toLocaleString()} dl</span>
+            <span class="version-date">{new Date(v.published_at).toLocaleDateString()}</span>
+          </div>
         </div>
       ))}
     </div>
   </div>
+
+  <script>
+    document.querySelectorAll('.badge-copy').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const codeEl = btn.parentElement?.querySelector('code')
+        if (!codeEl) return
+        const text = codeEl.textContent ?? ''
+        await navigator.clipboard.writeText(text).catch(() => {})
+        const orig = btn.textContent
+        btn.textContent = 'copied!'
+        setTimeout(() => { btn.textContent = orig }, 1500)
+      })
+    })
+  </script>
 </Base>

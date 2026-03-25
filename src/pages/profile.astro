@@ -300,6 +300,12 @@ const accessToken = session.access_token
       <div class="loading">loading…</div>
     </div>
 
+    <!-- Organizations (client-rendered) -->
+    <div class="section" id="orgs-section">
+      <div class="section-heading">organizations</div>
+      <div class="loading">loading…</div>
+    </div>
+
     <!-- CLI Tokens (client-rendered) -->
     <div class="section" id="tokens-section">
       <div class="section-heading">
@@ -327,6 +333,32 @@ const accessToken = session.access_token
     })
 
     async function load() {
+      // Orgs
+      const orgsSection = document.getElementById('orgs-section')!
+      try {
+        const { data: orgMemberships } = await supabase
+          .from('org_members')
+          .select('role, orgs(*)')
+          .order('joined_at', { ascending: false })
+
+        if (orgMemberships && orgMemberships.length > 0) {
+          const rows = orgMemberships.map((m: any) => `
+            <div class="row-item">
+              <a href="/orgs/${encodeURIComponent(m.orgs.slug)}" class="row-name">${escapeHtml(m.orgs.name)}</a>
+              <span class="row-meta">@${escapeHtml(m.orgs.slug)} · ${m.role}</span>
+            </div>
+          `).join('')
+          orgsSection.innerHTML = `<div class="section-heading">organizations</div><div class="row-list">${rows}</div>`
+        } else {
+          orgsSection.innerHTML = `
+            <div class="section-heading">organizations</div>
+            <p class="empty">you are not a member of any organizations.</p>
+          `
+        }
+      } catch {
+        orgsSection.innerHTML = `<div class="section-heading">organizations</div><p class="empty">error loading organizations.</p>`
+      }
+
       // Packages
       const packagesSection = document.getElementById('packages-section')!
       try {
