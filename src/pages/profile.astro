@@ -393,6 +393,57 @@ const accessToken = session.access_token
     }
 
     .slug-preview span { color: var(--text); }
+
+    /* ── scope checkboxes ─────────────────────── */
+    .scope-group {
+      margin-bottom: 0.75rem;
+    }
+
+    .scope-category {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+
+    .scope-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text);
+      cursor: pointer;
+      padding: 0.2rem 0;
+    }
+
+    .scope-checkbox input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      accent-color: var(--accent);
+    }
+
+    /* ── api token type badge ────────────────── */
+    .token-type-badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .token-type-badge.admin { border-color: #f87171; color: #f87171; }
+    .token-type-badge.org\:manage { border-color: #fb923c; color: #fb923c; }
+    .token-type-badge.publish { border-color: #4ade80; color: #4ade80; }
+    .token-type-badge.read { border-color: #60a5fa; color: #60a5fa; }
   </style>
 
   <div id="profile-container" data-url={supabaseUrl} data-key={supabaseKey} data-token={accessToken}>
@@ -432,6 +483,14 @@ const accessToken = session.access_token
       </div>
       <div class="loading">loading…</div>
     </div>
+
+    <!-- API Tokens (client-rendered) -->
+    <div class="section" id="api-tokens-section">
+      <div class="section-heading">
+        <span>api tokens</span>
+      </div>
+      <div class="loading">loading…</div>
+    </div>
   </div>
 
   <!-- New Org Modal -->
@@ -462,6 +521,95 @@ const accessToken = session.access_token
         </div>
         <button id="modal-submit-btn" class="btn" type="submit">Create Organization</button>
       </form>
+    </div>
+  </div>
+
+  <!-- New API Token Modal -->
+  <div id="new-api-token-modal" class="modal" style="display:none">
+    <div class="modal-backdrop" id="api-token-modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>create api token</h2>
+        <button class="modal-close" id="api-token-modal-close-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="api-token-modal-error" class="modal-error" style="display:none"></div>
+      <form id="new-api-token-form" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="api-token-name-input">name</label>
+          <input id="api-token-name-input" class="form-input" type="text" placeholder="GitHub Actions" maxlength="64" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="api-token-desc-input">description <span style="opacity:0.5">(optional)</span></label>
+          <textarea id="api-token-desc-input" class="form-input form-textarea" placeholder="CI pipeline for my repo" maxlength="256"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">scopes</label>
+          <div class="scope-group">
+            <div class="scope-category">Packages</div>
+            <label class="scope-checkbox"><input type="checkbox" id="scope-packages_read" checked /> packages: read</label>
+            <label class="scope-checkbox"><input type="checkbox" id="scope-packages_publish" /> packages: publish</label>
+            <label class="scope-checkbox"><input type="checkbox" id="scope-packages_delete" /> packages: delete</label>
+          </div>
+          <div class="scope-group">
+            <div class="scope-category">Organizations</div>
+            <label class="scope-checkbox"><input type="checkbox" id="scope-orgs_read" checked /> orgs: read</label>
+            <label class="scope-checkbox"><input type="checkbox" id="scope-orgs_manage" /> orgs: manage</label>
+            <label class="scope-checkbox"><input type="checkbox" id="scope-orgs_delete" /> orgs: delete</label>
+          </div>
+          <div class="scope-group">
+            <div class="scope-category">Teams</div>
+            <label class="scope-checkbox"><input type="checkbox" id="scope-teams_read" checked /> teams: read</label>
+            <label class="scope-checkbox"><input type="checkbox" id="scope-teams_manage" /> teams: manage</label>
+          </div>
+          <div class="scope-group">
+            <div class="scope-category">Tokens</div>
+            <label class="scope-checkbox"><input type="checkbox" id="scope-tokens_read" checked /> tokens: read</label>
+            <label class="scope-checkbox"><input type="checkbox" id="scope-tokens_write" /> tokens: write</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="api-token-expiry-input">expiration</label>
+          <select id="api-token-expiry-input" class="form-input">
+            <option value="3600">1 hour</option>
+            <option value="86400">1 day</option>
+            <option value="604800">7 days</option>
+            <option value="2592000" selected>30 days</option>
+            <option value="">Never</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="api-token-rate-limit-input">rate limit</label>
+          <select id="api-token-rate-limit-input" class="form-input">
+            <option value="10">10/min</option>
+            <option value="100" selected>100/min</option>
+            <option value="1000">1000/min</option>
+            <option value="">Unlimited</option>
+          </select>
+        </div>
+        <button id="api-token-submit-btn" class="btn" type="submit">Create Token</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- API Token Reveal Modal -->
+  <div id="api-token-reveal-modal" class="modal" style="display:none">
+    <div class="modal-backdrop" id="api-token-reveal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>token created</h2>
+        <button class="modal-close" id="api-token-reveal-close-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <p class="token-reveal-note">Save this token — it won't be shown again.</p>
+      <div class="token-reveal">
+        <span class="token-reveal-val" id="api-token-reveal-value"></span>
+        <button class="btn" id="api-token-copy-btn">copy</button>
+      </div>
+      <p class="token-reveal-note" style="margin-top:0.5rem">Use it in your CI/CD pipeline:</p>
+      <code class="code-snippet" id="api-token-reveal-env"></code>
     </div>
   </div>
 
@@ -575,6 +723,10 @@ const accessToken = session.access_token
       // Tokens
       const tokensSection = document.getElementById('tokens-section')!
       await renderTokens(tokensSection)
+
+      // API Tokens
+      const apiTokensSection = document.getElementById('api-tokens-section')!
+      await renderApiTokens(apiTokensSection)
     }
 
     async function renderTokens(tokensSection: HTMLElement) {
@@ -683,6 +835,204 @@ const accessToken = session.access_token
       const btn = document.getElementById('copy-token-btn')!
       btn.textContent = 'copied!'
       setTimeout(() => { btn.textContent = 'copy' }, 2000)
+    }
+
+    // ── API Tokens ───────────────────────────────────────────────
+    async function renderApiTokens(apiTokensSection: HTMLElement) {
+      try {
+        const res = await fetch('/api/tokens')
+        if (!res.ok) {
+          apiTokensSection.innerHTML = `<div class="section-heading">api tokens</div><p class="empty">error loading tokens.</p>`
+          return
+        }
+        const { tokens } = await res.json()
+
+        const heading = `
+          <div class="section-heading">
+            <span>api tokens</span>
+            <button class="btn" id="new-api-token-btn">+ new token</button>
+          </div>
+        `
+        const blurb = `<p class="tokens-blurb">api tokens provide scoped access for CI/CD and integrations.</p>`
+
+        if (tokens && tokens.length > 0) {
+          const rows = tokens.map((token: any) => {
+            const created = formatDate(new Date(token.createdAt))
+            const lastUsed = token.lastUsedAt ? formatDate(new Date(token.lastUsedAt)) : 'never'
+            const expiresAt = token.expiresAt ? `expires ${formatDate(new Date(token.expiresAt))}` : 'never expires'
+            const typeBadge = `<span class="token-type-badge ${token.tokenType}">${token.tokenType}</span>`
+            return `
+              <div class="row-item" data-token-id="${escapeHtml(token.id)}">
+                <div class="row-left">
+                  <span class="row-name">${escapeHtml(token.name)}</span>
+                  <span class="row-meta">${escapeHtml(token.tokenPrefix)}… · ${typeBadge} · ${expiresAt}</span>
+                  <span class="row-meta">created ${created} · last used ${lastUsed}</span>
+                </div>
+                <button class="btn btn-danger revoke-api-token-btn" data-token-id="${escapeHtml(token.id)}">revoke</button>
+              </div>
+            `
+          }).join('')
+          apiTokensSection.innerHTML = `${heading}${blurb}<div class="row-list">${rows}</div>`
+        } else {
+          apiTokensSection.innerHTML = `${heading}${blurb}<p class="empty">no api tokens yet.</p>`
+        }
+
+        document.getElementById('new-api-token-btn')?.addEventListener('click', openNewApiTokenModal)
+
+        apiTokensSection.querySelectorAll('.revoke-api-token-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const tokenId = (e.target as HTMLElement).getAttribute('data-token-id')!
+            const b = e.target as HTMLButtonElement
+            b.disabled = true
+            b.textContent = 'revoking…'
+            try {
+              const res = await fetch(`/api/tokens/${encodeURIComponent(tokenId)}`, { method: 'DELETE' })
+              if (res.ok) {
+                apiTokensSection.querySelector(`[data-token-id="${tokenId}"]`)?.remove()
+              } else {
+                b.disabled = false
+                b.textContent = 'revoke'
+              }
+            } catch {
+              b.disabled = false
+              b.textContent = 'revoke'
+            }
+          })
+        })
+      } catch {
+        apiTokensSection.innerHTML = `<div class="section-heading">api tokens</div><p class="empty">error loading tokens.</p>`
+      }
+    }
+
+    let pendingApiToken = ''
+
+    function openNewApiTokenModal() {
+      const modal = document.getElementById('new-api-token-modal')!
+      const backdrop = document.getElementById('api-token-modal-backdrop')!
+      const closeBtn = document.getElementById('api-token-modal-close-btn')!
+      const form = document.getElementById('new-api-token-form') as HTMLFormElement
+      const formError = document.getElementById('api-token-modal-error')!
+
+      modal.style.display = 'flex'
+      form.reset()
+      formError.style.display = 'none'
+
+      // Set default checked states
+      ;(document.getElementById('scope-packages_read') as HTMLInputElement).checked = true
+      ;(document.getElementById('scope-orgs_read') as HTMLInputElement).checked = true
+      ;(document.getElementById('scope-teams_read') as HTMLInputElement).checked = true
+      ;(document.getElementById('scope-tokens_read') as HTMLInputElement).checked = true
+      ;(document.getElementById('scope-packages_publish') as HTMLInputElement).checked = false
+      ;(document.getElementById('scope-packages_delete') as HTMLInputElement).checked = false
+      ;(document.getElementById('scope-orgs_manage') as HTMLInputElement).checked = false
+      ;(document.getElementById('scope-orgs_delete') as HTMLInputElement).checked = false
+      ;(document.getElementById('scope-teams_manage') as HTMLInputElement).checked = false
+      ;(document.getElementById('scope-tokens_write') as HTMLInputElement).checked = false
+      ;(document.getElementById('api-token-expiry-input') as HTMLSelectElement).value = '2592000'
+      ;(document.getElementById('api-token-rate-limit-input') as HTMLSelectElement).value = '100'
+
+      function closeModal() {
+        modal.style.display = 'none'
+        form.reset()
+        formError.style.display = 'none'
+      }
+
+      backdrop.addEventListener('click', closeModal)
+      closeBtn.addEventListener('click', closeModal)
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault()
+        formError.style.display = 'none'
+        const submitBtn = document.getElementById('api-token-submit-btn') as HTMLButtonElement
+        submitBtn.disabled = true
+        submitBtn.textContent = 'Creating…'
+
+        const name = (document.getElementById('api-token-name-input') as HTMLInputElement).value.trim()
+        const description = (document.getElementById('api-token-desc-input') as HTMLTextAreaElement).value.trim()
+
+        if (!name) {
+          formError.textContent = 'Name is required.'
+          formError.style.display = 'block'
+          submitBtn.disabled = false
+          submitBtn.textContent = 'Create Token'
+          return
+        }
+
+        const scopes = {
+          packages_read: (document.getElementById('scope-packages_read') as HTMLInputElement).checked,
+          packages_publish: (document.getElementById('scope-packages_publish') as HTMLInputElement).checked,
+          packages_delete: (document.getElementById('scope-packages_delete') as HTMLInputElement).checked,
+          orgs_read: (document.getElementById('scope-orgs_read') as HTMLInputElement).checked,
+          orgs_manage: (document.getElementById('scope-orgs_manage') as HTMLInputElement).checked,
+          orgs_delete: (document.getElementById('scope-orgs_delete') as HTMLInputElement).checked,
+          teams_read: (document.getElementById('scope-teams_read') as HTMLInputElement).checked,
+          teams_manage: (document.getElementById('scope-teams_manage') as HTMLInputElement).checked,
+          tokens_read: (document.getElementById('scope-tokens_read') as HTMLInputElement).checked,
+          tokens_write: (document.getElementById('scope-tokens_write') as HTMLInputElement).checked,
+        }
+
+        const expiresInSelect = document.getElementById('api-token-expiry-input') as HTMLSelectElement
+        const expiresIn = expiresInSelect.value ? parseInt(expiresInSelect.value, 10) : null
+
+        const rateLimitSelect = document.getElementById('api-token-rate-limit-input') as HTMLSelectElement
+        const rateLimit = rateLimitSelect.value ? parseInt(rateLimitSelect.value, 10) : null
+
+        try {
+          const res = await fetch('/api/tokens', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, description, scopes, expiresIn, rateLimit }),
+          })
+
+          if (res.ok) {
+            const data = await res.json()
+            pendingApiToken = data.token
+            closeModal()
+
+            // Show reveal modal
+            const revealModal = document.getElementById('api-token-reveal-modal')!
+            const revealBackdrop = document.getElementById('api-token-reveal-backdrop')!
+            const revealCloseBtn = document.getElementById('api-token-reveal-close-btn')!
+            const revealValue = document.getElementById('api-token-reveal-value')!
+            const revealEnv = document.getElementById('api-token-reveal-env')!
+            const copyBtn = document.getElementById('api-token-copy-btn')!
+
+            revealModal.style.display = 'flex'
+            revealValue.textContent = data.token
+            revealEnv.textContent = `export LECTERN_TOKEN=${data.token}`
+
+            async function handleApiTokenCopy() {
+              await navigator.clipboard.writeText(pendingApiToken)
+              copyBtn.textContent = 'copied!'
+              setTimeout(() => { copyBtn.textContent = 'copy' }, 2000)
+            }
+
+            copyBtn.onclick = handleApiTokenCopy
+
+            function closeRevealModal() {
+              revealModal.style.display = 'none'
+              copyBtn.onclick = null
+            }
+
+            revealBackdrop.addEventListener('click', closeRevealModal)
+            revealCloseBtn.addEventListener('click', closeRevealModal)
+
+            // Refresh the token list
+            const apiTokensSection = document.getElementById('api-tokens-section')!
+            await renderApiTokens(apiTokensSection)
+          } else {
+            const data = await res.json().catch(() => ({}))
+            formError.textContent = data?.error ?? 'Failed to create token'
+            formError.style.display = 'block'
+          }
+        } catch {
+          formError.textContent = 'An unexpected error occurred.'
+          formError.style.display = 'block'
+        }
+
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Create Token'
+      })
     }
 
     function formatDate(date: Date): string {

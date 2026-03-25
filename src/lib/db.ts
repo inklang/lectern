@@ -172,6 +172,52 @@ export async function getTrendingPackages(windowDays = 7, limitCount = 5): Promi
   return (data as TrendingPackage[]) ?? []
 }
 
+// ─── Popularity Score ───────────────────────────────────────────────────────────
+
+export interface PopularPackage {
+  package_name: string
+  popularity_score: number
+  download_count: number
+  star_count: number
+  latest_version: string
+  description: string | null
+  created_at: string
+}
+
+// Get paginated popular packages (for browse page sort)
+export async function getPopularPackages(
+  limit = 20,
+  offset = 0
+): Promise<PopularPackage[]> {
+  const { data, error } = await supabase.rpc('get_popular_packages', {
+    p_limit: limit,
+    p_offset: offset,
+  })
+  if (error) throw error
+  return (data as PopularPackage[]) ?? []
+}
+
+// Get score for a single package
+export async function getPackageScore(name: string): Promise<number> {
+  const { data, error } = await supabase.rpc('get_package_score', {
+    p_package_name: name,
+  })
+  if (error) throw error
+  return (data as number) ?? 0
+}
+
+// Star/unstar (for future use)
+export async function setPackageStar(
+  packageName: string,
+  starred: boolean
+): Promise<void> {
+  const { error } = await supabase.rpc('set_package_star', {
+    p_package_name: packageName,
+    p_starred: starred,
+  })
+  if (error) throw error
+}
+
 // ─── Tags ────────────────────────────────────────────────────────────────────
 
 export interface TagWithCount {
@@ -338,4 +384,120 @@ export async function upsertAdvisory(
       { onConflict: 'package_name,advisory_id' }
     )
   if (error) throw error
+}
+
+// ─── Package Stars ─────────────────────────────────────────────────────────────
+
+// Star a package for a user. Idempotent (no error if already starred).
+export async function starPackage(userId: string, packageName: string): Promise<void> {
+  const { error } = await supabase
+    .from('package_stars')
+    .upsert({ user_id: userId, package_name: packageName }, { onConflict: 'user_id,package_name' })
+  if (error) throw error
+}
+
+// Unstar a package for a user.
+export async function unstarPackage(userId: string, packageName: string): Promise<void> {
+  const { error } = await supabase
+    .from('package_stars')
+    .delete()
+    .eq('user_id', userId)
+    .eq('package_name', packageName)
+  if (error) throw error
+}
+
+// Returns true if the user has starred the package.
+export async function hasStarred(userId: string, packageName: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('package_stars')
+    .select('user_id')
+    .eq('user_id', userId)
+    .eq('package_name', packageName)
+    .single()
+  return !!data
+}
+
+// Get star count for a package.
+export async function getStarCount(packageName: string): Promise<number> {
+  // First try the denormalized column on packages
+  const { data: pkg } = await supabase
+    .from('packages')
+    .select('star_count')
+    .eq('name', packageName)
+    .single()
+  if (pkg !== null) return pkg.star_count ?? 0
+
+  // Fallback: count from package_stars
+  const { count, error } = await supabase
+    .from('package_stars')
+    .select('*', { count: 'exact', head: true })
+    .eq('package_name', packageName)
+  if (error) throw error
+  return count ?? 0
+}
+
+// Get star counts for multiple packages (batch). Returns map of package_name -> count.
+export async function getStarCounts(packageNames: string[]): Promise<Record<string, number>> {
+  if (packageNames.length === 0) return {}
+
+  // Use the denormalized star_count column on packages
+  const { data, error } = await supabase
+    .from('packages')
+    .select('name, star_count')
+  if (error) throw error
+
+  const counts: Record<string, number> = {}
+  for (const name of packageNames) counts[name] = 0
+  for (const row of data ?? []) {
+    if (counts.hasOwnProperty(row.name)) counts[row.name] = row.star_count ?? 0
+  }
+  return counts
+}
+
+// Get paginated starrers for a package.
+export async function getPackageStarrers(
+  packageName: string,
+  limitCount = 20,
+  offsetCount = 0
+): Promise<{ userId: string; starredAt: string }[]> {
+  const { data, error } = await supabase
+    .from('package_stars')
+    .select('user_id, starred_at')
+    .eq('package_name', packageName)
+    .order('starred_at', { ascending: false })
+    .range(offsetCount, offsetCount + limitCount - 1)
+  if (error) throw error
+  return (data ?? []).map(r => ({ userId: r.user_id, starredAt: r.starred_at }))
+}
+
+// Get packages a user has starred.
+export async function getUserStars(
+  userId: string,
+  limitCount = 20,
+  offsetCount = 0
+): Promise<{ packageName: string; starredAt: string }[]> {
+  const { data, error } = await supabase
+    .from('package_stars')
+    .select('package_name, starred_at')
+    .eq('user_id', userId)
+    .order('starred_at', { ascending: false })
+    .range(offsetCount, offsetCount + limitCount - 1)
+  if (error) throw error
+  return (data ?? []).map(r => ({ packageName: r.package_name, starredAt: r.starred_at }))
+}
+
+// Returns packages sorted by star count, with star counts.
+export async function listPackagesByStars(
+  limitCount = 20,
+  offsetCount = 0
+): Promise<{ packageName: string; starCount: number }[]> {
+  // Use the denormalized star_count column on packages
+  const { data, error } = await supabase
+    .from('packages')
+    .select('name, star_count')
+    .gt('star_count', 0)
+    .order('star_count', { ascending: false })
+    .range(offsetCount, offsetCount + limitCount - 1)
+  if (error) throw error
+  return (data ?? []).map(r => ({ packageName: r.name, starCount: r.star_count ?? 0 }))
 }

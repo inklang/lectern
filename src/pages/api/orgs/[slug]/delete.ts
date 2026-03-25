@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro'
 import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 import { getOrgBySlug, deleteOrg, isOrgOwner } from '../../../../lib/orgs.js'
 import { logAuditEvent } from '../../../../lib/audit.js'
+import { deleteOrgAsset } from '../../../../lib/storage.js'
 
 export const DELETE: APIRoute = async ({ params, request }) => {
   const { slug } = params
@@ -28,6 +29,10 @@ export const DELETE: APIRoute = async ({ params, request }) => {
   if (!(await isOrgOwner(org.id, userId))) return new Response('Forbidden', { status: 403 })
 
   try {
+    // Delete org assets from storage (ignore errors if they don't exist)
+    await deleteOrgAsset(org.id, 'avatar').catch(() => {})
+    await deleteOrgAsset(org.id, 'banner').catch(() => {})
+
     await deleteOrg(org.id)
 
     // Log audit event

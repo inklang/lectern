@@ -7,6 +7,8 @@ export interface Org {
   description: string | null
   creator_id: string
   created_at: string
+  avatar_url?: string | null
+  banner_url?: string | null
 }
 
 export interface OrgMember {

@@ -65,8 +65,20 @@ if (teamIds.length > 0) {
   }
 }
 
+// Generate avatar fallback color from slug
+function getAvatarColor(slug: string): string {
+  let hash = 0
+  for (let i = 0; i < slug.length; i++) {
+    hash = slug.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const hue = hash % 360
+  return `hsl(${hue}, 50%, 40%)`
+}
+
 const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
 const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
+const orgAvatarUrl = org.avatar_url
+const orgBannerUrl = org.banner_url
 ---
 <Base title={`${org.name} Settings`}>
   <style>
@@ -352,6 +364,102 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
       color: var(--muted);
       padding: 1rem 0;
     }
+
+    .image-upload-section {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .image-upload-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 1.5rem;
+    }
+
+    .image-preview {
+      flex-shrink: 0;
+    }
+
+    .image-preview img {
+      object-fit: cover;
+      background: var(--surface);
+    }
+
+    .avatar-preview {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+    }
+
+    .banner-preview {
+      width: 300px;
+      height: 100px;
+      border-radius: 8px;
+      object-fit: cover;
+    }
+
+    .avatar-fallback {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: white;
+    }
+
+    .banner-fallback {
+      width: 300px;
+      height: 100px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .image-upload-info {
+      flex: 1;
+    }
+
+    .image-upload-info h3 {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .image-upload-info p {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .image-upload-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .upload-input {
+      display: none;
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
   </style>
 
   <div class="settings-wrap" id="settings-container" data-url={supabaseUrl} data-key={supabaseKey}>
@@ -393,6 +501,55 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
         >{org.description ?? ''}</textarea>
       </div>
       <button id="save-general-btn" class="btn">Save Changes</button>
+    </div>
+
+    <!-- Images Section -->
+    <div class="section" id="images-section">
+      <div class="section-title">Images</div>
+      <div id="images-error" style="display:none" class="error-message"></div>
+      <div id="images-success" style="display:none" class="success-message"></div>
+      <div class="image-upload-section">
+        <!-- Avatar -->
+        <div class="image-upload-item">
+          <div class="image-preview">
+            {orgAvatarUrl
+              ? <img id="avatar-preview" class="avatar-preview" src={orgAvatarUrl} alt="Organization avatar" />
+              : <div id="avatar-preview-fallback" class="avatar-fallback" style={`background: ${getAvatarColor(org.slug)};`}>{org.name.charAt(0).toUpperCase()}</div>
+            }
+          </div>
+          <div class="image-upload-info">
+            <h3>Avatar</h3>
+            <p>PNG, JPEG, GIF, WebP. Max 5 MB. Recommended: 400x400.</p>
+            <div class="image-upload-actions">
+              <input type="file" id="avatar-upload" class="upload-input" accept="image/png,image/jpeg,image/gif,image/webp" />
+              <button id="upload-avatar-btn" class="btn">Upload new</button>
+              {(orgAvatarUrl || org.name) && (
+                <button id="remove-avatar-btn" class="btn btn-outline btn-sm">Remove</button>
+              )}
+            </div>
+          </div>
+        </div>
+        <!-- Banner -->
+        <div class="image-upload-item">
+          <div class="image-preview">
+            {orgBannerUrl
+              ? <img id="banner-preview" class="banner-preview" src={orgBannerUrl} alt="Organization banner" />
+              : <div id="banner-preview-fallback" class="banner-fallback" style={`background: linear-gradient(135deg, ${getAvatarColor(org.slug)}, ${getAvatarColor(org.slug)}dd);`}></div>
+            }
+          </div>
+          <div class="image-upload-info">
+            <h3>Banner</h3>
+            <p>PNG, JPEG, GIF, WebP. Max 10 MB. Recommended: 1500x500.</p>
+            <div class="image-upload-actions">
+              <input type="file" id="banner-upload" class="upload-input" accept="image/png,image/jpeg,image/gif,image/webp" />
+              <button id="upload-banner-btn" class="btn">Upload new</button>
+              {orgBannerUrl && (
+                <button id="remove-banner-btn" class="btn btn-outline btn-sm">Remove</button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Members Section -->
@@ -961,5 +1118,253 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
     }
 
     loadWebhooks()
+
+    // --- Image Upload ---
+    const imagesError = document.getElementById('images-error')!
+    const imagesSuccess = document.getElementById('images-success')!
+
+    async function processImage(file: File, type: 'avatar' | 'banner'): Promise<Blob> {
+      const img = await createImageBitmap(file)
+      const { width, height } = img
+
+      const maxWidth = type === 'avatar' ? 400 : 1500
+      const maxHeight = type === 'avatar' ? 400 : 500
+
+      let targetWidth = width
+      let targetHeight = height
+      if (width > maxWidth || height > maxHeight) {
+        const ratio = Math.min(maxWidth / width, maxHeight / height)
+        targetWidth = Math.round(width * ratio)
+        targetHeight = Math.round(height * ratio)
+      }
+
+      if (type === 'avatar') {
+        const size = Math.min(targetWidth, targetHeight)
+        const canvas = new OffscreenCanvas(size, size)
+        const ctx = canvas.getContext('2d')!
+        const sx = (width - size) / 2
+        const sy = (height - size) / 2
+        ctx.drawImage(img, sx, sy, size, size, 0, 0, size, size)
+        return canvas.convertToBlob({ type: 'image/webp', quality: 0.85 })
+      } else {
+        const canvas = new OffscreenCanvas(targetWidth, targetHeight)
+        const ctx = canvas.getContext('2d')!
+        ctx.drawImage(img, 0, 0, targetWidth, targetHeight)
+        return canvas.convertToBlob({ type: 'image/webp', quality: 0.85 })
+      }
+    }
+
+    function showImageError(msg: string) {
+      imagesError.textContent = msg
+      imagesError.style.display = 'block'
+      imagesSuccess.style.display = 'none'
+    }
+
+    function showImageSuccess(msg: string) {
+      imagesSuccess.textContent = msg
+      imagesSuccess.style.display = 'block'
+      imagesError.style.display = 'none'
+    }
+
+    // Avatar upload
+    const avatarUploadInput = document.getElementById('avatar-upload') as HTMLInputElement
+    const uploadAvatarBtn = document.getElementById('upload-avatar-btn')!
+    const removeAvatarBtn = document.getElementById('remove-avatar-btn')
+    const avatarPreview = document.getElementById('avatar-preview') as HTMLImageElement
+    const avatarPreviewFallback = document.getElementById('avatar-preview-fallback')
+
+    uploadAvatarBtn.addEventListener('click', () => avatarUploadInput.click())
+
+    avatarUploadInput.addEventListener('change', async () => {
+      const file = avatarUploadInput.files?.[0]
+      if (!file) return
+
+      const session = await getSession()
+      if (!session) return
+
+      uploadAvatarBtn.disabled = true
+      uploadAvatarBtn.innerHTML = '<span class="loading-spinner"></span>'
+      imagesError.style.display = 'none'
+      imagesSuccess.style.display = 'none'
+
+      try {
+        const processedBlob = await processImage(file, 'avatar')
+        const formData = new FormData()
+        formData.append('type', 'avatar')
+        formData.append('file', processedBlob, 'avatar.webp')
+
+        const res = await fetch(`/api/{encodeURIComponent(slug)}/images`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: formData,
+        })
+
+        if (res.ok) {
+          const data = await res.json()
+          showImageSuccess('Avatar updated successfully.')
+
+          // Update preview
+          if (avatarPreview) {
+            avatarPreview.src = data.avatar_url
+            avatarPreview.style.display = 'block'
+          }
+          if (avatarPreviewFallback) {
+            avatarPreviewFallback.style.display = 'none'
+          }
+          // Show remove button
+          if (removeAvatarBtn) removeAvatarBtn.style.display = 'inline-flex'
+        } else {
+          const data = await res.json().catch(() => ({}))
+          showImageError(data?.error ?? 'Failed to upload avatar.')
+        }
+      } catch {
+        showImageError('An unexpected error occurred.')
+      }
+
+      uploadAvatarBtn.disabled = false
+      uploadAvatarBtn.textContent = 'Upload new'
+      avatarUploadInput.value = ''
+    })
+
+    if (removeAvatarBtn) {
+      removeAvatarBtn.addEventListener('click', async () => {
+        if (!confirm('Remove avatar? This cannot be undone.')) return
+
+        const session = await getSession()
+        if (!session) return
+
+        removeAvatarBtn.disabled = true
+        imagesError.style.display = 'none'
+        imagesSuccess.style.display = 'none'
+
+        try {
+          const res = await fetch(`/api/{encodeURIComponent(slug)}/images`, {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ type: 'avatar' }),
+          })
+
+          if (res.ok) {
+            showImageSuccess('Avatar removed.')
+            if (avatarPreview) avatarPreview.style.display = 'none'
+            if (avatarPreviewFallback) {
+              avatarPreviewFallback.style.display = 'flex'
+            }
+            removeAvatarBtn.style.display = 'none'
+          } else {
+            const data = await res.json().catch(() => ({}))
+            showImageError(data?.error ?? 'Failed to remove avatar.')
+          }
+        } catch {
+          showImageError('An unexpected error occurred.')
+        }
+
+        removeAvatarBtn.disabled = false
+      })
+    }
+
+    // Banner upload
+    const bannerUploadInput = document.getElementById('banner-upload') as HTMLInputElement
+    const uploadBannerBtn = document.getElementById('upload-banner-btn')!
+    const removeBannerBtn = document.getElementById('remove-banner-btn')
+    const bannerPreview = document.getElementById('banner-preview') as HTMLImageElement
+    const bannerPreviewFallback = document.getElementById('banner-preview-fallback')
+
+    uploadBannerBtn.addEventListener('click', () => bannerUploadInput.click())
+
+    bannerUploadInput.addEventListener('change', async () => {
+      const file = bannerUploadInput.files?.[0]
+      if (!file) return
+
+      const session = await getSession()
+      if (!session) return
+
+      uploadBannerBtn.disabled = true
+      uploadBannerBtn.innerHTML = '<span class="loading-spinner"></span>'
+      imagesError.style.display = 'none'
+      imagesSuccess.style.display = 'none'
+
+      try {
+        const processedBlob = await processImage(file, 'banner')
+        const formData = new FormData()
+        formData.append('type', 'banner')
+        formData.append('file', processedBlob, 'banner.webp')
+
+        const res = await fetch(`/api/{encodeURIComponent(slug)}/images`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: formData,
+        })
+
+        if (res.ok) {
+          const data = await res.json()
+          showImageSuccess('Banner updated successfully.')
+          if (bannerPreview) {
+            bannerPreview.src = data.banner_url
+            bannerPreview.style.display = 'block'
+          }
+          if (bannerPreviewFallback) {
+            bannerPreviewFallback.style.display = 'none'
+          }
+          if (removeBannerBtn) removeBannerBtn.style.display = 'inline-flex'
+        } else {
+          const data = await res.json().catch(() => ({}))
+          showImageError(data?.error ?? 'Failed to upload banner.')
+        }
+      } catch {
+        showImageError('An unexpected error occurred.')
+      }
+
+      uploadBannerBtn.disabled = false
+      uploadBannerBtn.textContent = 'Upload new'
+      bannerUploadInput.value = ''
+    })
+
+    if (removeBannerBtn) {
+      removeBannerBtn.addEventListener('click', async () => {
+        if (!confirm('Remove banner? This cannot be undone.')) return
+
+        const session = await getSession()
+        if (!session) return
+
+        removeBannerBtn.disabled = true
+        imagesError.style.display = 'none'
+        imagesSuccess.style.display = 'none'
+
+        try {
+          const res = await fetch(`/api/{encodeURIComponent(slug)}/images`, {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ type: 'banner' }),
+          })
+
+          if (res.ok) {
+            showImageSuccess('Banner removed.')
+            if (bannerPreview) bannerPreview.style.display = 'none'
+            if (bannerPreviewFallback) {
+              bannerPreviewFallback.style.display = 'flex'
+            }
+            removeBannerBtn.style.display = 'none'
+          } else {
+            const data = await res.json().catch(() => ({}))
+            showImageError(data?.error ?? 'Failed to remove banner.')
+          }
+        } catch {
+          showImageError('An unexpected error occurred.')
+        }
+
+        removeBannerBtn.disabled = false
+      })
+    }
   </script>
 </Base>

@@ -56,11 +56,27 @@ const isUser = !!user
 const isOrg = !!org
 const pageTitle = isOrg ? org.name : user!.user_name
 const pageDescription = isOrg ? (org.description ?? `${org.name} on Lectern`) : `${user!.user_name} on Lectern`
+
+// Generate avatar fallback color from slug
+function getAvatarColor(slug: string): string {
+  let hash = 0
+  for (let i = 0; i < slug.length; i++) {
+    hash = slug.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const hue = hash % 360
+  return `hsl(${hue}, 50%, 40%)`
+}
 ---
 
 <Base title={pageTitle} description={pageDescription}>
   <style>
-    .org-header, .user-header { margin-bottom: 2.5rem; }
+    .org-header, .user-header { margin-bottom: 2.5rem; position: relative; }
+    .org-header-with-banner { margin-bottom: 2.5rem; }
+    .banner-image { width: 100%; height: 200px; object-fit: cover; border-radius: 10px; background: var(--surface); }
+    .avatar-wrapper { position: absolute; top: 140px; left: 1.5rem; }
+    .avatar-image { width: 80px; height: 80px; border-radius: 50%; border: 3px solid var(--bg); object-fit: cover; background: var(--surface); }
+    .avatar-fallback { width: 80px; height: 80px; border-radius: 50%; border: 3px solid var(--bg); display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 1.5rem; font-weight: 600; color: white; }
+    .org-content { padding-top: 50px; }
     .org-slug, .user-slug { font-family: var(--font-mono); font-size: 0.875rem; color: var(--muted); margin-bottom: 0.5rem; }
     .org-name, .user-name { font-family: var(--font-mono); font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
     .org-description { font-size: 0.9375rem; color: var(--muted); max-width: 600px; }
@@ -90,6 +106,13 @@ const pageDescription = isOrg ? (org.description ?? `${org.name} on Lectern`) : 
     .empty { font-family: var(--font-mono); font-size: 0.875rem; color: var(--muted); padding: 2rem 0; text-align: center; }
     .back-link { display: inline-flex; align-items: center; gap: 0.4rem; font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); text-decoration: none; margin-bottom: 1.5rem; transition: color 0.15s; }
     .back-link:hover { color: var(--text); }
+
+    @media (max-width: 640px) {
+      .banner-image { height: 120px; }
+      .avatar-wrapper { top: 80px; left: 1rem; }
+      .avatar-image, .avatar-fallback { width: 60px; height: 60px; font-size: 1.25rem; }
+      .org-content { padding-top: 40px; }
+    }
   </style>
 
   <a class="back-link" href="/packages">
@@ -98,22 +121,31 @@ const pageDescription = isOrg ? (org.description ?? `${org.name} on Lectern`) : 
   </a>
 
   {isOrg && (
-    <div class="org-header">
-      <div class="org-slug">@{org.slug}</div>
-      <h1 class="org-name">{org.name}</h1>
-      {org.description && <p class="org-description">{org.description}</p>}
-      <div class="org-stats">
-        <div class="stat">
-          <span class="stat-value">{memberCount}</span>
-          <span class="stat-label">members</span>
-        </div>
-        <div class="stat">
-          <span class="stat-value">{(packages ?? []).length}</span>
-          <span class="stat-label">packages</span>
-        </div>
-        <div class="stat">
-          <span class="stat-value">{teams.length}</span>
-          <span class="stat-label">teams</span>
+    <div class={org.banner_url || org.avatar_url ? 'org-header-with-banner' : 'org-header'}>
+      {org.banner_url && <img class="banner-image" src={org.banner_url} alt={`${org.name} banner`} />}
+      <div class="avatar-wrapper">
+        {org.avatar_url
+          ? <img class="avatar-image" src={org.avatar_url} alt={`${org.name} avatar`} />
+          : <div class="avatar-fallback" style={`background: ${getAvatarColor(org.slug)};`}>{org.name.charAt(0).toUpperCase()}</div>
+        }
+      </div>
+      <div class="org-content">
+        <div class="org-slug">@{org.slug}</div>
+        <h1 class="org-name">{org.name}</h1>
+        {org.description && <p class="org-description">{org.description}</p>}
+        <div class="org-stats">
+          <div class="stat">
+            <span class="stat-value">{memberCount}</span>
+            <span class="stat-label">members</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">{(packages ?? []).length}</span>
+            <span class="stat-label">packages</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">{teams.length}</span>
+            <span class="stat-label">teams</span>
+          </div>
         </div>
       </div>
     </div>

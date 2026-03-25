@@ -1,0 +1,441 @@
+---
+import Base from '../../../layouts/Base.astro'
+import { getPackageVersions } from '../../../lib/db.js'
+import { computeDiff, hasChanges, hasDependencyChanges } from '../../../lib/diff.js'
+
+const { name } = Astro.params
+const versions = await getPackageVersions(name!)
+
+if (versions.length === 0) return Astro.redirect('/packages')
+
+// Get v1 and v2 from query params, with defaults
+const v1Param = Astro.url.searchParams.get('v1')
+const v2Param = Astro.url.searchParams.get('v2')
+
+const latest = versions[0]
+const secondLatest = versions[1] ?? latest
+
+// Default v2 to latest, v1 to second-latest
+const v2Version = v2Param ?? latest.version
+const v1Version = v1Param ?? (versions.length > 1 ? secondLatest.version : latest.version)
+
+// Find the version objects
+const v1Data = versions.find(v => v.version === v1Version)
+const v2Data = versions.find(v => v.version === v2Version)
+
+// Handle version not found
+if (!v1Data || !v2Data) {
+  return new Response(
+    `Version ${!v1Data ? v1Version : v2Version} not found for package ${name}.`,
+    { status: 404 }
+  )
+}
+
+// Handle identical versions
+const isIdentical = v1Version === v2Version
+
+// Compute diff if not identical
+const diff = isIdentical ? null : computeDiff(v1Data, v2Data)
+
+const pageTitle = isIdentical
+  ? `${name} — identical versions`
+  : `Comparing ${name} v${v1Version} → v${v2Version}`
+---
+
+<Base title={pageTitle} description={`Diff view for ${name}`}>
+  <style>
+    .back {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      display: inline-block;
+      margin-bottom: 2rem;
+    }
+    .back:hover { color: var(--text); opacity: 1; }
+
+    .page-header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.75rem;
+      margin-bottom: 2rem;
+    }
+
+    .page-title {
+      font-family: var(--font-mono);
+      font-size: 1.5rem;
+      font-weight: 600;
+      letter-spacing: -0.04em;
+      margin-bottom: 0.5rem;
+    }
+
+    .pkg-name { color: var(--accent); }
+
+    .version-selectors {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .selector-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .selector-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .version-select {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      padding: 0.5rem 2rem 0.5rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M3 4l3 4 3-4H3z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.5rem center;
+      min-width: 120px;
+    }
+
+    .version-select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .swap-btn {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.4rem 0.75rem;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .swap-btn:hover { color: var(--text); border-color: var(--text); }
+
+    .arrow {
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      color: var(--muted);
+    }
+
+    .diff-section {
+      margin-bottom: 2.5rem;
+    }
+
+    .section-heading {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .identical-message {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      padding: 2rem;
+      text-align: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .identical-link {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .identical-link:hover { text-decoration: underline; }
+
+    /* Dependency diff styles */
+    .dep-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+    .dep-item {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      padding: 0.4rem 0.75rem;
+      border-radius: 4px;
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+    }
+
+    .dep-item.added {
+      background: #22c55e20;
+      color: #16a34a;
+    }
+
+    .dep-item.removed {
+      background: #ef444420;
+      color: #dc2626;
+    }
+
+    .dep-item.changed {
+      background: #f59e0b20;
+      color: #d97706;
+    }
+
+    .dep-indicator {
+      font-size: 0.75rem;
+      width: 1.25rem;
+      flex-shrink: 0;
+    }
+
+    .dep-name { color: inherit; }
+    .dep-version { color: var(--muted); }
+
+    .no-changes {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    /* Text diff styles */
+    .text-diff {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      line-height: 1.6;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .diff-line {
+      display: flex;
+      padding: 0.1rem 0.75rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .diff-line.added {
+      background: #22c55e20;
+      color: #16a34a;
+    }
+
+    .diff-line.removed {
+      background: #ef444420;
+      color: #dc2626;
+    }
+
+    .diff-line.context {
+      color: var(--text);
+    }
+
+    .diff-line.hidden {
+      background: var(--surface);
+      color: var(--muted);
+      font-style: italic;
+      justify-content: center;
+      padding: 0.25rem;
+    }
+
+    .line-number {
+      color: var(--muted);
+      min-width: 2.5rem;
+      text-align: right;
+      padding-right: 0.75rem;
+      user-select: none;
+      border-right: 1px solid var(--border);
+      margin-right: 0.75rem;
+    }
+
+    .diff-indicator {
+      width: 1rem;
+      flex-shrink: 0;
+    }
+
+    .show-full-btn {
+      display: block;
+      width: 100%;
+      padding: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      background: var(--surface);
+      border: none;
+      border-top: 1px solid var(--border);
+      cursor: pointer;
+      text-align: center;
+    }
+    .show-full-btn:hover { color: var(--text); }
+
+    @media (max-width: 768px) {
+      .version-selectors {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .arrow {
+        transform: rotate(90deg);
+      }
+    }
+  </style>
+
+  <a class="back" href={`/packages/${name}`}>← {name}</a>
+
+  <div class="page-header">
+    <div class="page-title">
+      {isIdentical ? (
+        <>Versions are <span class="pkg-name">identical</span></>
+      ) : (
+        <>
+          Comparing <span class="pkg-name">v{v1Version}</span>
+          <span style="color: var(--muted)"> → </span>
+          <span class="pkg-name">v{v2Version}</span>
+        </>
+      )}
+    </div>
+  </div>
+
+  <div class="version-selectors">
+    <div class="selector-group">
+      <span class="selector-label">v1</span>
+      <select class="version-select" id="v1-select">
+        {versions.map(v => (
+          <option value={v.version} selected={v.version === v1Version}>
+            {v.version}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    <button class="swap-btn" id="swap-btn">⇄</button>
+
+    <div class="selector-group">
+      <span class="selector-label">v2</span>
+      <select class="version-select" id="v2-select">
+        {versions.map(v => (
+          <option value={v.version} selected={v.version === v2Version}>
+            {v.version}
+          </option>
+        ))}
+      </select>
+    </div>
+  </div>
+
+  {isIdentical ? (
+    <div class="identical-message">
+      <p>These versions are identical.</p>
+      <p style="margin-top: 0.5rem;">
+        <a class="identical-link" href={`/packages/${name}`}>← Back to package page</a>
+      </p>
+    </div>
+  ) : (
+    <>
+      {/* Description Section */}
+      <div class="diff-section">
+        <p class="section-heading">description</p>
+        {diff!.description.lines.length === 0 || !hasChanges(diff!.description) ? (
+          <p class="no-changes">No description recorded for these versions.</p>
+        ) : (
+          <div class="text-diff">
+            {diff!.description.lines.map(line => (
+              <div class={`diff-line ${line.type}`}>
+                <span class="line-number">{line.lineNumber}</span>
+                <span class="diff-indicator">{line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' '}</span>
+                <span>{line.content}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Dependencies Section */}
+      <div class="diff-section">
+        <p class="section-heading">dependencies</p>
+        {!hasDependencyChanges(diff!.dependencies) ? (
+          <p class="no-changes">No changes in dependencies.</p>
+        ) : (
+          <div class="dep-list">
+            {diff!.dependencies.added.map(dep => (
+              <div class="dep-item added">
+                <span class="dep-indicator">+</span>
+                <span class="dep-name">{dep.name}</span>
+                <span class="dep-version">{dep.version}</span>
+              </div>
+            ))}
+            {diff!.dependencies.changed.map(dep => (
+              <div class="dep-item changed">
+                <span class="dep-indicator">~</span>
+                <span class="dep-name">{dep.name}</span>
+                <span class="dep-version">{dep.oldVersion} → {dep.newVersion}</span>
+              </div>
+            ))}
+            {diff!.dependencies.removed.map(dep => (
+              <div class="dep-item removed">
+                <span class="dep-indicator">-</span>
+                <span class="dep-name">{dep.name}</span>
+                <span class="dep-version">{dep.version}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* README Section */}
+      <div class="diff-section">
+        <p class="section-heading">readme</p>
+        {diff!.readme.lines.length === 0 || !hasChanges(diff!.readme) ? (
+          <p class="no-changes">No readme recorded for these versions.</p>
+        ) : (
+          <div class="text-diff" id="readme-diff">
+            {diff!.readme.hasCollapsedRegions ? (
+              <>
+                <div class="diff-line hidden">... diff too large, showing changed regions only ...</div>
+              </>
+            ) : null}
+            {diff!.readme.lines.map(line => (
+              <div class={`diff-line ${line.type}`}>
+                <span class="line-number">{line.lineNumber}</span>
+                <span class="diff-indicator">{line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' '}</span>
+                <span>{line.content}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  )}
+
+  <script define:vars={{ packageName: name }}>
+    const v1Select = document.getElementById('v1-select')
+    const v2Select = document.getElementById('v2-select')
+    const swapBtn = document.getElementById('swap-btn')
+
+    function navigateToDiff() {
+      const v1 = v1Select.value
+      const v2 = v2Select.value
+      window.location.href = `/packages/${packageName}/diff?v1=${encodeURIComponent(v1)}&v2=${encodeURIComponent(v2)}`
+    }
+
+    v1Select.addEventListener('change', navigateToDiff)
+    v2Select.addEventListener('change', navigateToDiff)
+
+    swapBtn.addEventListener('click', () => {
+      const v1Val = v1Select.value
+      const v2Val = v2Select.value
+      v1Select.value = v2Val
+      v2Select.value = v1Val
+      navigateToDiff()
+    })
+  </script>
+</Base>

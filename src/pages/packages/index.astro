@@ -1,13 +1,16 @@
 ---
 import Base from '../../layouts/Base.astro'
-import { listAllPackages, listTags, getPackagesByTag } from '../../lib/db.js'
+import { listAllPackages, listTags, getPackagesByTag, getPopularPackages, listPackagesByStars, getStarCounts } from '../../lib/db.js'
 
 const PAGE_SIZE = 20
 
 const selectedTag = Astro.url.searchParams.get('tag') ?? null
+const sort = Astro.url.searchParams.get('sort') ?? 'recent'
 const page = Math.max(1, parseInt(Astro.url.searchParams.get('page') ?? '1'))
 
 let allPackages: Array<{ name: string; latest: any; versionCount: number }> = []
+let popularPackages: Array<{ package_name: string; popularity_score: number; download_count: number; star_count: number; latest_version: string; description: string | null; created_at: string }> = []
+let starSortedPackages: Array<{ packageName: string; starCount: number }> = []
 let totalCount = 0
 
 if (selectedTag) {
@@ -29,6 +32,27 @@ if (selectedTag) {
       new Date(b.latest.published_at).getTime() - new Date(a.latest.published_at).getTime()
     )
   totalCount = allPackages.length
+} else if (sort === 'popular') {
+  // Popular sort: use getPopularPackages RPC
+  popularPackages = await getPopularPackages(PAGE_SIZE, (page - 1) * PAGE_SIZE).catch(() => [])
+  totalCount = popularPackages.length
+} else if (sort === 'stars') {
+  // Stars sort: use listPackagesByStars
+  starSortedPackages = await listPackagesByStars(PAGE_SIZE, (page - 1) * PAGE_SIZE).catch(() => [])
+  // Get package details for the star-sorted packages
+  const { listAllPackages: lap } = await import('../../lib/db.js')
+  const allMap = await lap()
+  // Filter to only packages that exist and have stars
+  allPackages = starSortedPackages
+    .filter(p => allMap[p.packageName])
+    .map(p => {
+      const versions = allMap[p.packageName]
+      const sorted = Object.values(versions).sort((a: any, b: any) =>
+        new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
+      )
+      return { name: p.packageName, latest: sorted[0], versionCount: sorted.length, starCount: p.starCount }
+    })
+  totalCount = allPackages.length
 } else {
   const allPackagesMap = await listAllPackages()
   const entries = Object.entries(allPackagesMap)
@@ -49,7 +73,37 @@ const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
 const clampedPage = Math.min(page, totalPages)
 const packages = allPackages.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE)
 
+// Fetch star counts for packages when not using a sort that already includes them
+let starCounts: Record<string, number> = {}
+if (sort !== 'popular' && sort !== 'stars' && packages.length > 0) {
+  starCounts = await getStarCounts(packages.map(p => p.name)).catch(() => {})
+}
+
+const displayPackages = sort === 'popular'
+  ? popularPackages.map(p => ({
+      name: p.package_name,
+      latest: { version: p.latest_version, description: p.description, published_at: p.created_at },
+      versionCount: 1,
+      starCount: p.star_count,
+      downloadCount: p.download_count,
+      popularityScore: p.popularity_score,
+    }))
+  : packages.map(p => ({
+      ...p,
+      starCount: sort === 'stars' ? p.starCount ?? 0 : starCounts[p.name] ?? 0,
+      downloadCount: 0,
+      popularityScore: 0
+    }))
+
 const allTags = await listTags().catch(() => [])
+
+function buildPageUrl(p: number) {
+  const params = new URLSearchParams()
+  params.set('page', String(p))
+  if (sort !== 'recent') params.set('sort', sort)
+  if (selectedTag) params.set('tag', selectedTag)
+  return `/packages?${params.toString()}`
+}
 ---
 <Base title="Packages">
   <style>
@@ -133,6 +187,20 @@ const allTags = await listTags().catch(() => [])
       margin-top: 0.2rem;
     }
 
+    .pkg-stars {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: #f59e0b;
+      margin-left: 0.5rem;
+    }
+
+    .pkg-dl {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+
     .empty {
       font-family: var(--font-mono);
       font-size: 0.875rem;
@@ -183,6 +251,37 @@ const allTags = await listTags().catch(() => [])
     }
 
     .search-bar { margin-bottom: 1.5rem; }
+
+    .sort-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .sort-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .sort-link {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      text-decoration: none;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .sort-link:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+    .sort-link.active {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
     .search-bar input {
       width: 100%;
       background: var(--surface);
@@ -277,6 +376,13 @@ const allTags = await listTags().catch(() => [])
     </div>
   )}
 
+  <div class="sort-bar">
+    <span class="sort-label">sort by:</span>
+    <a class={`sort-link${sort === 'recent' ? ' active' : ''}`} href={`/packages?page=1${selectedTag ? '&tag=' + encodeURIComponent(selectedTag) : ''}`}>recent</a>
+    <a class={`sort-link${sort === 'popular' ? ' active' : ''}`} href={`/packages?page=1&sort=popular${selectedTag ? '&tag=' + encodeURIComponent(selectedTag) : ''}`}>popular</a>
+    <a class={`sort-link${sort === 'stars' ? ' active' : ''}`} href={`/packages?page=1&sort=stars${selectedTag ? '&tag=' + encodeURIComponent(selectedTag) : ''}`}>stars</a>
+  </div>
+
   <div class="search-bar">
     <input
       id="search-input"
@@ -289,19 +395,25 @@ const allTags = await listTags().catch(() => [])
   <div class="layout">
     <div>
       <div id="pkg-list" class="pkg-list">
-        {packages.length === 0
+        {displayPackages.length === 0
           ? <p class="empty">{selectedTag ? 'no packages with this tag.' : 'no packages published yet.'}</p>
           : <>
-              {packages.map(pkg => (
+              {displayPackages.map(pkg => (
                 <a class="pkg-card" href={`/packages/${pkg.name}`}>
                   <div class="pkg-left">
                     <span class="pkg-name">{pkg.name}</span>
                     <span class="pkg-versions">{pkg.versionCount} version{pkg.versionCount !== 1 ? 's' : ''}</span>
                     {pkg.latest.description && <span class="pkg-description">{pkg.latest.description}</span>}
+                    {(sort === 'popular' || sort === 'stars') && pkg.starCount > 0 && (
+                      <span class="pkg-stars">★ {pkg.starCount}</span>
+                    )}
                   </div>
                   <div class="pkg-right">
                     <div class="pkg-ver">v{pkg.latest.version}</div>
                     <div class="pkg-date">{new Date(pkg.latest.published_at).toLocaleDateString()}</div>
+                    {sort === 'popular' && pkg.downloadCount > 0 && (
+                      <div class="pkg-dl">{pkg.downloadCount.toLocaleString()} dl</div>
+                    )}
                   </div>
                 </a>
               ))}
@@ -310,20 +422,20 @@ const allTags = await listTags().catch(() => [])
                 <nav class="pagination" aria-label="Pagination">
                   <a
                     class={`page-btn${clampedPage === 1 ? ' disabled' : ''}`}
-                    href={`/packages?page=${clampedPage - 1}${selectedTag ? '&tag=' + encodeURIComponent(selectedTag) : ''}`}
+                    href={buildPageUrl(clampedPage - 1)}
                     aria-label="Previous page"
                   >←</a>
 
                   {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
                     <a
                       class={`page-btn${p === clampedPage ? ' active' : ''}`}
-                      href={`/packages?page=${p}${selectedTag ? '&tag=' + encodeURIComponent(selectedTag) : ''}`}
+                      href={buildPageUrl(p)}
                     >{p}</a>
                   ))}
 
                   <a
                     class={`page-btn${clampedPage === totalPages ? ' disabled' : ''}`}
-                    href={`/packages?page=${clampedPage + 1}${selectedTag ? '&tag=' + encodeURIComponent(selectedTag) : ''}`}
+                    href={buildPageUrl(clampedPage + 1)}
                     aria-label="Next page"
                   >→</a>
                 </nav>
