@@ -11,7 +11,11 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
     import { createClient } from '@supabase/supabase-js'
 
     const root = document.getElementById('root')!
-    const supabase = createClient(root.dataset.url!, root.dataset.key!)
+    // Disable auto session detection - we handle the OAuth callback explicitly
+    // Use PKCE flow for better security
+    const supabase = createClient(root.dataset.url!, root.dataset.key!, {
+      auth: { detectSessionInUrl: false, flowType: 'pkce' }
+    })
     const status = document.getElementById('status')!
 
     const params = new URLSearchParams(location.search)
@@ -19,38 +23,50 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
     const callbackUrl = params.get('callback')
 
     if (code && callbackUrl) {
-      // Returning from OAuth — exchange code (PKCE verifier is in localStorage)
+      // Returning from OAuth — exchange code
       status.textContent = 'Exchanging code…'
-      const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-      if (error || !data.session) {
-        status.textContent = 'Auth failed: ' + (error?.message ?? 'no session')
-      } else {
-        // Ask server to issue a CLI token using this access token
-        status.textContent = 'Issuing token…'
-        const res = await fetch('/api/auth/cli-token', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${data.session.access_token}` }
-        })
-        if (!res.ok) {
-          status.textContent = 'Token issuance failed: ' + res.status
+      try {
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+        if (error || !data.session) {
+          status.textContent = 'Auth failed: ' + (error?.message ?? 'no session')
+          console.error('Auth exchange error:', error)
         } else {
-          const { token, username } = await res.json()
-          const dest = new URL(callbackUrl)
-          dest.searchParams.set('token', token)
-          dest.searchParams.set('username', username)
-          status.textContent = 'Done! You can close this tab.'
-          window.location.href = dest.toString()
+          // Ask server to issue a CLI token using this access token
+          status.textContent = 'Issuing token…'
+          const res = await fetch('/api/auth/cli-token', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${data.session.access_token}` }
+          })
+          if (!res.ok) {
+            const body = await res.text()
+            status.textContent = 'Token issuance failed: ' + res.status + ' - ' + body
+          } else {
+            const { token, username } = await res.json()
+            const dest = new URL(callbackUrl)
+            dest.searchParams.set('token', token)
+            dest.searchParams.set('username', username)
+            status.textContent = 'Done! You can close this tab.'
+            window.location.href = dest.toString()
+          }
         }
+      } catch (e) {
+        status.textContent = 'Auth exchange threw: ' + (e instanceof Error ? e.message : String(e))
+        console.error('Auth exchange threw:', e)
       }
     } else if (callbackUrl) {
       // First visit — start OAuth
       status.textContent = 'Redirecting to GitHub…'
       const redirectTo = new URL('/cli-auth', location.origin)
       redirectTo.searchParams.set('callback', callbackUrl)
-      await supabase.auth.signInWithOAuth({
-        provider: 'github',
-        options: { redirectTo: redirectTo.toString() }
-      })
+      try {
+        await supabase.auth.signInWithOAuth({
+          provider: 'github',
+          options: { redirectTo: redirectTo.toString() }
+        })
+      } catch (e) {
+        status.textContent = 'OAuth error: ' + (e instanceof Error ? e.message : String(e))
+        console.error('OAuth error:', e)
+      }
     } else {
       status.textContent = 'Missing callback parameter.'
     }
