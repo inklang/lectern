@@ -501,3 +501,64 @@ export async function listPackagesByStars(
   if (error) throw error
   return (data ?? []).map(r => ({ packageName: r.name, starCount: r.star_count ?? 0 }))
 }
+
+// === Ecosystem Health ===
+
+export interface PackageHealth {
+  package_name: string;
+  computed_at: string;
+  maintenance_score: number;
+  maintenance_status: HealthStatus;
+  popularity_score: number;
+  popularity_status: HealthStatus;
+  quality_score: number;
+  quality_status: HealthStatus;
+  compliance_score: number;
+  compliance_status: HealthStatus;
+  health_score: number;
+  health_status: HealthStatus;
+  last_release_at: string | null;
+  release_frequency_days: number | null;
+  open_issue_count: number;
+  downloads_7d: number;
+  downloads_30d: number;
+  star_count: number;
+  dependent_count: number;
+  has_readme: boolean;
+  has_tests: boolean;
+  has_changelog: boolean;
+  known_vuln_count: number;
+  has_badge: boolean;
+  license_compatible: boolean;
+  ink_version_ok: boolean;
+  deprecated_dep_count: number;
+}
+
+export type HealthStatus = 'excellent' | 'good' | 'fair' | 'poor' | 'unknown';
+
+export interface HealthLeadersResult {
+  package_name: string;
+  health_score: number;
+  health_status: HealthStatus;
+  maintenance_status: HealthStatus;
+  popularity_status: HealthStatus;
+  quality_status: HealthStatus;
+  compliance_status: HealthStatus;
+}
+
+export async function getPackageHealth(packageName: string): Promise<PackageHealth | null> {
+  const { data, error } = await supabase.rpc('get_package_health', { p_package_name: packageName });
+  if (error) throw error;
+  return data as PackageHealth | null;
+}
+
+export async function getHealthLeaders(limit = 5): Promise<HealthLeadersResult[]> {
+  const { data, error } = await supabase.rpc('get_health_leaders', { p_limit: limit });
+  if (error) throw error;
+  return (data ?? []) as HealthLeadersResult[];
+}
+
+export async function computePackageHealth(packageName: string): Promise<void> {
+  const { error } = await supabase.rpc('compute_package_health', { p_package_name: packageName });
+  if (error) throw error;
+}
