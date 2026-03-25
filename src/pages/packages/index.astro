@@ -263,24 +263,23 @@ function buildPageUrl(p: number) {
       font-size: 0.75rem;
       color: var(--muted);
     }
-    .sort-link {
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
+    .sort-select {
+      background: var(--surface);
       border: 1px solid var(--border);
-      color: var(--muted);
-      text-decoration: none;
-      transition: border-color 0.15s, color 0.15s;
-    }
-    .sort-link:hover {
-      border-color: var(--accent);
+      border-radius: 6px;
+      padding: 0.3rem 0.6rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
       color: var(--text);
+      cursor: pointer;
+      outline: none;
+      appearance: none;
+      padding-right: 1.75rem;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.5rem center;
     }
-    .sort-link.active {
-      border-color: var(--accent);
-      color: var(--accent);
-    }
+    .sort-select:focus { border-color: var(--accent); }
 
     .search-bar input {
       width: 100%;
@@ -378,9 +377,11 @@ function buildPageUrl(p: number) {
 
   <div class="sort-bar">
     <span class="sort-label">sort by:</span>
-    <a class={`sort-link${sort === 'recent' ? ' active' : ''}`} href={`/packages?page=1${selectedTag ? '&tag=' + encodeURIComponent(selectedTag) : ''}`}>recent</a>
-    <a class={`sort-link${sort === 'popular' ? ' active' : ''}`} href={`/packages?page=1&sort=popular${selectedTag ? '&tag=' + encodeURIComponent(selectedTag) : ''}`}>popular</a>
-    <a class={`sort-link${sort === 'stars' ? ' active' : ''}`} href={`/packages?page=1&sort=stars${selectedTag ? '&tag=' + encodeURIComponent(selectedTag) : ''}`}>stars</a>
+    <select class="sort-select" id="sort-select">
+      <option value="recent" selected={sort === 'recent'}>recent</option>
+      <option value="popular" selected={sort === 'popular'}>popular</option>
+      <option value="stars" selected={sort === 'stars'}>stars</option>
+    </select>
   </div>
 
   <div class="search-bar">
@@ -461,6 +462,18 @@ function buildPageUrl(p: number) {
 
   <script>
     const input = document.getElementById('search-input') as HTMLInputElement
+    const sortSelect = document.getElementById('sort-select') as HTMLSelectElement
+
+    sortSelect.addEventListener('change', () => {
+      const params = new URLSearchParams(location.search)
+      params.set('page', '1')
+      if (sortSelect.value === 'recent') {
+        params.delete('sort')
+      } else {
+        params.set('sort', sortSelect.value)
+      }
+      location.href = `/packages?${params.toString()}`
+    })
     const list = document.getElementById('pkg-list') as HTMLDivElement
     // Capture initial HTML before any search modifies it
     const initialHtml = list.innerHTML
