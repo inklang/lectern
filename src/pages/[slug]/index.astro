@@ -1,6 +1,6 @@
 ---
-import Base from '../../layouts/Base.astro'
-import { getOrgBySlug, getUserByUsername } from '../../lib/orgs.js'
+import Base from '~/layouts/Base.astro'
+import { getOrgBySlug, getUserByUsername } from '~/lib/orgs.js'
 
 const { slug } = Astro.params
 const org = await getOrgBySlug(slug!)
@@ -8,7 +8,7 @@ const user = !org ? await getUserByUsername(slug!) : null
 
 if (!org && !user) return Astro.redirect('/packages')
 
-const { supabase } = await import('../../lib/supabase.js')
+const { supabase } = await import('~/lib/supabase.js')
 
 // Fetch packages for org or user
 const ownerId = org ? org.id : user!.id

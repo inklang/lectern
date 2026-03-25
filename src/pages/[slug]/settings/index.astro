@@ -1,13 +1,13 @@
 ---
-import Base from '../../../layouts/Base.astro'
-import { getOrgBySlug, isOrgAdmin, isOrgOwner, getOrgMembers, getOrgTeams, getOrgInvites } from '../../../lib/orgs.js'
+import Base from '~/layouts/Base.astro'
+import { getOrgBySlug, isOrgAdmin, isOrgOwner, getOrgMembers, getOrgTeams, getOrgInvites } from '~/lib/orgs.js'
 
 const { slug } = Astro.params
 const org = await getOrgBySlug(slug!)
 
 if (!org) return Astro.redirect('/packages')
 
-const { supabaseAnon } = await import('../../../lib/supabase.js')
+const { supabaseAnon } = await import('~/lib/supabase.js')
 const { data: sessionData } = await supabaseAnon.auth.getSession()
 if (!sessionData?.session) return Astro.redirect('/login')
 

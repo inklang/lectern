@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro'
-import { getUserStars } from '../../../lib/db.js'
+import { getUserStars } from '../../../../lib/db.js'
 
 // GET /api/users/:userId/stars - List packages a user has starred
 // Public endpoint

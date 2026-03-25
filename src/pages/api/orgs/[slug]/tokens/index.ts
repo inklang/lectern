@@ -1,8 +1,8 @@
 import type { APIRoute } from 'astro'
 import { createServerClient, parseCookieHeader } from '@supabase/ssr'
-import { getOrgBySlug, isOrgAdmin } from '../../../../lib/orgs.js'
-import { listOrgApiTokens, revokeOrgApiToken } from '../../../../lib/api-tokens.js'
-import { logAuditEvent } from '../../../../lib/audit.js'
+import { getOrgBySlug, isOrgAdmin } from '../../../../../lib/orgs.js'
+import { listOrgApiTokens, revokeOrgApiToken } from '../../../../../lib/api-tokens.js'
+import { logAuditEvent } from '../../../../../lib/audit.js'
 
 export const GET: APIRoute = async ({ params, request }) => {
   const { slug } = params
