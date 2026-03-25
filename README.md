@@ -2,7 +2,7 @@
 
 Package registry server and frontend for the [Ink](https://github.com/inklang/ink) programming language. Powers [lectern.inklang.org](https://lectern.inklang.org).
 
-Built with [Astro](https://astro.build) in SSR mode with the Node standalone adapter.
+Built with [Astro](https://astro.build) in SSR mode with the [@astrojs/vercel](https://docs.astro.build/en/guides/integrations-guide/vercel/) adapter. Deployed to [lectern.inklang.org](https://lectern.inklang.org).
 
 ## API
 
@@ -58,40 +58,13 @@ Download a package tarball.
 |---|---|---|
 | `BASE_URL` | `https://lectern.inklang.org` | Public base URL, used to construct tarball download URLs |
 | `LECTERN_TOKENS` | — | Comma-separated static bearer tokens (legacy admin auth) |
-| `STORAGE_DIR` | `./storage` | Directory for `index.json` and tarballs |
-| `HOST` | `0.0.0.0` | Bind address |
-| `PORT` | `4321` | Port |
-
-## Storage layout
-
-```
-storage/
-  index.json          # package index, owners, registered keys
-  tarballs/
-    ink.mobs/
-      ink.mobs-0.1.0.tar.gz
-```
-
-The `storage/` directory should be kept outside the repo and persisted across deploys (Docker named volume in production).
 
 ## Deploying
 
-Requires Docker and Docker Compose.
+Deployed automatically via Vercel when changes are pushed to `master`.
 
 ```bash
-# Clone and run deploy script — generates token automatically on first run
-git clone https://github.com/inklang/lectern.git /opt/lectern/repo
-bash /opt/lectern/repo/scripts/deploy.sh
-```
-
-To redeploy after a code change:
-```bash
-bash /opt/lectern/repo/scripts/deploy.sh
-```
-
-To rotate the publish token:
-```bash
-bash /opt/lectern/repo/scripts/rotate-token.sh
+git push origin master
 ```
 
 ## Development
