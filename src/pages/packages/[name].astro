@@ -688,7 +688,6 @@ const userId = session?.user?.id ?? null
     const compareV1 = document.getElementById('compare-v1')
     const compareV2 = document.getElementById('compare-v2')
     const compareBtn = document.getElementById('compare-btn')
-    const packageName = document.querySelector('.pkg-name')?.textContent
 
     let selectedVersions: string[] = []
 
@@ -755,7 +754,7 @@ const userId = session?.user?.id ?? null
     // Star button functionality
     const starBtn = document.getElementById('star-btn')
     const starCountEl = document.getElementById('star-count')
-    const packageName = starBtn?.dataset.package
+    const packageName = starBtn?.dataset.package ?? document.querySelector('.pkg-name')?.textContent
 
     async function fetchStarStatus() {
       if (!packageName) return
