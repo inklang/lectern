@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro'
-import { extractBearer, resolveToken } from '../../../../../../lib/tokens.js'
-import { canUserPublish } from '../../../../../../lib/authz.js'
-import { removePackageTag } from '../../../../../../lib/db.js'
+import { extractBearer, resolveToken } from '../../../../../lib/tokens.js'
+import { canUserPublish } from '../../../../../lib/authz.js'
+import { removePackageTag } from '../../../../../lib/db.js'
 
 export const DELETE: APIRoute = async ({ params, request }) => {
   const { name, tag } = params

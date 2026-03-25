@@ -1,8 +1,8 @@
 import type { APIRoute } from 'astro'
-import { extractBearer, resolveToken } from '../../../../../../lib/tokens.js'
-import { getOrgBySlug, isOrgAdmin } from '../../../../../../lib/orgs.js'
-import { updateWebhook, deleteWebhook } from '../../../../../../lib/webhooks.js'
-import { logAuditEvent } from '../../../../../../lib/audit.js'
+import { extractBearer, resolveToken } from '../../../../../lib/tokens.js'
+import { getOrgBySlug, isOrgAdmin } from '../../../../../lib/orgs.js'
+import { updateWebhook, deleteWebhook } from '../../../../../lib/webhooks.js'
+import { logAuditEvent } from '../../../../../lib/audit.js'
 
 export const PUT: APIRoute = async ({ params, request }) => {
   const { slug, id } = params as { slug: string; id: string }
