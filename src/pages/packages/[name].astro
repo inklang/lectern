@@ -34,6 +34,27 @@ const supabase = createServerClient(
 )
 const { data: { session } } = await supabase.auth.getSession()
 const userId = session?.user?.id ?? null
+
+// Check if user is org admin for this package
+let isOrgAdmin = false
+if (userId && owner) {
+  const { data: pkg } = await supabase
+    .from('packages')
+    .select('owner_id, owner_type')
+    .eq('name', name!)
+    .single()
+
+  if (pkg && pkg.owner_type === 'org') {
+    const { data: member } = await supabase
+      .from('org_members')
+      .select('role')
+      .eq('org_id', pkg.owner_id)
+      .eq('user_id', userId)
+      .single()
+
+    isOrgAdmin = member?.role === 'owner' || member?.role === 'admin'
+  }
+}
 ---
 <Base title={name!} description={`${name} — Ink package`}>
   <style>
@@ -493,6 +514,87 @@ const userId = session?.user?.id ?? null
       color: var(--accent);
       opacity: 1;
     }
+
+    .pending-releases-section {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .pending-releases-heading {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.875rem;
+    }
+
+    .pending-release {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+    }
+
+    .pending-release:last-child { border-bottom: none; }
+
+    .pending-release-version {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .pending-release-meta {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    .pending-release-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .pending-release-btn {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: transparent;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+
+    .pending-release-btn.approve {
+      border-color: #22c55e;
+      color: #22c55e;
+    }
+
+    .pending-release-btn.approve:hover {
+      background: rgba(34, 197, 94, 0.1);
+    }
+
+    .pending-release-btn.reject {
+      border-color: #ef4444;
+      color: #ef4444;
+    }
+
+    .pending-release-btn.reject:hover {
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    .no-pending-releases {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
   </style>
 
   <a class="back" href="/packages">← packages</a>
@@ -658,6 +760,15 @@ const userId = session?.user?.id ?? null
     </div>
   </div>
 
+  {isOrgAdmin && (
+    <div class="section">
+      <div class="pending-releases-section" id="pending-releases-section" style="display: none;">
+        <p class="pending-releases-heading">Pending Releases</p>
+        <div id="pending-releases-list"></div>
+      </div>
+    </div>
+  )}
+
   {versions.length > 1 && (
     <div class="compare-footer" id="compare-footer">
       <span class="compare-text">
@@ -819,5 +930,80 @@ const userId = session?.user?.id ?? null
 
     // Fetch initial star status
     fetchStarStatus()
+
+    // Pending releases functionality (for org admins)
+    const pendingSection = document.getElementById('pending-releases-section')
+
+    async function loadPendingReleases(name: string) {
+      if (!pendingSection) return
+
+      try {
+        const res = await fetch(`/api/packages/${encodeURIComponent(name)}/releases/pending`)
+        if (!res.ok) return
+
+        const { releases } = await res.json()
+        const list = document.getElementById('pending-releases-list')
+
+        if (!releases || releases.length === 0) {
+          pendingSection.style.display = 'none'
+          return
+        }
+
+        pendingSection.style.display = 'block'
+        list.innerHTML = releases.map((r: { version: string, requested_by: string, created_at: string }) => `
+          <div class="pending-release">
+            <span class="pending-release-version">${r.version}</span>
+            <span class="pending-release-meta">by ${r.requested_by} · ${new Date(r.created_at).toLocaleDateString()}</span>
+            <div class="pending-release-actions">
+              <button class="pending-release-btn approve" onclick="approveRelease('${r.version}')">Approve</button>
+              <button class="pending-release-btn reject" onclick="rejectRelease('${r.version}')">Reject</button>
+            </div>
+          </div>
+        `).join('')
+      } catch {
+        // Silently fail - section stays hidden
+      }
+    }
+
+    window.approveRelease = async function(version: string) {
+      if (!packageName) return
+      try {
+        const res = await fetch(`/api/packages/${encodeURIComponent(packageName)}/releases/pending/${encodeURIComponent(version)}/approve`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${starBtn?.dataset.token ?? ''}`
+          }
+        })
+
+        if (res.ok) {
+          loadPendingReleases(packageName)
+        }
+      } catch {
+        // Silently fail
+      }
+    }
+
+    window.rejectRelease = async function(version: string) {
+      if (!packageName) return
+      try {
+        const res = await fetch(`/api/packages/${encodeURIComponent(packageName)}/releases/pending/${encodeURIComponent(version)}/reject`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${starBtn?.dataset.token ?? ''}`
+          }
+        })
+
+        if (res.ok) {
+          loadPendingReleases(packageName)
+        }
+      } catch {
+        // Silently fail
+      }
+    }
+
+    // Load pending releases if user is org admin
+    if (pendingSection) {
+      loadPendingReleases(packageName ?? '')
+    }
   </script>
 </Base>
