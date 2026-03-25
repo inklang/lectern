@@ -1,11 +1,21 @@
 ---
 import Base from '../../layouts/Base.astro'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 
 const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
 const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
 
-const { data: sessionData } = await (await import('../../lib/supabase.js')).supabaseAnon.auth.getSession()
-if (!sessionData?.session) return Astro.redirect('/login?return=/orgs/new')
+const supabase = createServerClient(supabaseUrl, supabaseKey, {
+  cookies: {
+    getAll() { return parseCookieHeader(Astro.request.headers.get('Cookie') ?? '') },
+    setAll() {},
+  },
+})
+
+const { data: { user } } = await supabase.auth.getUser()
+if (!user) return Astro.redirect('/login?return=/new')
+
+const accessToken = (await supabase.auth.getSession()).data.session?.access_token ?? ''
 ---
 <Base title="Create Organization">
   <style>
@@ -131,7 +141,7 @@ if (!sessionData?.session) return Astro.redirect('/login?return=/orgs/new')
     }
   </style>
 
-  <div id="new-org-container" data-url={supabaseUrl} data-key={supabaseKey}>
+  <div id="new-org-container" data-url={supabaseUrl} data-key={supabaseKey} data-token={accessToken}>
     <a class="back-link" href="/packages">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
       back
@@ -159,7 +169,7 @@ if (!sessionData?.session) return Astro.redirect('/login?return=/orgs/new')
             maxlength="32"
             required
           />
-          <div class="slug-preview">lectern.sh/orgs/<span id="slug-preview-text">—</span></div>
+          <div class="slug-preview">lectern.sh/<span id="slug-preview-text">—</span></div>
           <div class="form-hint">lowercase letters, numbers, and hyphens only</div>
         </div>
 
@@ -196,7 +206,11 @@ if (!sessionData?.session) return Astro.redirect('/login?return=/orgs/new')
     const container = document.getElementById('new-org-container')!
     const supabaseUrl = container.dataset.url!
     const supabaseKey = container.dataset.key!
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    const accessToken = container.dataset.token!
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      global: { headers: { Authorization: `Bearer ${accessToken}` } },
+      auth: { persistSession: false },
+    })
 
     const form = document.getElementById('org-form') as HTMLFormElement
     const slugInput = document.getElementById('slug-input') as HTMLInputElement
@@ -249,24 +263,17 @@ if (!sessionData?.session) return Astro.redirect('/login?return=/orgs/new')
       }
 
       try {
-        // Get session for Bearer token
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) {
-          window.location.href = '/login?return=/orgs/new'
-          return
-        }
-
         const res = await fetch('/api/orgs', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
+            'Authorization': `Bearer ${accessToken}`,
           },
           body: JSON.stringify({ slug, name, description }),
         })
 
         if (res.ok) {
-          window.location.href = `/orgs/${encodeURIComponent(slug)}`
+          window.location.href = `/${encodeURIComponent(slug)}`
           return
         }
 

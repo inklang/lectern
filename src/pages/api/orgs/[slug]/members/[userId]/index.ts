@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro'
-import { extractBearer, resolveToken } from '../../../../../../lib/tokens.js'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 import { getOrgBySlug, updateOrgMemberRole, removeOrgMember, isOrgAdmin, isOrgOwner, getOrgMembers } from '../../../../../../lib/orgs.js'
 import { logAuditEvent } from '../../../../../../lib/audit.js'
 
@@ -7,10 +7,19 @@ export const PUT: APIRoute = async ({ params, request }) => {
   const { slug, userId } = params
   if (!slug || !userId) return new Response('Not found', { status: 404 })
 
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) return new Response('Unauthorized', { status: 401 })
-  const currentUserId = await resolveToken(raw)
-  if (!currentUserId) return new Response('Unauthorized', { status: 401 })
+  const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
+  const supabaseKey = import.meta.env.SUPABASE_SECRET_KEY ?? ''
+
+  const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    cookies: {
+      getAll() { return parseCookieHeader(request.headers.get('Cookie') ?? '') },
+      setAll() {},
+    },
+  })
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return new Response('Unauthorized', { status: 401 })
+  const currentUserId = user.id
 
   const org = await getOrgBySlug(slug)
   if (!org) return new Response('Not found', { status: 404 })
@@ -64,10 +73,19 @@ export const DELETE: APIRoute = async ({ params, request }) => {
   const { slug, userId } = params
   if (!slug || !userId) return new Response('Not found', { status: 404 })
 
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) return new Response('Unauthorized', { status: 401 })
-  const currentUserId = await resolveToken(raw)
-  if (!currentUserId) return new Response('Unauthorized', { status: 401 })
+  const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
+  const supabaseKey = import.meta.env.SUPABASE_SECRET_KEY ?? ''
+
+  const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    cookies: {
+      getAll() { return parseCookieHeader(request.headers.get('Cookie') ?? '') },
+      setAll() {},
+    },
+  })
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return new Response('Unauthorized', { status: 401 })
+  const currentUserId = user.id
 
   const org = await getOrgBySlug(slug)
   if (!org) return new Response('Not found', { status: 404 })

@@ -14,12 +14,12 @@ if (!sessionData?.session) return Astro.redirect('/login')
 
 const currentUserId = sessionData.session.user.id
 const isAdmin = await isOrgAdmin(org.id, currentUserId)
-if (!isAdmin) return Astro.redirect(`/orgs/${slug}`)
+if (!isAdmin) return Astro.redirect(`/${slug}`)
 
 // Get teams and find the requested team
 const teams = await getOrgTeams(org.id)
 const team = teams.find(t => t.id === teamId)
-if (!team) return Astro.redirect(`/orgs/${slug}/settings`)
+if (!team) return Astro.redirect(`/${slug}/settings`)
 
 // Get team members
 const teamMembers = await getTeamMembers(team.id)
@@ -267,7 +267,7 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
   </style>
 
   <div class="settings-wrap" id="settings-container" data-url={supabaseUrl} data-key={supabaseKey}>
-    <a class="back-link" href={`/orgs/${org.slug}/settings`}>
+    <a class="back-link" href={`/${org.slug}/settings`}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
       <span id="org-team-name">{org.name} / {team.name}</span>
     </a>
@@ -367,7 +367,7 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     // Get slug and teamId from URL
-    const pathParts = window.location.pathname.replace('/orgs/', '').split('/')
+    const pathParts = window.location.pathname.replace(/^\//, '').split('/')
     const slug = pathParts[0]
     const teamId = pathParts[3]
 
@@ -544,7 +544,7 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
         })
 
         if (res.ok) {
-          window.location.href = `/orgs/${encodeURIComponent(slug)}/settings`
+          window.location.href = `/${encodeURIComponent(slug)}/settings`
         } else {
           const data = await res.json().catch(() => ({}))
           deleteError.textContent = data?.error ?? 'Failed to delete team.'

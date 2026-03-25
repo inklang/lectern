@@ -1,12 +1,40 @@
 import type { APIRoute } from 'astro'
-import { extractBearer, resolveToken } from '../../../lib/tokens.js'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 import { createOrg, slugAvailable, addOrgMember } from '../../../lib/orgs.js'
 import { logAuditEvent } from '../../../lib/audit.js'
 
 export const POST: APIRoute = async ({ request }) => {
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) return new Response('Unauthorized', { status: 401 })
-  const userId = await resolveToken(raw)
+  const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
+  const supabaseKey = import.meta.env.SUPABASE_SECRET_KEY ?? ''
+
+  // Support both cookie auth (browser) and Bearer token auth (web API calls)
+  const authHeader = request.headers.get('authorization')
+  const isBearerAuth = authHeader?.startsWith('Bearer ') ?? false
+
+  const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    cookies: {
+      getAll() { return parseCookieHeader(request.headers.get('Cookie') ?? '') },
+      setAll() {},
+    },
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  })
+
+  let userId: string | null = null
+
+  if (isBearerAuth) {
+    // Web page sends OAuth session token as Bearer token
+    const { data: { user }, error } = await supabase.auth.getUser(authHeader.slice(7))
+    userId = error ? null : user?.id ?? null
+  } else {
+    // Cookie-based auth (browser)
+    const { data: { user } } = await supabase.auth.getUser()
+    userId = user?.id ?? null
+  }
+
   if (!userId) return new Response('Unauthorized', { status: 401 })
 
   const body = await request.json()

@@ -1,13 +1,22 @@
 import type { APIRoute } from 'astro'
-import { extractBearer, resolveToken } from '../../../../lib/tokens.js'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 import { useInvite, addOrgMember, getOrgById } from '../../../../lib/orgs.js'
 import { logAuditEvent } from '../../../../lib/audit.js'
 
 export const POST: APIRoute = async ({ request }) => {
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) return new Response('Unauthorized', { status: 401 })
-  const userId = await resolveToken(raw)
-  if (!userId) return new Response('Unauthorized', { status: 401 })
+  const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
+  const supabaseKey = import.meta.env.SUPABASE_SECRET_KEY ?? ''
+
+  const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    cookies: {
+      getAll() { return parseCookieHeader(request.headers.get('Cookie') ?? '') },
+      setAll() {},
+    },
+  })
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return new Response('Unauthorized', { status: 401 })
+  const userId = user.id
 
   const body = await request.json()
   const { token } = body
@@ -33,7 +42,7 @@ export const POST: APIRoute = async ({ request }) => {
       action: 'invite.accept',
       resourceType: 'member',
       resourceId: userId,
-      details: { orgSlug: slug },
+      details: { orgSlug: org.slug },
       ipAddress: request.headers.get('x-forwarded-for') ?? null,
       userAgent: request.headers.get('user-agent') ?? null,
     }).catch(() => {})

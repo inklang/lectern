@@ -236,13 +236,21 @@ export async function isOrgOwner(orgId: string, userId: string): Promise<boolean
   return data.role === 'owner'
 }
 
-export async function slugAvailable(slug: string): Promise<boolean> {
+export async function getUserByUsername(username: string): Promise<{ id: string; user_name: string; email: string } | null> {
   const { data } = await supabase
-    .from('orgs')
-    .select('id')
-    .eq('slug', slug)
+    .from('users')
+    .select('id, user_name, email')
+    .eq('user_name', username)
     .single()
-  return !data
+  return data ?? null
+}
+
+export async function slugAvailable(slug: string): Promise<boolean> {
+  const [{ data: orgData }, { data: userData }] = await Promise.all([
+    supabase.from('orgs').select('id').eq('slug', slug).single(),
+    supabase.from('users').select('id').eq('user_name', slug).single(),
+  ])
+  return !orgData && !userData
 }
 
 export async function createInvite(orgId: string, createdBy: string, expiresInHours?: number, maxUses?: number): Promise<{ token: string; url: string }> {
