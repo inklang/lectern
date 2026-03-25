@@ -1,5 +1,6 @@
 ---
 import Base from '../../layouts/Base.astro'
+import ComparePanel from '../../components/ComparePanel.astro'
 import { listAllPackages, listTags, getPackagesByTag, getPopularPackages, listPackagesByStars, getStarCounts } from '../../lib/db.js'
 
 const PAGE_SIZE = 20
@@ -252,34 +253,52 @@ function buildPageUrl(p: number) {
 
     .search-bar { margin-bottom: 1.5rem; }
 
-    .sort-bar {
+    .sort-chips {
       display: flex;
-      align-items: center;
       gap: 0.5rem;
+      flex-wrap: wrap;
       margin-bottom: 1rem;
     }
-    .sort-label {
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      color: var(--muted);
-    }
-    .sort-select {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.3rem 0.6rem;
+    .sort-chip {
       font-family: var(--font-mono);
       font-size: 0.8rem;
-      color: var(--text);
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      color: var(--muted);
       cursor: pointer;
-      outline: none;
-      appearance: none;
-      padding-right: 1.75rem;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 0.5rem center;
+      background: none;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
     }
-    .sort-select:focus { border-color: var(--accent); }
+    .sort-chip:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+    .sort-chip.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(139, 92, 246, 0.08);
+    }
+    .pkg-checkbox-label {
+      display: none;
+      cursor: pointer;
+      flex-shrink: 0;
+      margin-right: 0.25rem;
+      align-items: center;
+    }
+    @media (hover: hover) {
+      .pkg-card:hover .pkg-checkbox-label { display: flex; }
+    }
+    @media (hover: none), (max-width: 768px) {
+      .pkg-checkbox-label { display: flex; }
+    }
+    .pkg-checkbox {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .pkg-card { display: flex; align-items: center; }
 
     .search-bar input {
       width: 100%;
@@ -361,6 +380,54 @@ function buildPageUrl(p: number) {
       margin-left: 0.25rem;
     }
     .tag-filter-remove:hover { color: var(--text); }
+
+    /* Compare bar */
+    .compare-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 0.875rem 2rem;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 150;
+      box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.2);
+      transform: translateY(100%);
+      transition: transform 200ms ease-out;
+    }
+    .compare-bar.visible { display: flex; transform: translateY(0); }
+    .compare-bar-text {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--text);
+    }
+    .compare-bar-actions { display: flex; align-items: center; gap: 0.75rem; }
+    .compare-view-btn {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      padding: 0.5rem 1.25rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .compare-view-btn:hover { opacity: 0.85; }
+    .compare-clear-btn {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      padding: 0.5rem 0.75rem;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .compare-clear-btn:hover { color: var(--text); border-color: var(--text); }
   </style>
 
   <div class="page-header">
@@ -375,13 +442,10 @@ function buildPageUrl(p: number) {
     </div>
   )}
 
-  <div class="sort-bar">
-    <span class="sort-label">sort by:</span>
-    <select class="sort-select" id="sort-select">
-      <option value="recent" selected={sort === 'recent'}>recent</option>
-      <option value="popular" selected={sort === 'popular'}>popular</option>
-      <option value="stars" selected={sort === 'stars'}>stars</option>
-    </select>
+  <div class="sort-chips" id="sort-chips">
+    <button class="sort-chip active" data-sort="recent">recent</button>
+    <button class="sort-chip" data-sort="popular">popular</button>
+    <button class="sort-chip" data-sort="stars">stars</button>
   </div>
 
   <div class="search-bar">
@@ -400,6 +464,9 @@ function buildPageUrl(p: number) {
           ? <p class="empty">{selectedTag ? 'no packages with this tag.' : 'no packages published yet.'}</p>
           : <>
               {displayPackages.map(pkg => (
+                <label class="pkg-checkbox-label" data-package={pkg.name}>
+                  <input type="checkbox" class="pkg-checkbox" value={pkg.name} />
+                </label>
                 <a class="pkg-card" href={`/packages/${pkg.name}`}>
                   <div class="pkg-left">
                     <span class="pkg-name">{pkg.name}</span>
@@ -460,24 +527,96 @@ function buildPageUrl(p: number) {
     </aside>
   </div>
 
+  <div class="compare-bar" id="compare-bar">
+    <span class="compare-bar-text" id="compare-bar-text">Compare (0 packages)</span>
+    <div class="compare-bar-actions">
+      <button class="compare-view-btn" id="compare-view-btn">View Compare</button>
+      <button class="compare-clear-btn" id="compare-clear-btn">×</button>
+    </div>
+  </div>
+
+  <ComparePanel packages={[]} />
+
   <script>
     const input = document.getElementById('search-input') as HTMLInputElement
-    const sortSelect = document.getElementById('sort-select') as HTMLSelectElement
-
-    sortSelect.addEventListener('change', () => {
-      const params = new URLSearchParams(location.search)
-      params.set('page', '1')
-      if (sortSelect.value === 'recent') {
-        params.delete('sort')
-      } else {
-        params.set('sort', sortSelect.value)
-      }
-      location.href = `/packages?${params.toString()}`
-    })
+    const sortChips = document.getElementById('sort-chips') as HTMLDivElement
     const list = document.getElementById('pkg-list') as HTMLDivElement
-    // Capture initial HTML before any search modifies it
-    const initialHtml = list.innerHTML
 
+    const url = new URL(location.href)
+    let activeSort = url.searchParams.get('sort') ?? 'recent'
+    let cachedResults: Array<{ name: string; version: string; description: string | null }> = []
+
+    function esc(s: string): string {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    }
+
+    // ── Sort chip activation ───────────────────────────────────────────────
+    function activateSortChip(sort: string) {
+      sortChips.querySelectorAll('.sort-chip').forEach(c => c.classList.remove('active'))
+      sortChips.querySelector(`[data-sort="${sort}"]`)?.classList.add('active')
+    }
+    activateSortChip(activeSort)
+
+    // ── Sort chip click: navigate to sorted URL ─────────────────────────
+    sortChips.querySelectorAll('.sort-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const newSort = (chip as HTMLButtonElement).dataset.sort ?? 'recent'
+        if (newSort === activeSort) return
+        activeSort = newSort
+        activateSortChip(newSort)
+        const params = new URLSearchParams(location.search)
+        params.set('page', '1')
+        if (newSort === 'recent') params.delete('sort')
+        else params.set('sort', newSort)
+        location.href = `/packages?${params.toString()}`
+      })
+    })
+
+    // ── Compare bar ───────────────────────────────────────────────────────
+    const compareBar = document.getElementById('compare-bar') as HTMLDivElement
+    const compareBarText = document.getElementById('compare-bar-text') as HTMLSpanElement
+    const compareViewBtn = document.getElementById('compare-view-btn') as HTMLButtonElement
+    const compareClearBtn = document.getElementById('compare-clear-btn') as HTMLButtonElement
+
+    let selectedPackages = new Set<string>()
+
+    function updateCompareBar() {
+      const count = selectedPackages.size
+      if (count >= 2) {
+        compareBarText.textContent = `Compare (${count} packages)`
+        compareBar.classList.add('visible')
+      } else {
+        compareBar.classList.remove('visible')
+      }
+    }
+
+    function handleCheckboxChange(e: Event) {
+      const cb = e.target as HTMLInputElement
+      if (cb.checked) selectedPackages.add(cb.value)
+      else selectedPackages.delete(cb.value)
+      updateCompareBar()
+    }
+
+    document.querySelectorAll('.pkg-checkbox').forEach(cb => {
+      cb.addEventListener('change', handleCheckboxChange)
+    })
+
+    compareClearBtn.addEventListener('click', () => {
+      selectedPackages.clear()
+      document.querySelectorAll('.pkg-checkbox').forEach(cb => {
+        (cb as HTMLInputElement).checked = false
+      })
+      updateCompareBar()
+    })
+
+    compareViewBtn.addEventListener('click', () => {
+      if (selectedPackages.size >= 2) {
+        window.dispatchEvent(new CustomEvent('compare:open'))
+      }
+    })
+
+    // ── Search input ───────────────────────────────────────────────────────
+    const initialHtml = list.innerHTML
     let debounce: ReturnType<typeof setTimeout>
 
     input.addEventListener('input', () => {
@@ -486,31 +625,44 @@ function buildPageUrl(p: number) {
 
       if (!q) {
         list.innerHTML = initialHtml
+        cachedResults = []
+        // Re-wire checkboxes on reset
+        document.querySelectorAll('.pkg-checkbox').forEach(cb => {
+          cb.removeEventListener('change', handleCheckboxChange)
+          cb.addEventListener('change', handleCheckboxChange)
+        })
         return
       }
 
       debounce = setTimeout(async () => {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
-        const results = await res.json() as Array<{ name: string; version: string; description: string | null }>
+        const results = await res.json() as typeof cachedResults
+        cachedResults = results
 
         if (!results.length) {
-          list.innerHTML = '<p class="empty">no results.</p>'
+          list.innerHTML = `<p class="empty">no results.</p>`
           return
         }
 
-        function esc(s: string): string {
-          return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-        }
-
         list.innerHTML = results.map(pkg => `
-          <a class="pkg-card" href="/packages/${esc(pkg.name)}">
+          <label class="pkg-checkbox-label">
+            <input type="checkbox" class="pkg-checkbox" value="${esc(pkg.name)}" />
+          </label>
+          <a class="pkg-card" href="/packages/${esc(pkg.name)}" style="flex:1;">
             <div class="pkg-left">
               <span class="pkg-name">${esc(pkg.name)}</span>
               ${pkg.description ? `<span class="pkg-description">${esc(pkg.description)}</span>` : ''}
             </div>
-            <span class="pkg-ver">v${esc(pkg.version)}</span>
+            <div class="pkg-right">
+              <div class="pkg-ver">v${esc(pkg.version)}</div>
+            </div>
           </a>
         `).join('')
+
+        // Wire checkboxes on newly rendered cards
+        document.querySelectorAll('.pkg-checkbox').forEach(cb => {
+          cb.addEventListener('change', handleCheckboxChange)
+        })
       }, 300)
     })
   </script>

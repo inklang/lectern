@@ -1,0 +1,42 @@
+---
+// PackageCardCheckbox.astro — checkbox wrapper for package cards
+interface Props {
+  packageName: string
+}
+
+const { packageName } = Astro.props
+---
+
+<label class="pkg-checkbox-label" data-package={packageName}>
+  <input
+    type="checkbox"
+    class="pkg-checkbox"
+    value={packageName}
+    aria-label={`Select ${packageName} for comparison`}
+  />
+</label>
+
+<style>
+  .pkg-checkbox-label {
+    display: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-right: 0.25rem;
+    align-items: center;
+  }
+  @media (hover: hover) {
+    .sr-card:hover .pkg-checkbox-label,
+    .pkg-card:hover .pkg-checkbox-label {
+      display: flex;
+    }
+  }
+  @media (hover: none), (max-width: 768px) {
+    .pkg-checkbox-label { display: flex; }
+  }
+  .pkg-checkbox {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+</style>
