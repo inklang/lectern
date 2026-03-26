@@ -12,12 +12,16 @@ export const POST: APIRoute = async ({ request }) => {
     })
   }
 
+  const cookiesToSet: { name: string; value: string; options: Record<string, unknown> }[] = []
+
   const supabase = createServerClient(supabaseUrl, supabaseKey, {
     cookies: {
       getAll() {
         return parseCookieHeader(request.headers.get('Cookie') ?? '')
       },
-      setAll() {},
+      setAll(cookies) {
+        cookiesToSet.push(...cookies)
+      },
     },
   })
 
@@ -76,30 +80,49 @@ export const POST: APIRoute = async ({ request }) => {
 
   if (enrollResult.error) {
     if (enrollResult.error.message?.toLowerCase().includes('already exists')) {
-      // Factor already exists - try to get it via listFactors
+      // Factor already exists - refresh session and try to get it via listFactors
+      await supabase.auth.refreshSession()
       const existingFactors = await supabase.auth.mfa.listFactors()
       const verifiedFactors = existingFactors.data?.factors?.filter((f: any) => f.status === 'verified') ?? []
       const unverifiedFactors = existingFactors.data?.factors?.filter((f: any) => f.status === 'unverified') ?? []
       if (verifiedFactors.length > 0) {
         // User already has a verified factor
+        const headers = new Headers({ 'Content-Type': 'application/json' })
+        cookiesToSet.forEach(({ name, value, options }) => {
+          const maxAge = typeof options['maxAge'] === 'number' ? options['maxAge'] : 3600
+          const path = typeof options['path'] === 'string' ? options['path'] : '/'
+          const sameSite = typeof options['sameSite'] === 'string' ? options['sameSite'] : 'Lax'
+          let cookie = `${name}=${value}; Path=${path}; Max-Age=${maxAge}; SameSite=${sameSite}`
+          if (options['secure']) cookie += '; Secure'
+          headers.append('Set-Cookie', cookie)
+        })
         return new Response(JSON.stringify({
           existing: true,
           verified: true,
           id: verifiedFactors[0].id,
         }), {
           status: 200,
-          headers: { 'Content-Type': 'application/json' },
+          headers,
         })
       }
       if (unverifiedFactors.length > 0) {
         // Has unverified factor
+        const headers = new Headers({ 'Content-Type': 'application/json' })
+        cookiesToSet.forEach(({ name, value, options }) => {
+          const maxAge = typeof options['maxAge'] === 'number' ? options['maxAge'] : 3600
+          const path = typeof options['path'] === 'string' ? options['path'] : '/'
+          const sameSite = typeof options['sameSite'] === 'string' ? options['sameSite'] : 'Lax'
+          let cookie = `${name}=${value}; Path=${path}; Max-Age=${maxAge}; SameSite=${sameSite}`
+          if (options['secure']) cookie += '; Secure'
+          headers.append('Set-Cookie', cookie)
+        })
         return new Response(JSON.stringify({
           existing: true,
           verified: false,
           id: unverifiedFactors[0].id,
         }), {
           status: 200,
-          headers: { 'Content-Type': 'application/json' },
+          headers,
         })
       }
       return new Response(JSON.stringify({
