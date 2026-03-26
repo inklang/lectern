@@ -56,9 +56,11 @@ export const POST: APIRoute = async ({ request }) => {
 
   console.error('DEBUG enroll error:', enrollResult.error)
   console.error('DEBUG enroll data keys:', enrollResult.data ? Object.keys(enrollResult.data) : 'no data')
+  console.error('DEBUG enroll data:', JSON.stringify(enrollResult.data))
   console.error('DEBUG enroll id:', enrollResult.data?.id)
   console.error('DEBUG enroll qrCode type:', typeof enrollResult.data?.qrCode)
   console.error('DEBUG enroll qrCode length:', enrollResult.data?.qrCode?.length)
+  console.error('DEBUG enroll qr_code:', enrollResult.data?.qr_code)
   console.error('DEBUG enroll secret:', enrollResult.data?.secret)
 
   if (enrollResult.error) {
