@@ -19,6 +19,10 @@ const username = session?.user.user_metadata?.user_name ?? null
 const allPackagesMap = await listAllPackages()
 const packages = Object.entries(allPackagesMap)
 const totalVersions = packages.reduce((n, [, versions]) => n + Object.keys(versions).length, 0)
+const totalDownloads = packages.reduce(
+  (n, [, versions]) => n + Object.values(versions).reduce((s, v) => s + (v.download_count ?? 0), 0),
+  0
+)
 
 const recent = packages
   .flatMap(([name, versions]) =>
@@ -28,6 +32,7 @@ const recent = packages
   .slice(0, 6)
 
 const trending = await getTrendingPackages(7, 5).catch(() => [])
+const featured = trending.slice(0, 3)
 const popular = await getPopularPackages(5).catch(() => [])
 const allTags = await listTags().catch(() => [])
 ---
@@ -269,6 +274,73 @@ const allTags = await listTags().catch(() => [])
       grid-template-columns: 1fr 1fr 1fr;
       gap: 2rem;
     }
+
+    /* Featured packages */
+    .featured-section {
+      margin-bottom: 2rem;
+    }
+    .featured-heading {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .featured-heading::before {
+      content: '★';
+    }
+    .featured-list {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+    }
+    @media (max-width: 640px) {
+      .featured-list { grid-template-columns: 1fr; }
+    }
+    .featured-card {
+      display: flex;
+      flex-direction: column;
+      padding: 1rem 1.25rem;
+      text-decoration: none;
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .featured-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+      opacity: 1;
+    }
+    .featured-card-name {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+    }
+    .featured-card-desc {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .featured-card-meta {
+      display: flex;
+      gap: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: auto;
+    }
     @media (max-width: 768px) {
       .home-sections { grid-template-columns: 1fr 1fr; }
     }
@@ -441,10 +513,32 @@ const allTags = await listTags().catch(() => [])
           <span class="stat-label">versions</span>
         </div>
         <div class="stat">
+          <span class="stat-num">{totalDownloads.toLocaleString()}</span>
+          <span class="stat-label">downloads</span>
+        </div>
+        <div class="stat">
           <span class="stat-num">{allTags.length}</span>
           <span class="stat-label">tags</span>
         </div>
       </div>
+
+      {featured.length > 0 && (
+        <div class="featured-section">
+          <p class="featured-heading">Featured Packages</p>
+          <div class="featured-list">
+            {featured.map(pkg => (
+              <a class="featured-card" href={`/${pkg.package_slug}`}>
+                <span class="featured-card-name">{pkg.package_name}</span>
+                {pkg.description && <span class="featured-card-desc">{pkg.description}</span>}
+                <div class="featured-card-meta">
+                  <span>v{pkg.latest_version}</span>
+                  <span>{pkg.download_count.toLocaleString()} dl</span>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div class="home-sections">
         <div>
