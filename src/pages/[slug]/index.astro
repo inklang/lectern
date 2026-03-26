@@ -181,9 +181,9 @@ function getAvatarColor(slug: string): string {
               {(packages ?? []).map(pkg => {
                 const latestVersion = pkg.package_versions?.[0]
                 return (
-                  <a class="pkg-card" href={`/packages/${encodeURIComponent(pkg.name)}`}>
+                  <a class="pkg-card" href={`/packages/${encodeURIComponent(pkg.slug)}`}>
                     <div class="pkg-left">
-                      <span class="pkg-name">{pkg.name}</span>
+                      <span class="pkg-name">{pkg.display_name ?? pkg.name}</span>
                       {pkg.description && <span class="pkg-description">{pkg.description}</span>}
                     </div>
                     <div class="pkg-right">
@@ -221,9 +221,9 @@ function getAvatarColor(slug: string): string {
         : (packages ?? []).map(pkg => {
           const latestVersion = pkg.package_versions?.[0]
           return (
-            <a class="pkg-card" href={`/packages/${encodeURIComponent(pkg.name)}`}>
+            <a class="pkg-card" href={`/packages/${encodeURIComponent(pkg.slug)}`}>
               <div class="pkg-left">
-                <span class="pkg-name">{pkg.name}</span>
+                <span class="pkg-name">{pkg.display_name ?? pkg.name}</span>
                 {pkg.description && <span class="pkg-description">{pkg.description}</span>}
               </div>
               <div class="pkg-right">

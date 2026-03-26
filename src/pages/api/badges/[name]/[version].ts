@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro'
 import { versionExists } from '../../../../lib/db.js'
+import { supabase } from '../../../../lib/supabase.js'
 
 function shieldSvg(left: string, right: string, color = '#4f46e5', style = 'flat'): string {
   const widths = [left, right].map(s => Math.max(s.length * 6.5 + 16, s.length * 8 + 20))
@@ -24,6 +25,19 @@ function shieldSvg(left: string, right: string, color = '#4f46e5', style = 'flat
 </svg>`
 }
 
+// Resolve name (short or slug) to slug, returning null if not found
+async function resolveSlug(name: string): Promise<{ slug: string; displayName: string } | null> {
+  if (name.includes('/')) {
+    // Already a slug
+    const { data: pkg } = await supabase.from('packages').select('slug, display_name').eq('slug', name).single()
+    return pkg ? { slug: pkg.slug, displayName: pkg.display_name ?? name.split('/').pop()! } : null
+  }
+  // Short name - look up slug
+  const { data: pkg } = await supabase.from('packages').select('slug, display_name').eq('name', name).single()
+  if (!pkg) return null
+  return { slug: pkg.slug, displayName: pkg.display_name ?? name }
+}
+
 export const GET: APIRoute = async ({ params }) => {
   const { name, version } = params
   if (!name || !version) return new Response('Bad request', { status: 400 })
@@ -31,13 +45,19 @@ export const GET: APIRoute = async ({ params }) => {
   // Decode version (URL-encoded)
   const decodedVersion = decodeURIComponent(version)
 
-  // Optionally validate the version exists
-  const exists = await versionExists(name, decodedVersion)
+  // Resolve name to slug
+  const resolved = await resolveSlug(name)
+  if (!resolved) {
+    return new Response('Not found', { status: 404 })
+  }
+
+  // Validate the version exists
+  const exists = await versionExists(resolved.slug, decodedVersion)
   if (!exists) {
     return new Response('Not found', { status: 404 })
   }
 
-  const svg = shieldSvg(name, `v${decodedVersion}`, '#4f46e5')
+  const svg = shieldSvg(resolved.displayName, `v${decodedVersion}`, '#4f46e5')
 
   return new Response(svg, {
     status: 200,

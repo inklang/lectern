@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro'
-import { getPackageStats, versionExists } from '../../../../lib/db.js'
+import { getPackageStats } from '../../../../lib/db.js'
+import { supabase } from '../../../../lib/supabase.js'
 
 function shieldSvg(left: string, right: string, rightColor = '#10b981', style = 'flat'): string {
   const w1 = Math.max(left.length * 6.5 + 16, left.length * 8 + 20)
@@ -28,6 +29,19 @@ function formatCount(n: number): string {
   return String(n)
 }
 
+// Resolve name (short or slug) to slug, returning null if not found
+async function resolveSlug(name: string): Promise<{ slug: string; displayName: string } | null> {
+  if (name.includes('/')) {
+    // Already a slug
+    const { data: pkg } = await supabase.from('packages').select('slug, display_name').eq('slug', name).single()
+    return pkg ? { slug: pkg.slug, displayName: pkg.display_name ?? name.split('/').pop()! } : null
+  }
+  // Short name - look up slug
+  const { data: pkg } = await supabase.from('packages').select('slug, display_name').eq('name', name).single()
+  if (!pkg) return null
+  return { slug: pkg.slug, displayName: pkg.display_name ?? name }
+}
+
 export const GET: APIRoute = async ({ params, url }) => {
   const { name } = params
   if (!name) return new Response('Bad request', { status: 400 })
@@ -35,9 +49,23 @@ export const GET: APIRoute = async ({ params, url }) => {
   const window = url.searchParams.get('window') ?? 'total'
   const color = url.searchParams.get('color') ?? '#10b981'
 
+  // Resolve name to slug
+  const resolved = await resolveSlug(name)
+  if (!resolved) {
+    // Package not found - return empty badge
+    const svg = shieldSvg(name.replace('/', ' / '), '0', color)
+    return new Response(svg, {
+      status: 200,
+      headers: {
+        'Content-Type': 'image/svg+xml',
+        'Cache-Control': 'public, max-age=3600',
+      },
+    })
+  }
+
   let count: number
   try {
-    const stats = await getPackageStats(name)
+    const stats = await getPackageStats(resolved.slug)
     if (window === '7d') count = stats.last7d
     else if (window === '30d') count = stats.last30d
     else count = stats.total
@@ -46,7 +74,7 @@ export const GET: APIRoute = async ({ params, url }) => {
   }
 
   const label = window === 'total' ? 'downloads' : window === '7d' ? 'downloads/7d' : 'downloads/30d'
-  const svg = shieldSvg(name, `${formatCount(count)} ${label.replace('/7d', '/wk').replace('/30d', '/mo')}`, color)
+  const svg = shieldSvg(resolved.displayName, `${formatCount(count)} ${label.replace('/7d', '/wk').replace('/30d', '/mo')}`, color)
 
   return new Response(svg, {
     status: 200,
