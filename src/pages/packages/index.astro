@@ -467,7 +467,7 @@ function buildPageUrl(p: number) {
                 <label class="pkg-checkbox-label" data-package={pkg.name}>
                   <input type="checkbox" class="pkg-checkbox" value={pkg.name} />
                 </label>
-                <a class="pkg-card" href={`/packages/${pkg.name}`}>
+                <a class="pkg-card" href={`/${pkg.name}`}>
                   <div class="pkg-left">
                     <span class="pkg-name">{pkg.name}</span>
                     <span class="pkg-versions">{pkg.versionCount} version{pkg.versionCount !== 1 ? 's' : ''}</span>
@@ -544,7 +544,7 @@ function buildPageUrl(p: number) {
 
     const url = new URL(location.href)
     let activeSort = url.searchParams.get('sort') ?? 'recent'
-    let cachedResults: Array<{ name: string; version: string; description: string | null }> = []
+    let cachedResults: Array<{ name: string; package_slug: string; version: string; description: string | null }> = []
 
     function esc(s: string): string {
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -644,20 +644,24 @@ function buildPageUrl(p: number) {
           return
         }
 
-        list.innerHTML = results.map(pkg => `
-          <label class="pkg-checkbox-label">
-            <input type="checkbox" class="pkg-checkbox" value="${esc(pkg.name)}" />
-          </label>
-          <a class="pkg-card" href="/packages/${esc(pkg.name)}" style="flex:1;">
-            <div class="pkg-left">
-              <span class="pkg-name">${esc(pkg.name)}</span>
-              ${pkg.description ? `<span class="pkg-description">${esc(pkg.description)}</span>` : ''}
-            </div>
-            <div class="pkg-right">
-              <div class="pkg-ver">v${esc(pkg.version)}</div>
-            </div>
-          </a>
-        `).join('')
+        list.innerHTML = results.map(pkg => {
+          const slug = esc(pkg.package_slug)
+          const name = esc(pkg.name)
+          const desc = pkg.description ? esc(pkg.description) : ''
+          const ver = esc(pkg.version)
+          return '<label class="pkg-checkbox-label">' +
+            '<input type="checkbox" class="pkg-checkbox" value="' + name + '" />' +
+          '</label>' +
+          '<a class="pkg-card" href="/' + slug + '" style="flex:1;">' +
+            '<div class="pkg-left">' +
+              '<span class="pkg-name">' + name + '</span>' +
+              (pkg.description ? '<span class="pkg-description">' + desc + '</span>' : '') +
+            '</div>' +
+            '<div class="pkg-right">' +
+              '<div class="pkg-ver">v' + ver + '</div>' +
+            '</div>' +
+          '</a>'
+        }).join('')
 
         // Wire checkboxes on newly rendered cards
         document.querySelectorAll('.pkg-checkbox').forEach(cb => {
