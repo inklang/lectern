@@ -1400,17 +1400,46 @@ const accessToken = session.access_token
           if (!res.ok || data.error) {
             formError.textContent = data.error ?? 'Failed to start enrollment'
             formError.style.display = 'block'
+            qrLoading.style.display = 'none'
             return
           }
 
           pendingFactorId = data.id
-          qrImg.src = data.qrCode
-          qrImg.style.display = 'block'
-          qrLoading.style.display = 'none'
-          secretEl.textContent = data.secret
+
+          if (data.existing) {
+            // User has an unverified factor - they need to delete it first
+            qrLoading.style.display = 'none'
+            document.getElementById('mfa-enroll-step')!.innerHTML = `
+              <p class="mfa-modal-desc">You have a pending enrollment from a previous attempt that was never verified. You'll need to remove it first.</p>
+              <button id="mfa-delete-pending" class="btn" type="button" style="margin-top:1rem;background:#ef4444;">Remove and Start Over</button>
+            `
+            document.getElementById('mfa-delete-pending')?.addEventListener('click', async () => {
+              try {
+                const delRes = await fetch(`/api/auth/mfa/factors/${data.id}`, { method: 'DELETE' })
+                if (delRes.ok) {
+                  // Reload the factors list and close modal
+                  loadMfaFactors()
+                  closeModal()
+                } else {
+                  const delData = await delRes.json()
+                  formError.textContent = delData.error ?? 'Failed to remove factor'
+                  formError.style.display = 'block'
+                }
+              } catch {
+                formError.textContent = 'An error occurred'
+                formError.style.display = 'block'
+              }
+            })
+          } else {
+            qrImg.src = data.qrCode
+            qrImg.style.display = 'block'
+            qrLoading.style.display = 'none'
+            secretEl.textContent = data.secret
+          }
         } catch {
           formError.textContent = 'An error occurred. Please try again.'
           formError.style.display = 'block'
+          qrLoading.style.display = 'none'
         }
       }
 

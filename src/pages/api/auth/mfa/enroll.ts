@@ -29,6 +29,28 @@ export const POST: APIRoute = async ({ request }) => {
     })
   }
 
+  // Check if user already has a TOTP factor enrolled (verified or not)
+  const { data: factorsData } = await supabase.auth.mfa.listFactors()
+  const existingTotp = factorsData?.factors?.find((f: any) => f.factor_type === 'totp')
+
+  if (existingTotp) {
+    if (existingTotp.status === 'verified') {
+      return new Response(JSON.stringify({ error: 'MFA is already enabled on your account' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    // Return the existing unverified factor's info
+    return new Response(JSON.stringify({
+      id: existingTotp.id,
+      qrCode: null,
+      secret: null,
+      existing: true,
+    }), {
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   const { data, error } = await supabase.auth.mfa.enroll({
     factorType: 'totp',
   })
