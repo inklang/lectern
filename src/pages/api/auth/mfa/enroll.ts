@@ -67,12 +67,12 @@ export const POST: APIRoute = async ({ request }) => {
         })
       }
 
-      // Supabase returns qr_code (snake_case)
-      const retryData = retryRes.data as any
+      console.error('MFA retry enroll success, qr_code length:', retryRes.data.qr_code?.length)
+
       return new Response(JSON.stringify({
-        id: retryData.id,
-        qrCode: retryData.qr_code,
-        secret: retryData.secret,
+        id: retryRes.data.id,
+        qrCode: retryRes.data.qr_code,
+        secret: retryRes.data.secret,
       }), {
         headers: { 'Content-Type': 'application/json' },
       })
@@ -91,12 +91,28 @@ export const POST: APIRoute = async ({ request }) => {
     })
   }
 
-  // Supabase returns qr_code (snake_case)
-  const enrollData = data as any
+  console.error('MFA enroll success, keys:', Object.keys(data))
+  console.error('MFA enroll data.id:', data.id)
+  console.error('MFA enroll data.qrCode:', data.qrCode ? 'present (' + data.qrCode.length + ' chars)' : 'MISSING')
+  console.error('MFA enroll data.qr_code:', (data as any).qr_code ? 'present (' + (data as any).qr_code.length + ' chars)' : 'MISSING')
+  console.error('MFA enroll data.secret:', data.secret)
+
+  // Check both possible field names
+  const qrCode = data.qrCode || (data as any).qr_code
+  const secret = data.secret
+
+  if (!qrCode) {
+    console.error('ERROR: No QR code in response!');
+    return new Response(JSON.stringify({ error: 'Failed to get QR code from Supabase. Please try again.' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   return new Response(JSON.stringify({
-    id: enrollData.id,
-    qrCode: enrollData.qr_code,
-    secret: enrollData.secret,
+    id: data.id,
+    qrCode: qrCode,
+    secret: secret,
   }), {
     headers: { 'Content-Type': 'application/json' },
   })
