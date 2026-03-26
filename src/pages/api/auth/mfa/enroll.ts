@@ -36,21 +36,27 @@ export const POST: APIRoute = async ({ request }) => {
   })
 
   if (error) {
+    console.error('MFA enroll error:', JSON.stringify(error))
+
     // If error says factor already exists, try to find and delete the old one
-    if (error.message.includes('already exists')) {
+    if (error.message && error.message.includes('already exists')) {
       // Get list of factors to find the existing one
       const factorsRes = await supabase.auth.mfa.listFactors()
+      console.log('listFactors result:', factorsRes)
 
       if (!factorsRes.error && factorsRes.data?.factors) {
         const unverifiedTotp = factorsRes.data.factors.find(
           (f: any) => f.factor_type === 'totp' && f.status === 'unverified'
         )
+        console.log('found unverified totp:', unverifiedTotp)
         if (unverifiedTotp) {
           // Delete the old factor
-          await supabase.auth.mfa.unenroll({ factorId: unverifiedTotp.id })
+          const unenrollRes = await supabase.auth.mfa.unenroll({ factorId: unverifiedTotp.id })
+          console.log('unenroll result:', unenrollRes)
 
           // Now retry enrollment
           const retryRes = await supabase.auth.mfa.enroll({ factorType: 'totp' })
+          console.log('retry enroll result:', retryRes)
           if (retryRes.error || !retryRes.data) {
             return new Response(JSON.stringify({ error: retryRes.error?.message ?? 'Failed to enroll after cleanup' }), {
               status: 400,
