@@ -29,68 +29,44 @@ export const POST: APIRoute = async ({ request }) => {
     })
   }
 
+  // First, list existing factors
+  const factorsRes = await supabase.auth.mfa.listFactors()
+  console.error('listFactors result:', JSON.stringify(factorsRes))
+
+  const totpFactors = factorsRes.data?.factors?.filter((f: any) => f.factor_type === 'totp') ?? []
+
+  if (totpFactors.length > 0) {
+    const verifiedFactors = totpFactors.filter((f: any) => f.status === 'verified')
+    if (verifiedFactors.length > 0) {
+      return new Response(JSON.stringify({ error: 'MFA is already enabled on your account.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    // Has unverified factors - try to delete them first
+    for (const f of totpFactors) {
+      await supabase.auth.mfa.unenroll({ factorId: f.id })
+    }
+  }
+
+  // Now try to enroll
   const enrollResult = await supabase.auth.mfa.enroll({
     factorType: 'totp',
   })
 
-  console.error('=== MFA ENROLL FULL RESULT ===')
-  console.error('error:', enrollResult.error ? JSON.stringify(enrollResult.error) : 'none')
-  console.error('data type:', typeof enrollResult.data)
-  console.error('data:', enrollResult.data)
-  console.error('data constructor:', enrollResult.data?.constructor?.name)
-  console.error('data keys:', enrollResult.data ? Object.keys(enrollResult.data) : 'n/a')
-  console.error('===========================')
+  console.error('enrollResult:', JSON.stringify(enrollResult))
 
   if (enrollResult.error) {
-    const errMsg = enrollResult.error.message || ''
-
-    if (errMsg.toLowerCase().includes('already exists')) {
-      const factorsRes = await supabase.auth.mfa.listFactors()
-
-      if (factorsRes.error || !factorsRes.data?.factors || factorsRes.data.factors.length === 0) {
-        return new Response(JSON.stringify({ error: 'MFA factor exists but cannot list it.' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      }
-
-      const totpFactors = factorsRes.data.factors.filter((f: any) => f.factor_type === 'totp')
-
-      for (const f of totpFactors) {
-        if (f.status === 'verified') {
-          return new Response(JSON.stringify({ error: 'MFA is already enabled.' }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-          })
-        }
-        await supabase.auth.mfa.unenroll({ factorId: f.id })
-      }
-
-      const retryResult = await supabase.auth.mfa.enroll({ factorType: 'totp' })
-
-      console.error('=== MFA RETRY RESULT ===')
-      console.error('retry error:', retryResult.error ? JSON.stringify(retryResult.error) : 'none')
-      console.error('retry data:', retryResult.data)
-      console.error('retry data keys:', retryResult.data ? Object.keys(retryResult.data) : 'n/a')
-      console.error('========================')
-
-      if (retryResult.error || !retryResult.data) {
-        return new Response(JSON.stringify({ error: retryResult.error?.message ?? 'Failed to enroll after cleanup' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      }
-
+    // If already exists error, it means there's a factor we couldn't clean up
+    if (enrollResult.error.message?.toLowerCase().includes('already exists')) {
       return new Response(JSON.stringify({
-        id: retryResult.data.id,
-        qrCode: retryResult.data.qrCode || retryResult.data.qr_code,
-        secret: retryResult.data.secret,
+        error: 'MFA enrollment failed. Please sign out, sign back in, and try again.'
       }), {
+        status: 400,
         headers: { 'Content-Type': 'application/json' },
       })
     }
-
-    return new Response(JSON.stringify({ error: errMsg || 'Enrollment failed' }), {
+    return new Response(JSON.stringify({ error: enrollResult.error.message }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     })
@@ -103,21 +79,9 @@ export const POST: APIRoute = async ({ request }) => {
     })
   }
 
-  // Try both field names
-  const qrCode = enrollResult.data.qrCode || enrollResult.data.qr_code
-
-  if (!qrCode) {
-    console.error('QR CODE MISSING! Dumping all data:')
-    console.error(JSON.stringify(enrollResult.data, null, 2))
-    return new Response(JSON.stringify({ error: 'Failed to get QR code from Supabase. Please try again.' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
   return new Response(JSON.stringify({
     id: enrollResult.data.id,
-    qrCode: qrCode,
+    qrCode: enrollResult.data.qrCode,
     secret: enrollResult.data.secret,
   }), {
     headers: { 'Content-Type': 'application/json' },
