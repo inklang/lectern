@@ -29,44 +29,48 @@ export const POST: APIRoute = async ({ request }) => {
     })
   }
 
-  // Check for existing verified MFA
-  const { data: factorsData } = await supabase.auth.mfa.listFactors()
-  const existingVerified = factorsData?.factors?.find((f: any) => f.factor_type === 'totp' && f.status === 'verified')
-
-  if (existingVerified) {
-    return new Response(JSON.stringify({ error: 'MFA is already enabled on your account' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
-  // Try to enroll
+  // Try to enroll directly - if there's already an unverified factor, Supabase will error
+  // and we'll need to handle it
   const { data, error } = await supabase.auth.mfa.enroll({
     factorType: 'totp',
   })
 
   if (error) {
+    // If error says factor already exists, try to find and delete the old one
     if (error.message.includes('already exists')) {
-      // There's an unverified factor blocking enrollment - delete it and retry
-      const existingUnverified = factorsData?.factors?.find((f: any) => f.factor_type === 'totp' && f.status === 'unverified')
-      if (existingUnverified) {
-        await supabase.auth.mfa.unenroll({ factorId: existingUnverified.id })
+      // Get list of factors to find the existing one
+      const factorsRes = await supabase.auth.mfa.listFactors()
+
+      if (!factorsRes.error && factorsRes.data?.factors) {
+        const unverifiedTotp = factorsRes.data.factors.find(
+          (f: any) => f.factor_type === 'totp' && f.status === 'unverified'
+        )
+        if (unverifiedTotp) {
+          // Delete the old factor
+          await supabase.auth.mfa.unenroll({ factorId: unverifiedTotp.id })
+
+          // Now retry enrollment
+          const retryRes = await supabase.auth.mfa.enroll({ factorType: 'totp' })
+          if (retryRes.error || !retryRes.data) {
+            return new Response(JSON.stringify({ error: retryRes.error?.message ?? 'Failed to enroll after cleanup' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          }
+
+          // Supabase returns qr_code with underscore
+          return new Response(JSON.stringify({
+            id: retryRes.data.id,
+            qrCode: (retryRes.data as any).qr_code ?? retryRes.data.qrCode,
+            secret: retryRes.data.secret,
+          }), {
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
       }
 
-      // Retry enrollment after cleanup
-      const retryResult = await supabase.auth.mfa.enroll({ factorType: 'totp' })
-      if (retryResult.error || !retryResult.data) {
-        return new Response(JSON.stringify({ error: retryResult.error?.message ?? 'Failed to enroll MFA after cleanup' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      }
-
-      return new Response(JSON.stringify({
-        id: retryResult.data.id,
-        qrCode: retryResult.data.qrCode,
-        secret: retryResult.data.secret,
-      }), {
+      return new Response(JSON.stringify({ error: 'MFA factor already exists. Please remove it first.' }), {
+        status: 400,
         headers: { 'Content-Type': 'application/json' },
       })
     }
@@ -84,9 +88,10 @@ export const POST: APIRoute = async ({ request }) => {
     })
   }
 
+  // Supabase returns qr_code with underscore, handle both formats
   return new Response(JSON.stringify({
     id: data.id,
-    qrCode: data.qrCode,
+    qrCode: (data as any).qr_code ?? data.qrCode,
     secret: data.secret,
   }), {
     headers: { 'Content-Type': 'application/json' },
