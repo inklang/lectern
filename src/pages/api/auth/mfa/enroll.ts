@@ -31,7 +31,7 @@ export const POST: APIRoute = async ({ request }) => {
 
   // First, list existing factors
   const factorsRes = await supabase.auth.mfa.listFactors()
-  console.error('listFactors result:', JSON.stringify(factorsRes))
+  console.error('DEBUG listFactors:', JSON.stringify(factorsRes))
 
   const totpFactors = factorsRes.data?.factors?.filter((f: any) => f.factor_type === 'totp') ?? []
 
@@ -54,10 +54,14 @@ export const POST: APIRoute = async ({ request }) => {
     factorType: 'totp',
   })
 
-  console.error('enrollResult:', JSON.stringify(enrollResult))
+  console.error('DEBUG enroll error:', enrollResult.error)
+  console.error('DEBUG enroll data keys:', enrollResult.data ? Object.keys(enrollResult.data) : 'no data')
+  console.error('DEBUG enroll id:', enrollResult.data?.id)
+  console.error('DEBUG enroll qrCode type:', typeof enrollResult.data?.qrCode)
+  console.error('DEBUG enroll qrCode length:', enrollResult.data?.qrCode?.length)
+  console.error('DEBUG enroll secret:', enrollResult.data?.secret)
 
   if (enrollResult.error) {
-    // If already exists error, it means there's a factor we couldn't clean up
     if (enrollResult.error.message?.toLowerCase().includes('already exists')) {
       return new Response(JSON.stringify({
         error: 'MFA enrollment failed. Please sign out, sign back in, and try again.'
