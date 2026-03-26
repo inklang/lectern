@@ -3,11 +3,27 @@ import Base from '../../layouts/Base.astro'
 import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount } from '../../lib/db.js'
 import { renderMarkdown } from '../../lib/markdown.js'
 import { createServerClient, parseCookieHeader } from '@supabase/ssr'
+import { supabase } from '../../lib/supabase.js'
 
 const { name } = Astro.params
 const versions = await getPackageVersions(name!)
 
 if (versions.length === 0) return Astro.redirect('/packages')
+
+// Redirect to new URL format: /[owner]/[package]
+// Get package info to construct the new URL
+const { data: pkg } = await supabase
+  .from('packages')
+  .select('owner_slug, slug')
+  .eq('slug', name!)
+  .single()
+
+if (pkg?.owner_slug) {
+  // Extract package name from slug (e.g., "alice/my-package" -> "my-package")
+  const packageName = pkg.slug.includes('/') ? pkg.slug.split('/')[1] : pkg.slug
+  // Redirect to new format: /alice/my-package
+  return Astro.redirect(`/${pkg.owner_slug}/${packageName}`)
+}
 
 const latest = versions[0]
 const owner = await getPackageOwner(name!)
