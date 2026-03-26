@@ -30,12 +30,16 @@ export const POST: APIRoute = async ({ request }) => {
     })
   }
 
+  const cookiesToSet: { name: string; value: string; options: Record<string, unknown> }[] = []
+
   const supabase = createServerClient(supabaseUrl, supabaseKey, {
     cookies: {
       getAll() {
         return parseCookieHeader(request.headers.get('Cookie') ?? '')
       },
-      setAll() {},
+      setAll(cookies) {
+        cookiesToSet.push(...cookies)
+      },
     },
   })
 
@@ -69,11 +73,18 @@ export const POST: APIRoute = async ({ request }) => {
   const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession()
   console.error('DEBUG refreshSession result:', { refreshError, hasSession: !!refreshedSession })
 
-  // List factors to verify
-  const factorsAfterVerify = await supabase.auth.mfa.listFactors()
-  console.error('DEBUG factors after verify:', JSON.stringify(factorsAfterVerify))
+  // Build response with cookies set properly
+  const headers = new Headers({ 'Content-Type': 'application/json' })
+  cookiesToSet.forEach(({ name, value, options }) => {
+    const maxAge = typeof options['maxAge'] === 'number' ? options['maxAge'] : 3600
+    const path = typeof options['path'] === 'string' ? options['path'] : '/'
+    const sameSite = typeof options['sameSite'] === 'string' ? options['sameSite'] : 'Lax'
+    let cookie = `${name}=${value}; Path=${path}; Max-Age=${maxAge}; SameSite=${sameSite}`
+    if (options['secure']) cookie += '; Secure'
+    headers.append('Set-Cookie', cookie)
+  })
 
   return new Response(JSON.stringify({ verified: true }), {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
   })
 }
