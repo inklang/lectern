@@ -45,7 +45,25 @@ export const POST: APIRoute = async ({ request }) => {
     }
     // Has unverified factors - try to delete them first
     for (const f of totpFactors) {
-      await supabase.auth.mfa.unenroll({ factorId: f.id })
+      console.error('DEBUG unenrolling factor:', f.id)
+      const unenrollRes = await supabase.auth.mfa.unenroll({ factorId: f.id })
+      console.error('DEBUG unenroll result:', JSON.stringify(unenrollRes))
+      if (unenrollRes.error) {
+        console.error('DEBUG unenroll error:', unenrollRes.error)
+      }
+    }
+
+    // Re-list factors after cleanup
+    const factorsAfterRes = await supabase.auth.mfa.listFactors()
+    console.error('DEBUG factors after cleanup:', JSON.stringify(factorsAfterRes))
+    const totpFactorsAfter = factorsAfterRes.data?.factors?.filter((f: any) => f.factor_type === 'totp') ?? []
+    if (totpFactorsAfter.length > 0) {
+      return new Response(JSON.stringify({
+        error: 'Could not remove existing MFA factor. Please sign out, sign back in, and try again.'
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
     }
   }
 
