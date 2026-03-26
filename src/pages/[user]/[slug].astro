@@ -21,14 +21,14 @@ if (versions.length === 0) {
 }
 
 const latest = versions[0]
-const owner = await getPackageOwner(packageName!)
+const owner = await getPackageOwner(packageSlug!)
 const readmeHtml = await renderMarkdown(latest.readme)
-const dependents = await getPackageDependents(packageName!)
-const stats = await getPackageStats(packageName!)
-const deprecation = await getPackageDeprecation(packageName!)
-const advisories = await getPackageAdvisories(packageName!)
-const tags = await getPackageTags(packageName!).catch(() => [])
-const starCount = await getStarCount(packageName!).catch(() => 0)
+const dependents = await getPackageDependents(packageSlug!)
+const stats = await getPackageStats(packageSlug!)
+const deprecation = await getPackageDeprecation(packageSlug!)
+const advisories = await getPackageAdvisories(packageSlug!)
+const tags = await getPackageTags(packageSlug!).catch(() => [])
+const starCount = await getStarCount(packageSlug!).catch(() => 0)
 
 // Check if user is logged in and has starred
 const supabase = createServerClient(
@@ -52,7 +52,7 @@ if (userId && owner) {
   const { data: pkg } = await supabase
     .from('packages')
     .select('owner_id, owner_type')
-    .eq('name', packageName!)
+    .eq('slug', packageSlug!)
     .single()
 
   if (pkg && pkg.owner_type === 'org') {
@@ -71,7 +71,7 @@ if (userId) {
   const { data: star } = await supabase
     .from('stars')
     .select('*')
-    .eq('package_name', packageName!)
+    .eq('package_name', packageSlug!)
     .eq('user_id', userId)
     .single()
   isStarred = !!star
@@ -81,12 +81,12 @@ if (userId) {
 // This is a stub to show the routing structure
 ---
 
-<Base title={packageName!} description={latest.description ?? `${packageName!} on Lectern`}>
-  <h1>{packageName}</h1>
+<Base title={packageSlug!} description={latest.description ?? `${packageSlug!} on Lectern`}>
+  <h1>{packageSlug}</h1>
   <p>Package page at new route: /{user}/{slug}</p>
   <p>Version: {latest.version}</p>
   <p>Description: {latest.description}</p>
 
   <!-- TODO: Add full package page content -->
-  <p><a href={`/packages/${packageName}`}>View at old route</a></p>
+  <p><a href={`/packages/${packageSlug}`}>View at old route</a></p>
 </Base>
