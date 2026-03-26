@@ -15,9 +15,8 @@ const packageSlug = user && slug ? `${user}/${slug}` : slug
 const versions = await getPackageVersions(packageSlug!)
 
 if (versions.length === 0) {
-  // If package not found, redirect to old route format for backward compatibility
-  // Or check if this is a user/org instead
-  return Astro.redirect(`/packages/${encodeURIComponent(packageSlug!)}`)
+  // Package not found - redirect to packages listing
+  return Astro.redirect('/packages')
 }
 
 const latest = versions[0]

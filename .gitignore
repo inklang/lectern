@@ -37,3 +37,6 @@ storage/
 .superpowers/
 
 .vercel
+
+.vercel
+.env*.local
