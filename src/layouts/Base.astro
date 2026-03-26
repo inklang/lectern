@@ -8,6 +8,7 @@ interface Props {
   ogDescription?: string
   ogImage?: string
   ogUrl?: string
+  ogImagePath?: string // if set, generates og:image URL from this path
 }
 const {
   title,
@@ -16,7 +17,10 @@ const {
   ogDescription,
   ogImage,
   ogUrl,
+  ogImagePath,
 } = Astro.props
+
+const resolvedOgImage = ogImage ?? (ogImagePath ? `https://lectern.inklang.org/api/og/${encodeURIComponent(ogImagePath)}` : undefined)
 
 const supabase = createServerClient(
   import.meta.env.SUPABASE_URL ?? '',
@@ -48,14 +52,14 @@ const username = session?.user.user_metadata?.user_name ?? null
   <meta property="og:title" content={ogTitle ?? `${title} — Lectern`} />
   <meta property="og:description" content={ogDescription ?? description} />
   {ogUrl && <meta property="og:url" content={ogUrl} />}
-  {ogImage && <meta property="og:image" content={ogImage} />}
+  {resolvedOgImage && <meta property="og:image" content={resolvedOgImage} />}
   <meta property="og:site_name" content="Lectern" />
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content={ogTitle ?? `${title} — Lectern`} />
   <meta name="twitter:description" content={ogDescription ?? description} />
-  {ogImage && <meta name="twitter:image" content={ogImage} />}
+  {resolvedOgImage && <meta name="twitter:image" content={resolvedOgImage} />}
 
   <link rel="alternate" type="application/atom+xml" title="Lectern Feed" href="/api/feed.xml" />
   <style>
