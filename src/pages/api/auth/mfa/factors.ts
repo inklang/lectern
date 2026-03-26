@@ -32,6 +32,9 @@ export const GET: APIRoute = async ({ request }) => {
   // listFactors is a user-level method, use the authenticated client
   const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors()
 
+  console.error('DEBUG factors listFactors result:', JSON.stringify({ factorsData, factorsError }))
+  console.error('DEBUG factors session:', JSON.stringify(session ? { user_id: session.user.id } : 'no session'))
+
   if (factorsError) {
     console.error('listFactors error:', factorsError)
     return new Response(JSON.stringify({ error: factorsError.message }), {
@@ -40,6 +43,7 @@ export const GET: APIRoute = async ({ request }) => {
     })
   }
 
+  console.error('DEBUG factors raw data:', JSON.stringify(factorsData))
   const factors = (factorsData?.factors ?? []).map((f: any) => ({
     id: f.id,
     factorType: f.factor_type,
