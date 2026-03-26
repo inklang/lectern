@@ -67,13 +67,12 @@ export const POST: APIRoute = async ({ request }) => {
         })
       }
 
-      // Log what we got
-      console.error('RETRY SUCCESS - data:', JSON.stringify(retryRes.data))
-
+      // Supabase returns qr_code (snake_case)
+      const retryData = retryRes.data as any
       return new Response(JSON.stringify({
-        id: retryRes.data.id,
-        qrCode: retryRes.data.qrCode,
-        secret: retryRes.data.secret,
+        id: retryData.id,
+        qrCode: retryData.qr_code,
+        secret: retryData.secret,
       }), {
         headers: { 'Content-Type': 'application/json' },
       })
@@ -92,12 +91,12 @@ export const POST: APIRoute = async ({ request }) => {
     })
   }
 
-  console.error('FIRST TRY SUCCESS - data:', JSON.stringify(data))
-
+  // Supabase returns qr_code (snake_case)
+  const enrollData = data as any
   return new Response(JSON.stringify({
-    id: data.id,
-    qrCode: data.qrCode,
-    secret: data.secret,
+    id: enrollData.id,
+    qrCode: enrollData.qr_code,
+    secret: enrollData.secret,
   }), {
     headers: { 'Content-Type': 'application/json' },
   })
