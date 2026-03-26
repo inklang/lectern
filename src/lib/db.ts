@@ -11,6 +11,7 @@ export interface PackageVersion {
   tarball_url: string
   published_at: string
   download_count?: number
+  targets?: string[]
 }
 
 export interface PackageRow {

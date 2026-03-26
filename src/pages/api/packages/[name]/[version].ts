@@ -90,6 +90,15 @@ export const PUT: APIRoute = async ({ params, request }) => {
     if (tagsAll.length > 1) {
       tags = tagsAll.map(t => String(t).trim().toLowerCase()).filter(Boolean)
     }
+
+    // Parse targets: sent as JSON array string
+    let targets: string[] = []
+    const targetsVal = formData.get('targets')
+    if (targetsVal) {
+      if (typeof targetsVal === 'string') {
+        try { targets = JSON.parse(targetsVal) } catch { targets = [] }
+      }
+    }
   } else {
     // Legacy: raw gzip body (backwards compat — remove after one release cycle)
     tarballData = Buffer.from(await request.arrayBuffer())
@@ -132,6 +141,7 @@ export const PUT: APIRoute = async ({ params, request }) => {
     dependencies,
     tarball_url: tarballUrl,
     embedding: null,
+    targets,
   })
 
   // Add tags if provided (fire and forget)

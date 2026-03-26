@@ -73,6 +73,15 @@ export const POST: APIRoute = async ({ request }) => {
   })
 
   console.error('DEBUG enroll error:', enrollResult.error)
+  console.error('DEBUG enroll data:', JSON.stringify(enrollResult.data))
+
+  // Refresh session to pick up new factor
+  const { data: refreshedSession } = await supabase.auth.getSession()
+  console.error('DEBUG session after enroll:', refreshedSession ? 'has session' : 'no session')
+
+  // List factors to verify factor was created
+  const factorsAfterEnroll = await supabase.auth.mfa.listFactors()
+  console.error('DEBUG factors after enroll:', JSON.stringify(factorsAfterEnroll))
   console.error('DEBUG enroll data keys:', enrollResult.data ? Object.keys(enrollResult.data) : 'no data')
   console.error('DEBUG enroll data:', JSON.stringify(enrollResult.data))
   console.error('DEBUG enroll id:', enrollResult.data?.id)
