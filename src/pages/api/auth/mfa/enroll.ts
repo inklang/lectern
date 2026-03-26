@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro'
 import { createServerClient, parseCookieHeader } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 
 export const POST: APIRoute = async ({ request }) => {
   const supabaseUrl = import.meta.env.SUPABASE_URL
@@ -33,7 +34,11 @@ export const POST: APIRoute = async ({ request }) => {
     })
   }
 
+  const userId = session.user.id
+
   // First, list existing factors
+  const factorsRes = await supabase.auth.mfa.listFactors()
+  console.error('DEBUG listFactors:', JSON.stringify(factorsRes))
   const factorsRes = await supabase.auth.mfa.listFactors()
   console.error('DEBUG listFactors:', JSON.stringify(factorsRes))
 
@@ -80,11 +85,20 @@ export const POST: APIRoute = async ({ request }) => {
 
   if (enrollResult.error) {
     if (enrollResult.error.message?.toLowerCase().includes('already exists')) {
-      // Factor already exists - refresh session and try to get it via listFactors
-      await supabase.auth.refreshSession()
-      const existingFactors = await supabase.auth.mfa.listFactors()
-      const verifiedFactors = existingFactors.data?.factors?.filter((f: any) => f.status === 'verified') ?? []
-      const unverifiedFactors = existingFactors.data?.factors?.filter((f: any) => f.status === 'unverified') ?? []
+      // Factor already exists - use admin query to bypass SSR session issues
+      // The service role key bypasses RLS so we can query directly
+      const adminClient = createClient(supabaseUrl, supabaseKey)
+      const { data: factorsData, error: factorsError } = await adminClient.from('auth.mfa_factors').select('*').eq('user_id', userId)
+
+      console.error('DEBUG admin query factors:', { factorsData, factorsError })
+
+      let verifiedFactors: any[] = []
+      let unverifiedFactors: any[] = []
+
+      if (factorsData && !factorsError) {
+        verifiedFactors = factorsData.filter((f: any) => f.status === 'verified')
+        unverifiedFactors = factorsData.filter((f: any) => f.status === 'unverified')
+      }
       if (verifiedFactors.length > 0) {
         // User already has a verified factor
         const headers = new Headers({ 'Content-Type': 'application/json' })
