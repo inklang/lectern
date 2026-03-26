@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro'
 ---
-<Base title="Login">
+<Base title="Sign Up">
   <style is:global>
     body {
       display: flex;
@@ -12,7 +12,7 @@ import Base from '../layouts/Base.astro'
     }
   </style>
   <style>
-    .login-container {
+    .signup-container {
       width: 100%;
       max-width: 400px;
       padding: 2rem;
@@ -26,7 +26,7 @@ import Base from '../layouts/Base.astro'
       text-align: center;
     }
 
-    .login-card {
+    .signup-card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 12px;
@@ -73,6 +73,19 @@ import Base from '../layouts/Base.astro'
       display: none;
     }
     .form-error.visible {
+      display: block;
+    }
+    .form-success {
+      background: rgba(74, 222, 128, 0.1);
+      border: 1px solid rgba(74, 222, 128, 0.3);
+      color: #4ade80;
+      padding: 0.75rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+      display: none;
+    }
+    .form-success.visible {
       display: block;
     }
     .btn {
@@ -134,35 +147,36 @@ import Base from '../layouts/Base.astro'
       height: 20px;
     }
 
-    .signup-link {
+    .login-link {
       text-align: center;
       font-size: 0.875rem;
       color: var(--muted);
     }
-    .signup-link a {
+    .login-link a {
       color: var(--accent);
       text-decoration: none;
     }
-    .signup-link a:hover {
+    .login-link a:hover {
       text-decoration: underline;
     }
   </style>
 
-  <div class="login-container">
-    <h1>login</h1>
+  <div class="signup-container">
+    <h1>create account</h1>
 
-    <div class="login-card">
-      <div id="login-error" class="form-error"></div>
-      <form id="login-form" novalidate>
+    <div class="signup-card">
+      <div id="signup-error" class="form-error"></div>
+      <div id="signup-success" class="form-success"></div>
+      <form id="signup-form" novalidate>
         <div class="form-group">
           <label class="form-label" for="email">email</label>
           <input id="email" class="form-input" type="email" placeholder="you@example.com" autocomplete="email" required />
         </div>
         <div class="form-group">
           <label class="form-label" for="password">password</label>
-          <input id="password" class="form-input" type="password" placeholder="••••••••" autocomplete="current-password" required />
+          <input id="password" class="form-input" type="password" placeholder="minimum 6 characters" autocomplete="new-password" required minlength="6" />
         </div>
-        <button id="login-submit" class="btn" type="submit">login</button>
+        <button id="signup-submit" class="btn" type="submit">create account</button>
       </form>
 
       <div class="divider">or</div>
@@ -175,21 +189,29 @@ import Base from '../layouts/Base.astro'
       </a>
     </div>
 
-    <p class="signup-link">
-      don't have an account? <a href="/signup">sign up</a>
+    <p class="login-link">
+      already have an account? <a href="/login">login</a>
     </p>
   </div>
 
   <script>
-    const form = document.getElementById('login-form') as HTMLFormElement
+    const form = document.getElementById('signup-form') as HTMLFormElement
     const emailInput = document.getElementById('email') as HTMLInputElement
     const passwordInput = document.getElementById('password') as HTMLInputElement
-    const submitBtn = document.getElementById('login-submit') as HTMLButtonElement
-    const errorDiv = document.getElementById('login-error') as HTMLDivElement
+    const submitBtn = document.getElementById('signup-submit') as HTMLButtonElement
+    const errorDiv = document.getElementById('signup-error') as HTMLDivElement
+    const successDiv = document.getElementById('signup-success') as HTMLDivElement
 
     function showError(msg: string) {
       errorDiv.textContent = msg
       errorDiv.classList.add('visible')
+      successDiv.classList.remove('visible')
+    }
+
+    function showSuccess(msg: string) {
+      successDiv.textContent = msg
+      successDiv.classList.add('visible')
+      errorDiv.classList.remove('visible')
     }
 
     function hideError() {
@@ -211,11 +233,16 @@ import Base from '../layouts/Base.astro'
         return
       }
 
+      if (password.length < 6) {
+        showError('Password must be at least 6 characters')
+        return
+      }
+
       submitBtn.disabled = true
-      submitBtn.textContent = 'logging in…'
+      submitBtn.textContent = 'creating account…'
 
       try {
-        const res = await fetch('/api/auth/login-email', {
+        const res = await fetch('/api/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),
@@ -224,24 +251,20 @@ import Base from '../layouts/Base.astro'
         const data = await res.json()
 
         if (!res.ok || data.error) {
-          showError(data.error ?? 'Login failed')
+          showError(data.error ?? 'Sign up failed')
           submitBtn.disabled = false
-          submitBtn.textContent = 'login'
+          submitBtn.textContent = 'create account'
           return
         }
 
-        if (data.mfaRequired) {
-          // Redirect to MFA verification
-          window.location.href = `/mfa-verify?factor_id=${encodeURIComponent(data.factorId)}`
-          return
-        }
-
-        // Success - redirect to profile
-        window.location.href = '/profile'
+        showSuccess(data.message ?? 'Account created! Please check your email to confirm your account.')
+        form.reset()
+        submitBtn.disabled = false
+        submitBtn.textContent = 'create account'
       } catch {
         showError('An error occurred. Please try again.')
         submitBtn.disabled = false
-        submitBtn.textContent = 'login'
+        submitBtn.textContent = 'create account'
       }
     })
   </script>
