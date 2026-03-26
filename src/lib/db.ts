@@ -163,6 +163,7 @@ export async function getPackageStats(name: string): Promise<{ total: number; la
 
 export interface TrendingPackage {
   package_name: string
+  package_slug: string
   download_count: number
   latest_version: string
   description: string | null
@@ -175,13 +176,30 @@ export async function getTrendingPackages(windowDays = 7, limitCount = 5): Promi
     limit_count: limitCount,
   })
   if (error) throw error
-  return (data as TrendingPackage[]) ?? []
+  const results = (data as Omit<TrendingPackage, 'package_slug'>[]) ?? []
+
+  if (results.length === 0) return []
+
+  // Fetch owner info to construct full slug
+  const packageNames = results.map(r => r.package_name)
+  const { data: pkgRows } = await supabase
+    .from('packages')
+    .select('name, owner_slug')
+    .in('name', packageNames)
+
+  const ownerMap = new Map(pkgRows?.map(p => [p.name, p.owner_slug]) ?? [])
+
+  return results.map(r => ({
+    ...r,
+    package_slug: `${ownerMap.get(r.package_name) ?? ''}/${r.package_name}`
+  }))
 }
 
 // ─── Popularity Score ───────────────────────────────────────────────────────────
 
 export interface PopularPackage {
   package_name: string
+  package_slug: string
   popularity_score: number
   download_count: number
   star_count: number
@@ -200,7 +218,23 @@ export async function getPopularPackages(
     p_offset: offset,
   })
   if (error) throw error
-  return (data as PopularPackage[]) ?? []
+  const results = (data as Omit<PopularPackage, 'package_slug'>[]) ?? []
+
+  if (results.length === 0) return []
+
+  // Fetch owner info to construct full slug
+  const packageNames = results.map(r => r.package_name)
+  const { data: pkgRows } = await supabase
+    .from('packages')
+    .select('name, owner_slug')
+    .in('name', packageNames)
+
+  const ownerMap = new Map(pkgRows?.map(p => [p.name, p.owner_slug]) ?? [])
+
+  return results.map(r => ({
+    ...r,
+    package_slug: `${ownerMap.get(r.package_name) ?? ''}/${r.package_name}`
+  }))
 }
 
 // Get score for a single package

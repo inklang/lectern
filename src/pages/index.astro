@@ -469,7 +469,7 @@ const allTags = await listTags().catch(() => [])
             ? <p class="empty">no download data yet.</p>
             : <div class="trending-list">
                 {trending.map((pkg, i) => (
-                  <a class="trending-row" href={`/${pkg.package_name}`}>
+                  <a class="trending-row" href={`/${pkg.package_slug}`}>
                     <span class="trending-rank">#{i + 1}</span>
                     <span class="trending-name">{pkg.package_name}</span>
                     <span class="trending-dl">{pkg.download_count.toLocaleString()} dl</span>
@@ -485,7 +485,7 @@ const allTags = await listTags().catch(() => [])
             ? <p class="empty">no packages yet.</p>
             : <div class="trending-list">
                 {popular.map((pkg, i) => (
-                  <a class="trending-row" href={`/${pkg.package_name}`}>
+                  <a class="trending-row" href={`/${pkg.package_slug}`}>
                     <span class="trending-rank">#{i + 1}</span>
                     <span class="trending-name">{pkg.package_name}</span>
                     <span class="trending-dl">{pkg.popularity_score.toFixed(2)}</span>
@@ -540,7 +540,7 @@ const allTags = await listTags().catch(() => [])
 
       debounce = setTimeout(async () => {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
-        const data = await res.json() as Array<{ name: string; version: string; description: string | null }>
+        const data = await res.json() as Array<{ name: string; package_slug: string; version: string; description: string | null }>
 
         defaultContent.style.display = 'none'
         results.classList.add('visible')
@@ -550,15 +550,19 @@ const allTags = await listTags().catch(() => [])
           return
         }
 
-        results.innerHTML = data.map(pkg => `
-          <a class="sr-card" href="/${esc(pkg.name)}">
-            <div>
-              <span class="sr-name">${esc(pkg.name)}</span>
-              ${pkg.description ? `<span class="sr-desc">${esc(pkg.description)}</span>` : ''}
-            </div>
-            <span class="sr-ver">v${esc(pkg.version)}</span>
-          </a>
-        `).join('')
+        results.innerHTML = data.map(pkg => {
+          const slug = pkg.package_slug ? esc(pkg.package_slug) : esc(pkg.name)
+          const name = esc(pkg.name)
+          const desc = pkg.description ? esc(pkg.description) : ''
+          const ver = esc(pkg.version)
+          return '<a class="sr-card" href="/' + slug + '">' +
+            '<div>' +
+              '<span class="sr-name">' + name + '</span>' +
+              (pkg.description ? '<span class="sr-desc">' + desc + '</span>' : '') +
+            '</div>' +
+            '<span class="sr-ver">v' + ver + '</span>' +
+          '</a>'
+        }).join('')
       }, 300)
     })
 
