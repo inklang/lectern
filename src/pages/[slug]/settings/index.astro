@@ -739,7 +739,7 @@ const orgBannerUrl = org.banner_url
       }
 
       try {
-        const res = await fetch(`/api/{encodeURIComponent(slug)}`, {
+        const res = await fetch(`/api/${encodeURIComponent(slug)}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -784,7 +784,7 @@ const orgBannerUrl = org.banner_url
       generateInviteError.style.display = 'none'
 
       try {
-        const res = await fetch(`/api/{encodeURIComponent(slug)}/invite`, {
+        const res = await fetch(`/api/${encodeURIComponent(slug)}/invite`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -833,7 +833,7 @@ const orgBannerUrl = org.banner_url
         const membersSuccess = document.getElementById('members-success')!
 
         try {
-          const res = await fetch(`/api/{encodeURIComponent(slug)}/members/${userId}`, {
+          const res = await fetch(`/api/${encodeURIComponent(slug)}/members/${userId}`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
@@ -881,7 +881,7 @@ const orgBannerUrl = org.banner_url
         const membersSuccess = document.getElementById('members-success')!
 
         try {
-          const res = await fetch(`/api/{encodeURIComponent(slug)}/members/${userId}`, {
+          const res = await fetch(`/api/${encodeURIComponent(slug)}/members/${userId}`, {
             method: 'DELETE',
             headers: {
               'Authorization': `Bearer ${session.access_token}`,
@@ -923,7 +923,7 @@ const orgBannerUrl = org.banner_url
         const invitesSuccess = document.getElementById('invites-success')!
 
         try {
-          const res = await fetch(`/api/{encodeURIComponent(slug)}/invites/${token}`, {
+          const res = await fetch(`/api/${encodeURIComponent(slug)}/invites/${token}`, {
             method: 'DELETE',
             headers: {
               'Authorization': `Bearer ${session.access_token}`,
@@ -965,7 +965,7 @@ const orgBannerUrl = org.banner_url
         const deleteSuccess = document.getElementById('delete-success')!
 
         try {
-          const res = await fetch(`/api/{encodeURIComponent(slug)}/delete`, {
+          const res = await fetch(`/api/${encodeURIComponent(slug)}/delete`, {
             method: 'DELETE',
             headers: {
               'Authorization': `Bearer ${session.access_token}`,
@@ -1008,7 +1008,7 @@ const orgBannerUrl = org.banner_url
       if (!session) return
       webhooksList.innerHTML = '<p class="empty">Loading…</p>'
       try {
-        const res = await fetch(`/api/{encodeURIComponent(slug)}/webhooks`, {
+        const res = await fetch(`/api/${encodeURIComponent(slug)}/webhooks`, {
           headers: { 'Authorization': `Bearer ${session.access_token}` },
         })
         if (!res.ok) throw new Error('Failed to load')
@@ -1041,7 +1041,7 @@ const orgBannerUrl = org.banner_url
           if (!session) return
           ;(e.target as HTMLButtonElement).disabled = true
           try {
-            const res = await fetch(`/api/{encodeURIComponent(slug)}/webhooks/${id}`, {
+            const res = await fetch(`/api/${encodeURIComponent(slug)}/webhooks/${id}`, {
               method: 'DELETE',
               headers: { 'Authorization': `Bearer ${session.access_token}` },
             })
@@ -1089,7 +1089,7 @@ const orgBannerUrl = org.banner_url
       webhooksError.style.display = 'none'
       webhooksSuccess.style.display = 'none'
       try {
-        const res = await fetch(`/api/{encodeURIComponent(slug)}/webhooks`, {
+        const res = await fetch(`/api/${encodeURIComponent(slug)}/webhooks`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1193,7 +1193,7 @@ const orgBannerUrl = org.banner_url
         formData.append('type', 'avatar')
         formData.append('file', processedBlob, 'avatar.webp')
 
-        const res = await fetch(`/api/{encodeURIComponent(slug)}/images`, {
+        const res = await fetch(`/api/${encodeURIComponent(slug)}/images`, {
           method: 'PATCH',
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
@@ -1240,7 +1240,7 @@ const orgBannerUrl = org.banner_url
         imagesSuccess.style.display = 'none'
 
         try {
-          const res = await fetch(`/api/{encodeURIComponent(slug)}/images`, {
+          const res = await fetch(`/api/${encodeURIComponent(slug)}/images`, {
             method: 'DELETE',
             headers: {
               'Content-Type': 'application/json',
@@ -1295,7 +1295,7 @@ const orgBannerUrl = org.banner_url
         formData.append('type', 'banner')
         formData.append('file', processedBlob, 'banner.webp')
 
-        const res = await fetch(`/api/{encodeURIComponent(slug)}/images`, {
+        const res = await fetch(`/api/${encodeURIComponent(slug)}/images`, {
           method: 'PATCH',
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
@@ -1339,7 +1339,7 @@ const orgBannerUrl = org.banner_url
         imagesSuccess.style.display = 'none'
 
         try {
-          const res = await fetch(`/api/{encodeURIComponent(slug)}/images`, {
+          const res = await fetch(`/api/${encodeURIComponent(slug)}/images`, {
             method: 'DELETE',
             headers: {
               'Content-Type': 'application/json',
