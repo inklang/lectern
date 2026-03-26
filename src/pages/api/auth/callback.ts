@@ -55,6 +55,22 @@ export const GET: APIRoute = async ({ request }) => {
     })
   }
 
+  // Check if user has MFA factors enrolled and verified
+  // If so, redirect to MFA verification page
+  const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors()
+
+  if (!factorsError && factorsData?.factors && factorsData.factors.length > 0) {
+    const verifiedFactors = factorsData.factors.filter((f: any) => f.status === 'verified')
+    if (verifiedFactors.length > 0) {
+      // User has MFA enrolled, redirect to verification
+      const factorId = verifiedFactors[0].id
+      return new Response(null, {
+        status: 302,
+        headers: { Location: `/mfa-verify?factor_id=${encodeURIComponent(factorId)}` },
+      })
+    }
+  }
+
   const headers = new Headers({ Location: next })
   cookiesToSet.forEach(({ name, value, options }) => {
     const maxAge = typeof options['maxAge'] === 'number' ? options['maxAge'] : (data.session.expires_in ?? 3600)

@@ -444,6 +444,91 @@ const accessToken = session.access_token
     .token-type-badge.org\:manage { border-color: #fb923c; color: #fb923c; }
     .token-type-badge.publish { border-color: #4ade80; color: #4ade80; }
     .token-type-badge.read { border-color: #60a5fa; color: #60a5fa; }
+
+    /* ── mfa ─────────────────────────────────── */
+    .mfa-factor-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .mfa-factor-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 0;
+      border-top: 1px solid var(--border);
+    }
+    .mfa-factor-info {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .mfa-factor-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .mfa-factor-icon svg {
+      width: 18px;
+      height: 18px;
+      color: var(--accent);
+    }
+    .mfa-factor-label {
+      font-size: 0.875rem;
+    }
+    .mfa-factor-date {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-family: var(--font-mono);
+    }
+    .mfa-factor-status {
+      font-size: 0.7rem;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .mfa-factor-status.verified { color: #4ade80; }
+    .mfa-factor-status.unverified { color: #fb923c; }
+    .mfa-empty {
+      color: var(--muted);
+      font-size: 0.875rem;
+      padding: 0.5rem 0;
+    }
+    .mfa-modal-desc {
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+    .mfa-qr-container {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 1rem;
+    }
+    .mfa-qr-container img {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .mfa-secret-label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+    .mfa-secret {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem;
+      word-break: break-all;
+      margin-bottom: 1rem;
+    }
   </style>
 
   <div id="profile-container" data-url={supabaseUrl} data-key={supabaseKey} data-token={accessToken}>
@@ -490,6 +575,45 @@ const accessToken = session.access_token
         <span>api tokens</span>
       </div>
       <div class="loading">loading…</div>
+    </div>
+
+    <!-- MFA (client-rendered) -->
+    <div class="section" id="mfa-section">
+      <div class="section-heading">
+        <span>two-factor authentication</span>
+        <button class="btn" id="mfa-enroll-btn">enable authenticator</button>
+      </div>
+      <div id="mfa-factors-list" class="loading">loading…</div>
+    </div>
+  </div>
+
+  <!-- MFA Modal -->
+  <div id="mfa-modal" class="modal" style="display:none">
+    <div class="modal-backdrop" id="mfa-modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="mfa-modal-title">enable authenticator</h2>
+        <button class="modal-close" id="mfa-modal-close-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="mfa-modal-error" class="modal-error" style="display:none"></div>
+      <div id="mfa-enroll-step">
+        <p class="mfa-modal-desc">Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)</p>
+        <div class="mfa-qr-container">
+          <img id="mfa-qr-code" src="" alt="QR Code" style="display:none" />
+          <div id="mfa-qr-loading" class="loading">generating…</div>
+        </div>
+        <p class="mfa-secret-label">Or enter this secret manually:</p>
+        <code class="mfa-secret" id="mfa-secret"></code>
+      </div>
+      <form id="mfa-verify-form" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="mfa-code-input">verification code</label>
+          <input id="mfa-code-input" class="form-input" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" maxlength="6" placeholder="000000" />
+        </div>
+        <button id="mfa-verify-btn" class="btn" type="submit">verify and enable</button>
+      </form>
     </div>
   </div>
 
@@ -1177,6 +1301,206 @@ const accessToken = session.access_token
       })
     }
 
+    // ── MFA ─────────────────────────────────────────────────
+    async function loadMfaFactors() {
+      const factorsList = document.getElementById('mfa-factors-list')!
+      const enrollBtn = document.getElementById('mfa-enroll-btn')!
+
+      try {
+        const res = await fetch('/api/auth/mfa/factors')
+        if (!res.ok) {
+          factorsList.innerHTML = '<div class="mfa-empty">failed to load</div>'
+          return
+        }
+        const factors = await res.json()
+
+        if (!factors || factors.length === 0) {
+          factorsList.innerHTML = '<div class="mfa-empty">no authenticator enabled</div>'
+          enrollBtn.textContent = 'enable authenticator'
+          return
+        }
+
+        factorsList.innerHTML = `<ul class="mfa-factor-list">
+          ${factors.map((f: any) => `
+            <li class="mfa-factor-item">
+              <div class="mfa-factor-info">
+                <div class="mfa-factor-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                </div>
+                <div>
+                  <div class="mfa-factor-label">Authenticator App</div>
+                  <div class="mfa-factor-date">added ${new Date(f.createdAt).toLocaleDateString()}</div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:0.75rem;">
+                <span class="mfa-factor-status ${f.status}">${f.status}</span>
+                <button class="btn" style="padding:0.375rem 0.75rem;font-size:0.75rem;" onclick="removeMfaFactor('${f.id}')">remove</button>
+              </div>
+            </li>
+          `).join('')}
+        </ul>`
+        enrollBtn.textContent = 'add another'
+      } catch {
+        factorsList.innerHTML = '<div class="mfa-empty">failed to load</div>'
+      }
+    }
+
+    // Make removeMfaFactor available globally
+    (window as any).removeMfaFactor = async function(factorId: string) {
+      if (!confirm('Are you sure you want to remove this authenticator? You will no longer be able to use it for two-factor authentication.')) {
+        return
+      }
+      try {
+        const res = await fetch(`/api/auth/mfa/factors/${factorId}`, { method: 'DELETE' })
+        if (res.ok) {
+          loadMfaFactors()
+        } else {
+          const data = await res.json()
+          alert(data.error ?? 'Failed to remove factor')
+        }
+      } catch {
+        alert('An error occurred')
+      }
+    }
+
+    // ── MFA Modal ───────────────────────────────────────────
+    let pendingFactorId: string | null = null
+
+    function openMfaModal() {
+      const modal = document.getElementById('mfa-modal')!
+      const backdrop = document.getElementById('mfa-modal-backdrop')!
+      const closeBtn = document.getElementById('mfa-modal-close-btn')!
+      const form = document.getElementById('mfa-verify-form') as HTMLFormElement
+      const formError = document.getElementById('mfa-modal-error')!
+      const qrImg = document.getElementById('mfa-qr-code') as HTMLImageElement
+      const qrLoading = document.getElementById('mfa-qr-loading')!
+      const secretEl = document.getElementById('mfa-secret')!
+      const codeInput = document.getElementById('mfa-code-input') as HTMLInputElement
+      const verifyBtn = document.getElementById('mfa-verify-btn') as HTMLButtonElement
+
+      modal.style.display = 'flex'
+      formError.style.display = 'none'
+      form.reset()
+
+      // Start enrollment
+      enrollMfa()
+
+      async function enrollMfa() {
+        qrImg.style.display = 'none'
+        qrLoading.style.display = 'block'
+        secretEl.textContent = ''
+
+        try {
+          const res = await fetch('/api/auth/mfa/enroll', { method: 'POST' })
+          const data = await res.json()
+
+          if (!res.ok || data.error) {
+            formError.textContent = data.error ?? 'Failed to start enrollment'
+            formError.style.display = 'block'
+            return
+          }
+
+          pendingFactorId = data.id
+          qrImg.src = data.qrCode
+          qrImg.style.display = 'block'
+          qrLoading.style.display = 'none'
+          secretEl.textContent = data.secret
+        } catch {
+          formError.textContent = 'An error occurred. Please try again.'
+          formError.style.display = 'block'
+        }
+      }
+
+      function closeModal() {
+        modal.style.display = 'none'
+        form.reset()
+        formError.style.display = 'none'
+        pendingFactorId = null
+      }
+
+      backdrop.addEventListener('click', closeModal)
+      closeBtn.addEventListener('click', closeModal)
+
+      codeInput.addEventListener('input', () => {
+        codeInput.value = codeInput.value.replace(/[^0-9]/g, '').slice(0, 6)
+        formError.style.display = 'none'
+      })
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault()
+        formError.style.display = 'none'
+
+        const code = codeInput.value.trim()
+        if (code.length !== 6) {
+          formError.textContent = 'Please enter a 6-digit code'
+          formError.style.display = 'block'
+          return
+        }
+
+        if (!pendingFactorId) {
+          formError.textContent = 'Session expired. Please try again.'
+          formError.style.display = 'block'
+          return
+        }
+
+        verifyBtn.disabled = true
+        verifyBtn.textContent = 'verifying…'
+
+        try {
+          // Create challenge
+          const challengeRes = await fetch('/api/auth/mfa/challenge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ factorId: pendingFactorId }),
+          })
+          const challengeData = await challengeRes.json()
+
+          if (!challengeRes.ok || challengeData.error) {
+            formError.textContent = challengeData.error ?? 'Failed to create challenge'
+            formError.style.display = 'block'
+            verifyBtn.disabled = false
+            verifyBtn.textContent = 'verify and enable'
+            return
+          }
+
+          // Verify code
+          const verifyRes = await fetch('/api/auth/mfa/verify-enroll', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              factorId: pendingFactorId,
+              challengeId: challengeData.challengeId,
+              code,
+            }),
+          })
+          const verifyData = await verifyRes.json()
+
+          if (!verifyRes.ok || verifyData.error) {
+            formError.textContent = verifyData.error ?? 'Invalid code'
+            formError.style.display = 'block'
+            verifyBtn.disabled = false
+            verifyBtn.textContent = 'verify and enable'
+            return
+          }
+
+          // Success
+          closeModal()
+          loadMfaFactors()
+        } catch {
+          formError.textContent = 'An error occurred. Please try again.'
+          formError.style.display = 'block'
+          verifyBtn.disabled = false
+          verifyBtn.textContent = 'verify and enable'
+        }
+      })
+    }
+
+    document.getElementById('mfa-enroll-btn')?.addEventListener('click', openMfaModal)
+
     load()
+    loadMfaFactors()
   </script>
 </Base>

@@ -1,0 +1,290 @@
+---
+import Base from '../layouts/Base.astro'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
+
+const supabase = createServerClient(
+  import.meta.env.SUPABASE_URL ?? '',
+  import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? '',
+  {
+    cookies: {
+      getAll() {
+        return parseCookieHeader(Astro.request.headers.get('Cookie') ?? '')
+      },
+      setAll() {},
+    },
+  }
+)
+
+const { data: { session } } = await supabase.auth.getSession()
+
+// If already has valid session with MFA verified, redirect to profile
+if (session) {
+  return Astro.redirect('/profile')
+}
+
+const url = new URL(Astro.request.url)
+const error = url.searchParams.get('error')
+const errorDescription = url.searchParams.get('error_description')
+---
+<Base title="Verify MFA - lectern">
+  <style is:global>
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: var(--bg);
+    }
+  </style>
+  <style>
+    .mfa-container {
+      width: 100%;
+      max-width: 400px;
+      padding: 2rem;
+    }
+    .mfa-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .mfa-icon {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .mfa-icon svg {
+      width: 32px;
+      height: 32px;
+      color: var(--accent);
+    }
+    h1 {
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .mfa-subtitle {
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+    .mfa-form {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .form-group {
+      margin-bottom: 1rem;
+    }
+    .form-label {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+    .form-input {
+      width: 100%;
+      padding: 0.625rem 0.75rem;
+      font-size: 1rem;
+      font-family: var(--font-mono);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      text-align: center;
+      letter-spacing: 0.3em;
+      box-sizing: border-box;
+    }
+    .form-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .form-error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #ef4444;
+      padding: 0.75rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+      display: none;
+    }
+    .form-error.visible {
+      display: block;
+    }
+    .btn {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      margin-top: 0.75rem;
+    }
+    .mfa-hint {
+      text-align: center;
+      margin-top: 1rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+  </style>
+  <div class="mfa-container">
+    <div class="mfa-header">
+      <div class="mfa-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+      <h1>two-factor authentication</h1>
+      <p class="mfa-subtitle">enter the 6-digit code from your authenticator app</p>
+    </div>
+    <div class="mfa-form">
+      <div id="mfa-error" class="form-error"></div>
+      <form id="mfa-form" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="mfa-code">verification code</label>
+          <input
+            id="mfa-code"
+            class="form-input"
+            type="text"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            autocomplete="one-time-code"
+            maxlength="6"
+            placeholder="000000"
+            autofocus
+          />
+        </div>
+        <button id="mfa-submit" class="btn" type="submit">verify</button>
+      </form>
+      <form id="mfa-signout-form">
+        <button id="mfa-signout" class="btn btn-secondary" type="submit">sign out and use different account</button>
+      </form>
+    </div>
+    <p class="mfa-hint">your authenticator app generates a new code every 30 seconds</p>
+  </div>
+  <script>
+    const form = document.getElementById('mfa-form') as HTMLFormElement
+    const codeInput = document.getElementById('mfa-code') as HTMLInputElement
+    const submitBtn = document.getElementById('mfa-submit') as HTMLButtonElement
+    const errorDiv = document.getElementById('mfa-error') as HTMLDivElement
+    const signoutForm = document.getElementById('mfa-signout-form') as HTMLFormElement
+
+    // Parse factor_id from URL
+    const url = new URL(window.location.href)
+    const factorId = url.searchParams.get('factor_id')
+
+    function showError(msg: string) {
+      errorDiv.textContent = msg
+      errorDiv.classList.add('visible')
+    }
+
+    function hideError() {
+      errorDiv.classList.remove('visible')
+    }
+
+    codeInput.addEventListener('input', () => {
+      codeInput.value = codeInput.value.replace(/[^0-9]/g, '').slice(0, 6)
+      hideError()
+    })
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault()
+      hideError()
+
+      const code = codeInput.value.trim()
+      if (code.length !== 6) {
+        showError('Please enter a 6-digit code')
+        return
+      }
+
+      if (!factorId) {
+        showError('Missing factor ID. Please sign in again.')
+        return
+      }
+
+      submitBtn.disabled = true
+      submitBtn.textContent = 'verifying…'
+
+      try {
+        // Create challenge
+        const challengeRes = await fetch('/api/auth/mfa/challenge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ factorId }),
+        })
+        const challengeData = await challengeRes.json()
+
+        if (!challengeRes.ok || challengeData.error) {
+          showError(challengeData.error ?? 'Failed to create challenge')
+          submitBtn.disabled = false
+          submitBtn.textContent = 'verify'
+          return
+        }
+
+        // Verify code
+        const verifyRes = await fetch('/api/auth/mfa/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            factorId,
+            challengeId: challengeData.challengeId,
+            code,
+          }),
+        })
+        const verifyData = await verifyRes.json()
+
+        if (!verifyRes.ok || verifyData.error) {
+          showError(verifyData.error ?? 'Invalid code')
+          submitBtn.disabled = false
+          submitBtn.textContent = 'verify'
+          return
+        }
+
+        // Success - reload to get the session
+        window.location.href = '/profile'
+      } catch (err) {
+        showError('An error occurred. Please try again.')
+        submitBtn.disabled = false
+        submitBtn.textContent = 'verify'
+      }
+    })
+
+    signoutForm.addEventListener('submit', async (e) => {
+      e.preventDefault()
+      await fetch('/api/auth/logout', { method: 'POST' })
+      window.location.href = '/login'
+    })
+
+    // Check for error params
+    const urlParams = new URLSearchParams(window.location.search)
+    const errorParam = urlParams.get('error')
+    const errorDesc = urlParams.get('error_description')
+    if (errorParam === 'mfa_required') {
+      showError(errorDesc ?? 'MFA verification is required')
+    }
+  </script>
+</Base>
