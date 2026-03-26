@@ -85,12 +85,12 @@ export const POST: APIRoute = async ({ request }) => {
     })
   }
 
-  // Supabase returns qr_code (snake_case)
+  // Supabase returns qr_code nested under totp (e.g., data.totp.qr_code)
   const enrollData = enrollResult.data as any
   return new Response(JSON.stringify({
     id: enrollData.id,
-    qrCode: enrollData.qr_code,
-    secret: enrollData.secret,
+    qrCode: enrollData.totp?.qr_code,
+    secret: enrollData.totp?.secret,
   }), {
     headers: { 'Content-Type': 'application/json' },
   })
