@@ -76,6 +76,32 @@ export const POST: APIRoute = async ({ request }) => {
 
   if (enrollResult.error) {
     if (enrollResult.error.message?.toLowerCase().includes('already exists')) {
+      // Factor already exists - try to get it via listFactors
+      const existingFactors = await supabase.auth.mfa.listFactors()
+      const verifiedFactors = existingFactors.data?.factors?.filter((f: any) => f.status === 'verified') ?? []
+      const unverifiedFactors = existingFactors.data?.factors?.filter((f: any) => f.status === 'unverified') ?? []
+      if (verifiedFactors.length > 0) {
+        // User already has a verified factor
+        return new Response(JSON.stringify({
+          existing: true,
+          verified: true,
+          id: verifiedFactors[0].id,
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (unverifiedFactors.length > 0) {
+        // Has unverified factor
+        return new Response(JSON.stringify({
+          existing: true,
+          verified: false,
+          id: unverifiedFactors[0].id,
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
       return new Response(JSON.stringify({
         error: 'MFA enrollment failed. Please sign out, sign back in, and try again.'
       }), {
