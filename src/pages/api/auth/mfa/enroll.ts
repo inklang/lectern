@@ -29,8 +29,7 @@ export const POST: APIRoute = async ({ request }) => {
     })
   }
 
-  // Try to enroll directly - if there's already an unverified factor, Supabase will error
-  // and we'll need to handle it
+  // Try to enroll
   const { data, error } = await supabase.auth.mfa.enroll({
     factorType: 'totp',
   })
@@ -38,25 +37,25 @@ export const POST: APIRoute = async ({ request }) => {
   if (error) {
     console.error('MFA enroll error:', JSON.stringify(error))
 
-    // If error says factor already exists, try to find and delete the old one
-    if (error.message && error.message.includes('already exists')) {
-      // Get list of factors to find the existing one
+    // If error says factor already exists, try to clean up and retry
+    const errMsg = error.message || ''
+    if (errMsg.toLowerCase().includes('already exists')) {
       const factorsRes = await supabase.auth.mfa.listFactors()
-      console.log('listFactors result:', factorsRes)
+      console.log('listFactors:', factorsRes)
 
       if (!factorsRes.error && factorsRes.data?.factors) {
         const unverifiedTotp = factorsRes.data.factors.find(
           (f: any) => f.factor_type === 'totp' && f.status === 'unverified'
         )
-        console.log('found unverified totp:', unverifiedTotp)
-        if (unverifiedTotp) {
-          // Delete the old factor
-          const unenrollRes = await supabase.auth.mfa.unenroll({ factorId: unverifiedTotp.id })
-          console.log('unenroll result:', unenrollRes)
+        console.log('unverifiedTotp:', unverifiedTotp)
 
-          // Now retry enrollment
+        if (unverifiedTotp) {
+          await supabase.auth.mfa.unenroll({ factorId: unverifiedTotp.id })
+          console.log('unenrolled old factor')
+
           const retryRes = await supabase.auth.mfa.enroll({ factorType: 'totp' })
-          console.log('retry enroll result:', retryRes)
+          console.log('retry result:', retryRes)
+
           if (retryRes.error || !retryRes.data) {
             return new Response(JSON.stringify({ error: retryRes.error?.message ?? 'Failed to enroll after cleanup' }), {
               status: 400,
@@ -64,7 +63,6 @@ export const POST: APIRoute = async ({ request }) => {
             })
           }
 
-          // Supabase returns qr_code with underscore
           return new Response(JSON.stringify({
             id: retryRes.data.id,
             qrCode: (retryRes.data as any).qr_code ?? retryRes.data.qrCode,
@@ -81,7 +79,7 @@ export const POST: APIRoute = async ({ request }) => {
       })
     }
 
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: errMsg || 'Enrollment failed' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     })
@@ -94,7 +92,6 @@ export const POST: APIRoute = async ({ request }) => {
     })
   }
 
-  // Supabase returns qr_code with underscore, handle both formats
   return new Response(JSON.stringify({
     id: data.id,
     qrCode: (data as any).qr_code ?? data.qrCode,

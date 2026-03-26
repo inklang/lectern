@@ -29,24 +29,11 @@ export const GET: APIRoute = async ({ request }) => {
     })
   }
 
-  // Use admin client to list factors for the user
-  const adminSupabase = createServerClient(supabaseUrl, supabaseKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-    cookies: {
-      getAll() {
-        return parseCookieHeader(request.headers.get('Cookie') ?? '')
-      },
-      setAll() {},
-    },
-  })
-
-  // Set the session manually for admin client
-  const { data: factorsData, error: factorsError } = await adminSupabase.auth.mfa.listFactors()
+  // listFactors is a user-level method, use the authenticated client
+  const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors()
 
   if (factorsError) {
+    console.error('listFactors error:', factorsError)
     return new Response(JSON.stringify({ error: factorsError.message }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
