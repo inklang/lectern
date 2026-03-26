@@ -33,62 +33,32 @@ export const POST: APIRoute = async ({ request }) => {
     factorType: 'totp',
   })
 
-  console.error('=== MFA ENROLL DEBUG ===')
-  console.error('error:', error ? JSON.stringify(error) : 'none')
-  console.error('data:', data ? JSON.stringify(data) : 'none')
-  console.error('=======================')
-
   if (error) {
     const errMsg = error.message || ''
 
-    console.error('Error message:', errMsg)
-    console.error('Contains already exists:', errMsg.toLowerCase().includes('already exists'))
-
     if (errMsg.toLowerCase().includes('already exists')) {
-      console.error('Attempting to list factors...')
-
       const factorsRes = await supabase.auth.mfa.listFactors()
 
-      console.error('factorsRes.error:', factorsRes.error ? JSON.stringify(factorsRes.error) : 'none')
-      console.error('factorsRes.data:', factorsRes.data ? JSON.stringify(factorsRes.data) : 'none')
-      console.error('factorsRes.data?.factors:', factorsRes.data?.factors ? JSON.stringify(factorsRes.data.factors) : 'none')
-
-      if (factorsRes.error) {
-        console.error('listFactors returned error, returning that')
-        return new Response(JSON.stringify({ error: `listFactors failed: ${factorsRes.error.message}` }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      }
-
-      if (!factorsRes.data?.factors || factorsRes.data.factors.length === 0) {
-        console.error('No factors returned at all')
-        return new Response(JSON.stringify({ error: 'Inconsistent state: factor exists but list is empty. Try signing out and back in.' }), {
+      if (factorsRes.error || !factorsRes.data?.factors || factorsRes.data.factors.length === 0) {
+        return new Response(JSON.stringify({ error: 'MFA factor exists but cannot list it. Please sign out and sign back in, then try again.' }), {
           status: 400,
           headers: { 'Content-Type': 'application/json' },
         })
       }
 
       const totpFactors = factorsRes.data.factors.filter((f: any) => f.factor_type === 'totp')
-      console.error('TOTP factors:', JSON.stringify(totpFactors))
-
-      if (totpFactors.length === 0) {
-        console.error('No TOTP factors but got already exists error - weird')
-        return new Response(JSON.stringify({ error: 'No TOTP factors found but got already exists' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      }
 
       for (const f of totpFactors) {
-        console.error(`Deleting factor ${f.id} status=${f.status}`)
-        const unenrollRes = await supabase.auth.mfa.unenroll({ factorId: f.id })
-        console.error(`Unenroll result:`, JSON.stringify(unenrollRes))
+        if (f.status === 'verified') {
+          return new Response(JSON.stringify({ error: 'MFA is already enabled. Remove it first if you want to add a new one.' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+        await supabase.auth.mfa.unenroll({ factorId: f.id })
       }
 
-      console.error('Retrying enroll after cleanup...')
       const retryRes = await supabase.auth.mfa.enroll({ factorType: 'totp' })
-      console.error('retryRes:', JSON.stringify(retryRes))
 
       if (retryRes.error || !retryRes.data) {
         return new Response(JSON.stringify({ error: retryRes.error?.message ?? 'Failed to enroll after cleanup' }), {
@@ -97,9 +67,12 @@ export const POST: APIRoute = async ({ request }) => {
         })
       }
 
+      // Log what we got
+      console.error('RETRY SUCCESS - data:', JSON.stringify(retryRes.data))
+
       return new Response(JSON.stringify({
         id: retryRes.data.id,
-        qrCode: (retryRes.data as any).qr_code ?? retryRes.data.qrCode,
+        qrCode: retryRes.data.qrCode,
         secret: retryRes.data.secret,
       }), {
         headers: { 'Content-Type': 'application/json' },
@@ -119,9 +92,11 @@ export const POST: APIRoute = async ({ request }) => {
     })
   }
 
+  console.error('FIRST TRY SUCCESS - data:', JSON.stringify(data))
+
   return new Response(JSON.stringify({
     id: data.id,
-    qrCode: (data as any).qr_code ?? data.qrCode,
+    qrCode: data.qrCode,
     secret: data.secret,
   }), {
     headers: { 'Content-Type': 'application/json' },
