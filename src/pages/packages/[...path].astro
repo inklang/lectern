@@ -1,0 +1,7 @@
+---
+// This route handles /packages/owner/package-name (multi-segment paths)
+// It redirects to the root catch-all which renders the package page directly
+const path = Astro.params.path
+if (!path) return Astro.redirect('/packages')
+return Astro.redirect(`/${path}`)
+---

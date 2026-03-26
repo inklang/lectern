@@ -453,7 +453,7 @@ const allTags = await listTags().catch(() => [])
             ? <p class="empty">no packages yet.</p>
             : <div class="pkg-list">
                 {recent.map(pkg => (
-                  <a class="pkg-row" href={`/packages/${pkg.name}`}>
+                  <a class="pkg-row" href={`/${pkg.name}`}>
                     <span class="pkg-name">{pkg.name}</span>
                     <span class="pkg-meta">v{pkg.version} · {new Date(pkg.published_at).toLocaleDateString()}</span>
                   </a>
@@ -469,7 +469,7 @@ const allTags = await listTags().catch(() => [])
             ? <p class="empty">no download data yet.</p>
             : <div class="trending-list">
                 {trending.map((pkg, i) => (
-                  <a class="trending-row" href={`/packages/${pkg.package_name}`}>
+                  <a class="trending-row" href={`/${pkg.package_name}`}>
                     <span class="trending-rank">#{i + 1}</span>
                     <span class="trending-name">{pkg.package_name}</span>
                     <span class="trending-dl">{pkg.download_count.toLocaleString()} dl</span>
@@ -485,7 +485,7 @@ const allTags = await listTags().catch(() => [])
             ? <p class="empty">no packages yet.</p>
             : <div class="trending-list">
                 {popular.map((pkg, i) => (
-                  <a class="trending-row" href={`/packages/${pkg.package_name}`}>
+                  <a class="trending-row" href={`/${pkg.package_name}`}>
                     <span class="trending-rank">#{i + 1}</span>
                     <span class="trending-name">{pkg.package_name}</span>
                     <span class="trending-dl">{pkg.popularity_score.toFixed(2)}</span>
@@ -551,7 +551,7 @@ const allTags = await listTags().catch(() => [])
         }
 
         results.innerHTML = data.map(pkg => `
-          <a class="sr-card" href="/packages/${esc(pkg.name)}">
+          <a class="sr-card" href="/${esc(pkg.name)}">
             <div>
               <span class="sr-name">${esc(pkg.name)}</span>
               ${pkg.description ? `<span class="sr-desc">${esc(pkg.description)}</span>` : ''}

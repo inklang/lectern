@@ -1,0 +1,503 @@
+---
+import Base from '../layouts/Base.astro'
+import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount } from '../lib/db.js'
+import { renderMarkdown } from '../lib/markdown.js'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
+
+const path = Astro.params.path
+if (!path) return Astro.redirect('/packages')
+
+const segments = path.split('/')
+
+// Single segment: profile page (org or user) or unscoped package
+if (segments.length === 1) {
+  return Astro.redirect(`/packages/${path}`)
+}
+
+// Two segments: owner/package - render package page
+if (segments.length !== 2) {
+  return Astro.redirect('/packages')
+}
+
+const [owner, packageName] = segments
+const fullSlug = `${owner}/${packageName}`
+
+const versions = await getPackageVersions(fullSlug)
+if (versions.length === 0) {
+  return new Response(JSON.stringify({ error: 'package not found', fullSlug }), {
+    headers: { 'Content-Type': 'application/json' },
+    status: 404
+  })
+}
+
+const latest = versions[0]
+const ownerId = await getPackageOwner(fullSlug)
+const readmeHtml = await renderMarkdown(latest.readme ?? '')
+const dependents = await getPackageDependents(fullSlug)
+const stats = await getPackageStats(fullSlug)
+const deprecation = await getPackageDeprecation(fullSlug)
+const advisories = await getPackageAdvisories(fullSlug)
+const tags = await getPackageTags(fullSlug).catch(() => [])
+const starCount = await getStarCount(fullSlug).catch(() => 0)
+
+const supabase = createServerClient(
+  import.meta.env.SUPABASE_URL ?? '',
+  import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? '',
+  {
+    cookies: {
+      getAll() {
+        return parseCookieHeader(Astro.request.headers.get('Cookie') ?? '')
+      },
+      setAll() {},
+    },
+  }
+)
+
+const { data: { session } } = await supabase.auth.getSession()
+const userId = session?.user?.id ?? null
+
+let isOrgAdmin = false
+if (userId && ownerId) {
+  const { data: pkg } = await supabase
+    .from('packages')
+    .select('owner_id, owner_type')
+    .eq('slug', fullSlug)
+    .single()
+
+  if (pkg && pkg.owner_type === 'org') {
+    const { data: member } = await supabase
+      .from('org_members')
+      .select('role')
+      .eq('org_id', pkg.owner_id)
+      .eq('user_id', userId)
+      .single()
+
+    isOrgAdmin = member?.role === 'owner' || member?.role === 'admin'
+  }
+}
+
+const packageUrl = `https://lectern.inklang.org/packages/${fullSlug}`
+const ogDescription = latest.description?.slice(0, 200) ?? `${fullSlug} — an Ink package published on Lectern`
+---
+
+<Base
+  title={fullSlug}
+  description={ogDescription}
+  ogTitle={fullSlug}
+  ogDescription={ogDescription}
+  ogUrl={packageUrl}
+  ogImagePath={fullSlug}
+>
+  <style>
+    .back {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      display: inline-block;
+      margin-bottom: 2rem;
+    }
+    .back:hover { color: var(--text); opacity: 1; }
+    .pkg-header { border-bottom: 1px solid var(--border); padding-bottom: 1.75rem; margin-bottom: 2rem; }
+    .pkg-name { font-family: var(--font-mono); font-size: 1.75rem; font-weight: 600; letter-spacing: -0.04em; }
+    .pkg-meta-row { display: flex; align-items: center; gap: 1rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    .badge { font-family: var(--font-mono); font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+    .badge.latest { border-color: var(--accent); color: var(--accent); }
+    .section { margin-bottom: 2.5rem; }
+    .section-heading { font-family: var(--font-mono); font-size: 0.7rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.875rem; }
+    .code-block { display: inline-flex; align-items: center; gap: 0.75rem; background: var(--surface); border: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.875rem; padding: 0.65rem 1rem; border-radius: 10px; color: var(--text); }
+    .code-block .prompt { color: var(--muted-2); }
+    .versions-list { display: flex; flex-direction: column; }
+    .version-row { display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 0; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.875rem; }
+    .version-row:last-child { border-bottom: none; }
+    .version-left { display: flex; align-items: center; gap: 0.75rem; }
+    .download-count { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); text-align: right; min-width: 5rem; }
+    .version-date { color: var(--muted); font-size: 0.8rem; }
+    .version-tag { display: inline-block; font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 4px; border: 1px solid var(--accent); color: var(--accent); }
+    .deps-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .dep-item { font-family: var(--font-mono); font-size: 0.875rem; display: flex; align-items: baseline; gap: 0.5rem; }
+    .dep-name { color: var(--text); text-decoration: none; }
+    .dep-name:hover { opacity: 0.7; }
+    .dep-range { color: var(--muted); }
+    .no-deps { font-family: var(--font-mono); font-size: 0.875rem; color: var(--muted); }
+    .owner-block { display: flex; align-items: center; gap: 0.6rem; }
+    .owner-key { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text); word-break: break-all; }
+    .owner-key-muted { color: var(--muted); }
+    .pkg-description { font-family: system-ui, sans-serif; font-size: 0.9rem; color: var(--muted); margin-top: 0.75rem; }
+    .readme-body { font-family: system-ui, sans-serif; font-size: 0.9rem; line-height: 1.7; }
+    .dependents-link { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); text-decoration: none; display: inline-block; margin-top: 0.5rem; }
+    .dependents-link:hover { color: var(--text); opacity: 1; }
+    .downloads-total { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); }
+    .deprecation-banner { background: rgba(245, 158, 11, 0.1); border: 1px solid #f59e0b; border-radius: 8px; padding: 0.875rem 1rem; margin-bottom: 1.5rem; }
+    .deprecation-title { font-family: var(--font-mono); font-size: 0.75rem; font-weight: 600; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+    .deprecation-message { font-family: system-ui, sans-serif; font-size: 0.875rem; color: var(--text); line-height: 1.5; }
+    .advisories-list { display: flex; flex-direction: column; gap: 0.75rem; }
+    .advisory-item { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+    .advisory-badge { font-family: var(--font-mono); font-size: 0.65rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.03em; flex-shrink: 0; }
+    .advisory-badge.critical { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid #ef4444; }
+    .advisory-badge.high { background: rgba(249, 115, 22, 0.15); color: #f97316; border: 1px solid #f97316; }
+    .advisory-badge.medium { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid #f59e0b; }
+    .advisory-badge.low { background: rgba(107, 114, 128, 0.15); color: #6b7280; border: 1px solid #6b7280; }
+    .advisory-content { flex: 1; min-width: 0; }
+    .advisory-title { font-family: system-ui, sans-serif; font-size: 0.875rem; color: var(--text); font-weight: 500; margin-bottom: 0.25rem; }
+    .advisory-meta { font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted); }
+    .advisory-link { color: var(--accent); text-decoration: none; font-size: 0.75rem; }
+    .advisory-link:hover { text-decoration: underline; }
+    .no-advisories { font-family: var(--font-mono); font-size: 0.875rem; color: var(--muted); }
+    .tags-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
+    .tag-chip { display: inline-flex; align-items: center; padding: 0.2rem 0.6rem; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); text-decoration: none; transition: border-color 0.15s, color 0.15s; }
+    .tag-chip:hover { border-color: var(--accent); color: var(--accent); opacity: 1; }
+    .badges-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .badge-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+    .badge-card-label { font-family: var(--font-mono); font-size: 0.7rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem; }
+    .badge-preview { display: flex; justify-content: center; margin-bottom: 1rem; min-height: 28px; }
+    .badge-preview img, .badge-preview svg { max-width: 100%; height: auto; }
+    .badge-code { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.75rem; font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); word-break: break-all; position: relative; }
+    .badge-copy { position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted); padding: 0.2rem 0.4rem; border-radius: 4px; }
+    .badge-copy:hover { color: var(--text); background: var(--border); }
+    .star-btn { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.2rem 0.6rem; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-family: var(--font-mono); font-size: 0.8rem; cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s; }
+    .star-btn:hover { border-color: var(--star-color, #f59e0b); color: var(--star-color, #f59e0b); }
+    .star-btn.starred { border-color: var(--star-color, #f59e0b); color: var(--star-color, #f59e0b); background: rgba(245, 158, 11, 0.1); }
+    .star-icon { font-size: 0.9rem; line-height: 1; }
+    .star-count { font-variant-numeric: tabular-nums; }
+    .pending-releases-section { margin-top: 1.5rem; padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+    .pending-releases-heading { font-family: var(--font-mono); font-size: 0.7rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.875rem; }
+    .pending-release { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.875rem; }
+    .pending-release:last-child { border-bottom: none; }
+    .pending-release-version { color: var(--accent); font-weight: 600; }
+    .pending-release-meta { color: var(--muted); font-size: 0.8rem; }
+    .pending-release-actions { margin-left: auto; display: flex; gap: 0.5rem; }
+    .pending-release-btn { font-family: var(--font-mono); font-size: 0.75rem; padding: 0.25rem 0.75rem; border-radius: 4px; border: 1px solid var(--border); background: transparent; cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s; }
+    .pending-release-btn.approve { border-color: #22c55e; color: #22c55e; }
+    .pending-release-btn.approve:hover { background: rgba(34, 197, 94, 0.1); }
+    .pending-release-btn.reject { border-color: #ef4444; color: #ef4444; }
+    .pending-release-btn.reject:hover { background: rgba(239, 68, 68, 0.1); }
+    .no-pending-releases { font-family: var(--font-mono); font-size: 0.875rem; color: var(--muted); }
+    .version-checkbox { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+    .compare-footer { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--border); padding: 1rem; display: none; justify-content: center; align-items: center; gap: 1rem; z-index: 100; box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15); }
+    .compare-footer.visible { display: flex; }
+    .compare-text { font-family: var(--font-mono); font-size: 0.875rem; color: var(--text); }
+    .compare-version { color: var(--accent); font-weight: 600; }
+    .compare-btn { font-family: var(--font-mono); font-size: 0.875rem; padding: 0.5rem 1.25rem; background: var(--accent); color: var(--bg); border: none; border-radius: 6px; cursor: pointer; font-weight: 500; transition: opacity 0.15s; }
+    .compare-btn:hover { opacity: 0.85; }
+  </style>
+
+  <a class="back" href="/packages">← packages</a>
+
+  <div class="pkg-header">
+    <div class="pkg-name">{fullSlug}</div>
+    <div class="pkg-meta-row">
+      <span class="badge latest">v{latest.version}</span>
+      {latest.author && <span class="badge">{latest.author}</span>}
+      {latest.license && <span class="badge">{latest.license}</span>}
+      <span class="downloads-total">{stats.total.toLocaleString()} download{stats.total !== 1 ? 's' : ''}</span>
+      <button class="star-btn" id="star-btn" data-package={fullSlug} data-starred="false" data-logged-in={userId ? 'true' : 'false'}>
+        <span class="star-icon">☆</span>
+        <span class="star-count" id="star-count">{starCount}</span>
+      </button>
+    </div>
+    {latest.description && <p class="pkg-description">{latest.description}</p>}
+    {tags.length > 0 && (
+      <div class="tags-row">
+        {tags.map(tag => (
+          <a class="tag-chip" href={`/tags/${encodeURIComponent(tag)}`}>{tag}</a>
+        ))}
+      </div>
+    )}
+  </div>
+
+  {deprecation?.deprecated && (
+    <div class="deprecation-banner">
+      <p class="deprecation-title">Deprecated</p>
+      {deprecation.deprecation_message && (
+        <p class="deprecation-message">{deprecation.deprecation_message}</p>
+      )}
+    </div>
+  )}
+
+  <div class="section">
+    <p class="section-heading">install</p>
+    <div class="code-block">
+      <span class="prompt">$</span>
+      <span>quill add {fullSlug}</span>
+    </div>
+  </div>
+
+  {readmeHtml && (
+    <div class="section">
+      <p class="section-heading">readme</p>
+      <div class="readme-body" set:html={readmeHtml} />
+    </div>
+  )}
+
+  {ownerId && (
+    <div class="section">
+      <p class="section-heading">owner</p>
+      <div class="owner-block">
+        <span class="owner-key">
+          {ownerId.slice(0, 8)}<span class="owner-key-muted">{ownerId.slice(8)}</span>
+        </span>
+      </div>
+    </div>
+  )}
+
+  {Object.keys(latest.dependencies).length > 0 && (
+    <div class="section">
+      <p class="section-heading">dependencies</p>
+      <div class="deps-list">
+        {Object.entries(latest.dependencies).map(([dep, range]) => (
+          <div class="dep-item">
+            <a class="dep-name" href={`/packages/${dep}`}>{dep}</a>
+            <span class="dep-range">{range}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )}
+
+  <div class="section">
+    <p class="section-heading">dependents</p>
+    <div class="deps-list">
+      {dependents.length > 0 ? (
+        <>
+          <div class="dep-item">
+            <span class="dep-name">{dependents.length} package{dependents.length !== 1 ? 's' : ''} depend{dependents.length === 1 ? 's' : ''} on this</span>
+          </div>
+          <a class="dependents-link" href={`/packages/${fullSlug}/deps`}>View dependency graph →</a>
+        </>
+      ) : (
+        <div class="no-deps">No packages depend on this one yet</div>
+      )}
+    </div>
+  </div>
+
+  {advisories.length > 0 && (
+    <div class="section">
+      <p class="section-heading">security advisories</p>
+      <div class="advisories-list">
+        {advisories.map(adv => (
+          <div class="advisory-item">
+            <span class={`advisory-badge ${adv.severity}`}>{adv.severity}</span>
+            <div class="advisory-content">
+              <p class="advisory-title">{adv.title}</p>
+              <p class="advisory-meta">
+                {adv.cve && <span>CVE: {adv.cve} | </span>}
+                <span>Affected: {adv.affected_versions}</span>
+                {adv.fixed_version && <span> | Fixed: {adv.fixed_version}</span>}
+              </p>
+            </div>
+            <a class="advisory-link" href={adv.advisory_url} target="_blank" rel="noopener">View →</a>
+          </div>
+        ))}
+      </div>
+    </div>
+  )}
+
+  <div class="section">
+    <p class="section-heading">versions</p>
+    <div class="versions-list" id="versions-list">
+      {versions.map((v, i) => (
+        <div class="version-row" data-version={v.version}>
+          <div class="version-left">
+            {versions.length > 1 && (
+              <input type="checkbox" class="version-checkbox" value={v.version} aria-label={`Select version ${v.version}`} />
+            )}
+            <span>v{v.version}</span>
+            {i === 0 && <span class="version-tag">latest</span>}
+          </div>
+          <div style="display: flex; gap: 1rem; align-items: center;">
+            <span class="download-count">{(v.download_count ?? 0).toLocaleString()} dl</span>
+            <span class="version-date">{new Date(v.published_at).toLocaleDateString()}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  {isOrgAdmin && (
+    <div class="section">
+      <div class="pending-releases-section" id="pending-releases-section" style="display: none;">
+        <p class="pending-releases-heading">Pending Releases</p>
+        <div id="pending-releases-list"></div>
+      </div>
+    </div>
+  )}
+
+  <div class="compare-footer" id="compare-footer">
+    <span class="compare-text">
+      Comparing <span class="compare-version" id="compare-v1">v1.0.0</span>
+      <span style="color: var(--muted)"> → </span>
+      <span class="compare-version" id="compare-v2">v2.0.0</span>
+    </span>
+    <button class="compare-btn" id="compare-btn">Compare versions</button>
+  </div>
+
+  <script define:vars={{ packageName: fullSlug }}>
+    document.querySelectorAll('.badge-copy').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const codeEl = btn.parentElement?.querySelector('code')
+        if (!codeEl) return
+        const text = codeEl.textContent ?? ''
+        await navigator.clipboard.writeText(text).catch(() => {})
+        const orig = btn.textContent
+        btn.textContent = 'copied!'
+        setTimeout(() => { btn.textContent = orig }, 1500)
+      })
+    })
+
+    const checkboxes = document.querySelectorAll('.version-checkbox')
+    const footer = document.getElementById('compare-footer')
+    const compareV1 = document.getElementById('compare-v1')
+    const compareV2 = document.getElementById('compare-v2')
+    const compareBtn = document.getElementById('compare-btn')
+
+    let selectedVersions = []
+
+    function updateFooter() {
+      if (selectedVersions.length === 2) {
+        const sorted = [...selectedVersions].sort((a, b) => {
+          const parseV = (v) => v.split('.').map(n => parseInt(n, 10) || 0)
+          const aParts = parseV(a)
+          const bParts = parseV(b)
+          for (let i = 0; i < 3; i++) {
+            if (aParts[i] !== bParts[i]) return aParts[i] - bParts[i]
+          }
+          return 0
+        })
+        compareV1.textContent = 'v' + sorted[0]
+        compareV2.textContent = 'v' + sorted[1]
+        footer?.classList.add('visible')
+      } else {
+        footer?.classList.remove('visible')
+      }
+    }
+
+    checkboxes.forEach(cb => {
+      cb.addEventListener('change', () => {
+        const value = cb.value
+        if (cb.checked) {
+          if (selectedVersions.length >= 2) {
+            const oldestVersion = selectedVersions.shift()
+            checkboxes.forEach(otherCb => {
+              if (otherCb.value === oldestVersion) otherCb.checked = false
+            })
+          }
+          selectedVersions.push(value)
+        } else {
+          selectedVersions = selectedVersions.filter(v => v !== value)
+        }
+        updateFooter()
+      })
+    })
+
+    compareBtn?.addEventListener('click', () => {
+      if (selectedVersions.length === 2 && packageName) {
+        const sorted = [...selectedVersions].sort((a, b) => {
+          const parseV = (v) => v.split('.').map(n => parseInt(n, 10) || 0)
+          const aParts = parseV(a)
+          const bParts = parseV(b)
+          for (let i = 0; i < 3; i++) {
+            if (aParts[i] !== bParts[i]) return aParts[i] - bParts[i]
+          }
+          return 0
+        })
+        window.location.href = `/packages/${packageName}/diff?v1=${encodeURIComponent(sorted[0])}&v2=${encodeURIComponent(sorted[1])}`
+      }
+    })
+
+    const starBtn = document.getElementById('star-btn')
+    const starCountEl = document.getElementById('star-count')
+
+    async function fetchStarStatus() {
+      if (!packageName) return
+      try {
+        const res = await fetch(`/api/packages/${encodeURIComponent(packageName)}/star`)
+        const data = await res.json()
+        updateStarUI(data.starred, data.starCount ?? parseInt(starCountEl?.textContent ?? '0'))
+      } catch {}
+    }
+
+    function updateStarUI(starred, count) {
+      if (!starBtn || !starCountEl) return
+      starBtn.dataset.starred = String(starred)
+      starCountEl.textContent = String(count)
+      if (starred) {
+        starBtn.classList.add('starred')
+        starBtn.querySelector('.star-icon').textContent = '★'
+      } else {
+        starBtn.classList.remove('starred')
+        starBtn.querySelector('.star-icon').textContent = '☆'
+      }
+    }
+
+    starBtn?.addEventListener('click', async () => {
+      if (!packageName || !starBtn) return
+      if (starBtn.dataset.loggedIn !== 'true') {
+        window.location.href = `/login?next=/${packageName}`
+        return
+      }
+      const currentlyStarred = starBtn.dataset.starred === 'true'
+      const currentCount = parseInt(starCountEl?.textContent ?? '0')
+      updateStarUI(!currentlyStarred, currentlyStarred ? currentCount - 1 : currentCount + 1)
+      try {
+        const res = await fetch(`/api/packages/${encodeURIComponent(packageName)}/star`, {
+          method: currentlyStarred ? 'DELETE' : 'PUT'
+        })
+        if (!res.ok) {
+          updateStarUI(currentlyStarred, currentCount)
+        } else {
+          const data = await res.json()
+          updateStarUI(data.starred, data.starCount ?? currentCount)
+        }
+      } catch {
+        updateStarUI(currentlyStarred, currentCount)
+      }
+    })
+
+    fetchStarStatus()
+
+    const pendingSection = document.getElementById('pending-releases-section')
+
+    async function loadPendingReleases(name) {
+      if (!pendingSection) return
+      try {
+        const res = await fetch(`/api/packages/${encodeURIComponent(name)}/releases/pending`)
+        if (!res.ok) return
+        const { releases } = await res.json()
+        const list = document.getElementById('pending-releases-list')
+        if (!releases || releases.length === 0) {
+          pendingSection.style.display = 'none'
+          return
+        }
+        pendingSection.style.display = 'block'
+        list.innerHTML = releases.map(r => `
+          <div class="pending-release">
+            <span class="pending-release-version">${r.version}</span>
+            <span class="pending-release-meta">by ${r.requested_by} · ${new Date(r.created_at).toLocaleDateString()}</span>
+            <div class="pending-release-actions">
+              <button class="pending-release-btn approve" onclick="approveRelease('${r.version}')">Approve</button>
+              <button class="pending-release-btn reject" onclick="rejectRelease('${r.version}')">Reject</button>
+            </div>
+          </div>
+        `).join('')
+      } catch {}
+    }
+
+    window.approveRelease = async function(version) {
+      if (!packageName) return
+      try {
+        const res = await fetch(`/api/packages/${encodeURIComponent(packageName)}/releases/pending/${encodeURIComponent(version)}/approve`, { method: 'POST' })
+        if (res.ok) loadPendingReleases(packageName)
+      } catch {}
+    }
+
+    window.rejectRelease = async function(version) {
+      if (!packageName) return
+      try {
+        const res = await fetch(`/api/packages/${encodeURIComponent(packageName)}/releases/pending/${encodeURIComponent(version)}/reject`, { method: 'POST' })
+        if (res.ok) loadPendingReleases(packageName)
+      } catch {}
+    }
+
+    if (pendingSection) loadPendingReleases(packageName)
+  </script>
+</Base>
