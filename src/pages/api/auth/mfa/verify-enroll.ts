@@ -57,14 +57,6 @@ export const POST: APIRoute = async ({ request }) => {
 
   console.error('DEBUG verify-enroll result:', JSON.stringify({ data, error }))
 
-  // Refresh session after MFA verification
-  if (!error) {
-    const { data: refreshedSession } = await supabase.auth.getSession()
-    console.error('DEBUG session after MFA verify:', refreshedSession ? 'has session' : 'no session')
-    const factorsAfterVerify = await supabase.auth.mfa.listFactors()
-    console.error('DEBUG factors after verify:', JSON.stringify(factorsAfterVerify))
-  }
-
   if (error) {
     console.error('DEBUG verify-enroll error:', error)
     return new Response(JSON.stringify({ error: error.message }), {
@@ -72,6 +64,14 @@ export const POST: APIRoute = async ({ request }) => {
       headers: { 'Content-Type': 'application/json' },
     })
   }
+
+  // After successful MFA verification, refresh the session to pick up the updated factors
+  const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession()
+  console.error('DEBUG refreshSession result:', { refreshError, hasSession: !!refreshedSession })
+
+  // List factors to verify
+  const factorsAfterVerify = await supabase.auth.mfa.listFactors()
+  console.error('DEBUG factors after verify:', JSON.stringify(factorsAfterVerify))
 
   return new Response(JSON.stringify({ verified: true }), {
     headers: { 'Content-Type': 'application/json' },
