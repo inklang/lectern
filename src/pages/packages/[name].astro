@@ -56,7 +56,18 @@ if (userId && owner) {
   }
 }
 ---
-<Base title={name!} description={`${name} — Ink package`}>
+const packageUrl = `https://lectern.inklang.org/packages/${name}`
+const ogDescription = latest.description
+  ? latest.description.slice(0, 200)
+  : `${name} — an Ink package published on Lectern`
+
+<Base
+  title={name!}
+  description={ogDescription}
+  ogTitle={name!}
+  ogDescription={ogDescription}
+  ogUrl={packageUrl}
+>
   <style>
     .back {
       font-size: 0.8rem;

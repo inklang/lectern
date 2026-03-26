@@ -4,8 +4,19 @@ import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 interface Props {
   title: string
   description?: string
+  ogTitle?: string
+  ogDescription?: string
+  ogImage?: string
+  ogUrl?: string
 }
-const { title, description = 'The Ink package registry' } = Astro.props
+const {
+  title,
+  description = 'The Ink package registry',
+  ogTitle,
+  ogDescription,
+  ogImage,
+  ogUrl,
+} = Astro.props
 
 const supabase = createServerClient(
   import.meta.env.SUPABASE_URL ?? '',
@@ -31,6 +42,21 @@ const username = session?.user.user_metadata?.user_name ?? null
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content={description} />
   <title>{title} — Lectern</title>
+
+  <!-- Open Graph / Discord Rich Embeds -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content={ogTitle ?? `${title} — Lectern`} />
+  <meta property="og:description" content={ogDescription ?? description} />
+  {ogUrl && <meta property="og:url" content={ogUrl} />}
+  {ogImage && <meta property="og:image" content={ogImage} />}
+  <meta property="og:site_name" content="Lectern" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content={ogTitle ?? `${title} — Lectern`} />
+  <meta name="twitter:description" content={ogDescription ?? description} />
+  {ogImage && <meta name="twitter:image" content={ogImage} />}
+
   <link rel="alternate" type="application/atom+xml" title="Lectern Feed" href="/api/feed.xml" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

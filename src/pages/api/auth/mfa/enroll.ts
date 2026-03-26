@@ -39,8 +39,6 @@ export const POST: APIRoute = async ({ request }) => {
   // First, list existing factors
   const factorsRes = await supabase.auth.mfa.listFactors()
   console.error('DEBUG listFactors:', JSON.stringify(factorsRes))
-  const factorsRes = await supabase.auth.mfa.listFactors()
-  console.error('DEBUG listFactors:', JSON.stringify(factorsRes))
 
   const totpFactors = factorsRes.data?.factors?.filter((f: any) => f.factor_type === 'totp') ?? []
 
