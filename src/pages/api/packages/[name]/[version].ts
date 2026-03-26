@@ -17,6 +17,7 @@ export const GET: APIRoute = async ({ params, request }) => {
   logDownload(name, version, request.headers.get('authorization') ?? null).catch(() => {})
 
   // Redirect to Supabase Storage public URL via storage helper
+  // For slug-based URLs, name IS the slug (owner/package format)
   const { supabase } = await import('../../../../lib/supabase.js')
   const { data: urlData } = supabase.storage
     .from('tarballs')
@@ -54,8 +55,8 @@ export const PUT: APIRoute = async ({ params, request }) => {
     return new Response(JSON.stringify({ error: `${name}@${version} already exists` }), { status: 409 })
   }
 
-  // Parse body — multipart or legacy raw gzip. Do NOT read arrayBuffer() here;
-  // it can only be consumed once and is read inside each branch below.
+  // Parse body — ink-publish+gzip (metadata in headers), multipart, or legacy raw gzip.
+  // Do NOT read arrayBuffer() here; it can only be consumed once and is read inside each branch below.
   const contentType = request.headers.get('content-type') ?? ''
   let tarballData: Buffer
   let description: string | null = null
@@ -64,8 +65,22 @@ export const PUT: APIRoute = async ({ params, request }) => {
   let license: string | null = null
   let dependencies: Record<string, string> = {}
   let tags: string[] = []
+  let targets: string[] = []
 
-  if (contentType.includes('multipart/form-data')) {
+  if (contentType.includes('application/vnd.ink-publish+gzip')) {
+    // New format: tarball as raw gzip body, metadata in HTTP headers
+    tarballData = Buffer.from(await request.arrayBuffer())
+    if (!tarballData.length) return new Response(JSON.stringify({ error: 'Empty body' }), { status: 400 })
+    description = request.headers.get('X-Package-Description') ?? null
+    readme = request.headers.get('X-Package-Readme') ?? null
+    try { dependencies = await extractDependencies(tarballData) } catch {}
+
+    // Parse targets from X-Package-Targets header
+    const targetsHeader = request.headers.get('X-Package-Targets')
+    if (targetsHeader) {
+      try { targets = JSON.parse(targetsHeader) } catch { targets = [] }
+    }
+  } else if (contentType.includes('multipart/form-data')) {
     const formData = await request.formData()
     const tarballFile = formData.get('tarball') as File | null
     if (!tarballFile) return new Response(JSON.stringify({ error: 'Missing tarball' }), { status: 400 })
@@ -92,7 +107,6 @@ export const PUT: APIRoute = async ({ params, request }) => {
     }
 
     // Parse targets: sent as JSON array string
-    let targets: string[] = []
     const targetsVal = formData.get('targets')
     if (targetsVal) {
       if (typeof targetsVal === 'string') {
@@ -106,33 +120,45 @@ export const PUT: APIRoute = async ({ params, request }) => {
     try { dependencies = await extractDependencies(tarballData) } catch {}
   }
 
-  // Upload to Supabase Storage
-  const tarballUrl = await uploadTarball(name, version, tarballData)
-
   // Check if this should be an org-owned package
   const url = new URL(request.url)
   const ownerOrgId = url.searchParams.get('owner_org_id')
 
   let ownerType: 'user' | 'org' = 'user'
   let actualOwnerId = userId
+  let ownerSlug = ''
 
   if (ownerOrgId) {
     // Verify user is admin of this org
-    const { isOrgAdmin } = await import('../../../../lib/orgs.js')
+    const { isOrgAdmin, getOrgById } = await import('../../../../lib/orgs.js')
     if (!(await isOrgAdmin(ownerOrgId, userId))) {
       return new Response(JSON.stringify({ error: 'Not an admin of this org' }), { status: 403 })
     }
     ownerType = 'org'
     actualOwnerId = ownerOrgId
+    // Get org slug
+    const org = await getOrgById(ownerOrgId)
+    ownerSlug = org?.slug ?? 'unknown'
+  } else {
+    // Get user's slug (username)
+    const { supabase } = await import('../../../../lib/supabase.js')
+    const { data: userData } = await supabase.from('auth.users').select('raw_user_meta_data').eq('id', userId).single()
+    ownerSlug = userData?.raw_user_meta_data?.preferred_username ?? 'unknown'
   }
 
+  // Full slug is ownerSlug/packageName
+  const slug = `${ownerSlug}/${name}`
+
+  // Upload to Supabase Storage (use slug for path)
+  const tarballUrl = await uploadTarball(slug, version, tarballData)
+
   // Create package record on first publish
-  const owner = await getPackageOwner(name)
-  if (!owner) await createPackage(name, actualOwnerId, ownerType)
+  const owner = await getPackageOwner(slug)
+  if (!owner) await createPackage(slug, name, ownerSlug, actualOwnerId, ownerType)
 
   // Insert version row (embedding added async after response)
   await insertVersion({
-    package_name: name,
+    package_slug: slug,
     version,
     description,
     readme,
@@ -148,12 +174,12 @@ export const PUT: APIRoute = async ({ params, request }) => {
   if (tags.length > 0) {
     const { addPackageTag } = await import('../../../../lib/db.js')
     for (const tag of tags.slice(0, 20)) {
-      if (tag.length <= 50) addPackageTag(name, tag).catch(() => {})
+      if (tag.length <= 50) addPackageTag(slug, tag).catch(() => {})
     }
   }
 
-  // Trigger embedding generation non-blocking — implemented in Task 16
-  generateAndStoreEmbedding(name, version, description, readme).catch(() => {})
+  // Trigger embedding generation non-blocking
+  generateAndStoreEmbedding(slug, version, description, readme).catch(() => {})
 
   // Fire webhook for package.published event (fire and forget)
   deliverWebhook(ownerType === 'org' ? actualOwnerId : null, 'package.published', {
@@ -189,13 +215,13 @@ export const PUT: APIRoute = async ({ params, request }) => {
 import { embedText } from '../../../../lib/embed.js'
 
 async function generateAndStoreEmbedding(
-  name: string, version: string,
+  slug: string, version: string,
   description: string | null, readme: string | null
 ): Promise<void> {
   const { supabase } = await import('../../../../lib/supabase.js')
 
   // Strip markdown to plain text for embedding (rough strip)
-  const plaintext = [name, description ?? '', readme?.replace(/[#*`\[\]]/g, '') ?? '']
+  const plaintext = [slug, description ?? '', readme?.replace(/[#*`\[\]]/g, '') ?? '']
     .filter(Boolean).join(' ').slice(0, 8000)
 
   const embedding = await embedText(plaintext, 'passage')
@@ -204,6 +230,6 @@ async function generateAndStoreEmbedding(
   await supabase
     .from('package_versions')
     .update({ embedding })
-    .eq('package_name', name)
+    .eq('package_slug', slug)
     .eq('version', version)
 }

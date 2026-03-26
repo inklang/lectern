@@ -7,11 +7,11 @@ import { getPackagePermissionForUser } from './orgs.js'
  * - Org-owned (owner_type = 'org'): user must be org member AND have write/admin permission on this package
  * - Package doesn't exist yet: return true (caller handles first-publish ownership)
  */
-export async function canUserPublish(userId: string, packageName: string): Promise<boolean> {
+export async function canUserPublish(userId: string, slug: string): Promise<boolean> {
   const { data: pkg } = await supabase
     .from('packages')
     .select('owner_id, owner_type')
-    .eq('name', packageName)
+    .eq('slug', slug)
     .single()
 
   if (!pkg) {
@@ -36,7 +36,9 @@ export async function canUserPublish(userId: string, packageName: string): Promi
 
     // Check per-package permission via teams
     try {
-      const perm = await getPackagePermissionForUser(pkg.owner_id, userId, packageName)
+      // Extract short name from slug for permission lookup
+      const shortName = slug.includes('/') ? slug.split('/').pop()! : slug
+      const perm = await getPackagePermissionForUser(pkg.owner_id, userId, shortName)
       return perm === 'write' || perm === 'admin'
     } catch {
       return false // DB error — deny rather than leak error
@@ -52,11 +54,11 @@ export async function canUserPublish(userId: string, packageName: string): Promi
  * - Org-owned (owner_type = 'org'): user must be org member AND have at least read permission
  * - Package doesn't exist: return false
  */
-export async function canUserRead(userId: string, packageName: string): Promise<boolean> {
+export async function canUserRead(userId: string, slug: string): Promise<boolean> {
   const { data: pkg } = await supabase
     .from('packages')
     .select('owner_id, owner_type')
-    .eq('name', packageName)
+    .eq('slug', slug)
     .single()
 
   if (!pkg) {
@@ -80,7 +82,9 @@ export async function canUserRead(userId: string, packageName: string): Promise<
 
     // Check per-package permission via teams
     try {
-      const perm = await getPackagePermissionForUser(pkg.owner_id, userId, packageName)
+      // Extract short name from slug for permission lookup
+      const shortName = slug.includes('/') ? slug.split('/').pop()! : slug
+      const perm = await getPackagePermissionForUser(pkg.owner_id, userId, shortName)
       return perm === 'read' || perm === 'write' || perm === 'admin'
     } catch {
       return false // DB error — deny rather than leak error
@@ -93,11 +97,11 @@ export async function canUserRead(userId: string, packageName: string): Promise<
 /**
  * Returns the org slug for an org-owned package, or null for user-owned.
  */
-export async function getPackageOrgSlug(packageName: string): Promise<string | null> {
+export async function getPackageOrgSlug(slug: string): Promise<string | null> {
   const { data: pkg } = await supabase
     .from('packages')
     .select('owner_id, owner_type')
-    .eq('name', packageName)
+    .eq('slug', slug)
     .single()
 
   if (!pkg || pkg.owner_type !== 'org') return null
@@ -117,11 +121,11 @@ export async function getPackageOrgSlug(packageName: string): Promise<string | n
  * - Org-owned: user must be org admin (owner or admin role)
  * - Package doesn't exist: return false
  */
-export async function canUserDeprecate(userId: string, packageName: string): Promise<boolean> {
+export async function canUserDeprecate(userId: string, slug: string): Promise<boolean> {
   const { data: pkg } = await supabase
     .from('packages')
     .select('owner_id, owner_type')
-    .eq('name', packageName)
+    .eq('slug', slug)
     .single()
 
   if (!pkg) {

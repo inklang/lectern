@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 
 export interface PackageVersion {
-  package_name: string
+  package_slug: string
   version: string
   description: string | null
   readme: string | null
@@ -16,11 +16,16 @@ export interface PackageVersion {
 
 export interface PackageRow {
   name: string
+  slug: string
+  display_name: string
+  owner_slug: string
   owner_id: string
+  owner_type: string
   created_at: string
 }
 
 // Returns all packages with all their versions (for /index.json)
+// Key is the slug (e.g., "owner/package")
 export async function listAllPackages(): Promise<Record<string, Record<string, PackageVersion>>> {
   const { data, error } = await supabase
     .from('package_versions')
@@ -30,38 +35,38 @@ export async function listAllPackages(): Promise<Record<string, Record<string, P
 
   const result: Record<string, Record<string, PackageVersion>> = {}
   for (const row of data ?? []) {
-    if (!result[row.package_name]) result[row.package_name] = {}
-    result[row.package_name][row.version] = row
+    if (!result[row.package_slug]) result[row.package_slug] = {}
+    result[row.package_slug][row.version] = row
   }
   return result
 }
 
 // Returns all versions for a single package, sorted newest first
-export async function getPackageVersions(name: string): Promise<PackageVersion[]> {
+export async function getPackageVersions(slug: string): Promise<PackageVersion[]> {
   const { data, error } = await supabase
     .from('package_versions')
     .select('*')
-    .eq('package_name', name)
+    .eq('package_slug', slug)
     .order('published_at', { ascending: false })
   if (error) throw error
   return data ?? []
 }
 
 // Returns the owner fingerprint (user_id) for a package, or null
-export async function getPackageOwner(name: string): Promise<string | null> {
+export async function getPackageOwner(slug: string): Promise<string | null> {
   const { data } = await supabase
     .from('packages')
     .select('owner_id')
-    .eq('name', name)
+    .eq('slug', slug)
     .single()
   return data?.owner_id ?? null
 }
 
 // Registers a new package (first publish)
-export async function createPackage(name: string, ownerId: string, ownerType: 'user' | 'org' = 'user'): Promise<void> {
+export async function createPackage(slug: string, displayName: string, ownerSlug: string, ownerId: string, ownerType: 'user' | 'org' = 'user'): Promise<void> {
   const { error } = await supabase
     .from('packages')
-    .insert({ name, owner_id: ownerId, owner_type: ownerType })
+    .insert({ slug, name: displayName, owner_slug: ownerSlug, owner_id: ownerId, owner_type: ownerType })
   if (error) throw error
 }
 
@@ -73,30 +78,30 @@ export async function insertVersion(version: Omit<PackageVersion, 'published_at'
   if (error) throw error
 }
 
-// Returns true if name@version already exists
-export async function versionExists(name: string, version: string): Promise<boolean> {
+// Returns true if slug@version already exists
+export async function versionExists(slug: string, version: string): Promise<boolean> {
   const { data } = await supabase
     .from('package_versions')
     .select('version')
-    .eq('package_name', name)
+    .eq('package_slug', slug)
     .eq('version', version)
     .single()
   return !!data
 }
 
 export interface PackageDependentsResult {
-  package_name: string
+  package_slug: string
   version: string
   dep_version: string | null
 }
 
-// Returns packages/versions that depend on the given package name
+// Returns packages/versions that depend on the given package name (short name, not slug)
 // The JSONB column stores deps as {"pkgName": "versionRange", ...}
 // We filter client-side since the @> operator checks full value containment
 export async function getPackageDependents(pkgName: string): Promise<PackageDependentsResult[]> {
   const { data, error } = await supabase
     .from('package_versions')
-    .select('package_name, version, dependencies')
+    .select('package_slug, version, dependencies')
   if (error) throw error
 
   // Filter to only those whose dependencies include pkgName
@@ -105,7 +110,7 @@ export async function getPackageDependents(pkgName: string): Promise<PackageDepe
     .map(row => {
       const depVersion = (row.dependencies as Record<string, string>)?.[pkgName] ?? null
       return {
-        package_name: row.package_name,
+        package_slug: row.package_slug,
         version: row.version,
         dep_version: depVersion,
       }
@@ -113,11 +118,11 @@ export async function getPackageDependents(pkgName: string): Promise<PackageDepe
 }
 
 // Returns the dependency tree for a specific version
-export async function getVersionDependencies(name: string, version: string): Promise<Record<string, string>> {
+export async function getVersionDependencies(slug: string, version: string): Promise<Record<string, string>> {
   const { data, error } = await supabase
     .from('package_versions')
     .select('dependencies')
-    .eq('package_name', name)
+    .eq('package_slug', slug)
     .eq('version', version)
     .single()
   if (error) throw error
@@ -248,19 +253,26 @@ export async function getPackageTags(pkgName: string): Promise<string[]> {
 }
 
 // Add a tag to a package. Creates the tag if it doesn't exist.
-export async function addPackageTag(pkgName: string, tag: string): Promise<void> {
+// Accepts slug (owner/package) and extracts short name for storage
+export async function addPackageTag(slug: string, tag: string): Promise<void> {
   // Upsert the tag (idempotent)
-  await supabase.from('tags').upsert({ name: tag }).catch(() => {})
-  const { error } = await supabase.from('package_tags').insert({ package_name: pkgName, tag })
+  try {
+    await supabase.from('tags').upsert({ name: tag })
+  } catch {}
+  // Extract short name from slug for storage (e.g., "owner/package" -> "package")
+  const shortName = slug.includes('/') ? slug.split('/').pop()! : slug
+  const { error } = await supabase.from('package_tags').insert({ package_name: shortName, tag })
   if (error) throw error
 }
 
 // Remove a tag from a package.
-export async function removePackageTag(pkgName: string, tag: string): Promise<void> {
+export async function removePackageTag(slug: string, tag: string): Promise<void> {
+  // Extract short name from slug for storage
+  const shortName = slug.includes('/') ? slug.split('/').pop()! : slug
   const { error } = await supabase
     .from('package_tags')
     .delete()
-    .eq('package_name', pkgName)
+    .eq('package_name', shortName)
     .eq('tag', tag)
   if (error) throw error
 }
@@ -390,41 +402,42 @@ export async function upsertAdvisory(
 // ─── Package Stars ─────────────────────────────────────────────────────────────
 
 // Star a package for a user. Idempotent (no error if already starred).
-export async function starPackage(userId: string, packageName: string): Promise<void> {
+// slug is the fully-qualified package slug (e.g., "owner/package_name")
+export async function starPackage(userId: string, slug: string): Promise<void> {
   const { error } = await supabase
     .from('package_stars')
-    .upsert({ user_id: userId, package_name: packageName }, { onConflict: 'user_id,package_name' })
+    .upsert({ user_id: userId, package_name: slug }, { onConflict: 'user_id,package_name' })
   if (error) throw error
 }
 
 // Unstar a package for a user.
-export async function unstarPackage(userId: string, packageName: string): Promise<void> {
+export async function unstarPackage(userId: string, slug: string): Promise<void> {
   const { error } = await supabase
     .from('package_stars')
     .delete()
     .eq('user_id', userId)
-    .eq('package_name', packageName)
+    .eq('package_name', slug)
   if (error) throw error
 }
 
 // Returns true if the user has starred the package.
-export async function hasStarred(userId: string, packageName: string): Promise<boolean> {
+export async function hasStarred(userId: string, slug: string): Promise<boolean> {
   const { data } = await supabase
     .from('package_stars')
     .select('user_id')
     .eq('user_id', userId)
-    .eq('package_name', packageName)
+    .eq('package_name', slug)
     .single()
   return !!data
 }
 
 // Get star count for a package.
-export async function getStarCount(packageName: string): Promise<number> {
-  // First try the denormalized column on packages
+export async function getStarCount(slug: string): Promise<number> {
+  // First try the denormalized column on packages (query by slug)
   const { data: pkg } = await supabase
     .from('packages')
     .select('star_count')
-    .eq('name', packageName)
+    .eq('slug', slug)
     .single()
   if (pkg !== null) return pkg.star_count ?? 0
 
@@ -432,39 +445,40 @@ export async function getStarCount(packageName: string): Promise<number> {
   const { count, error } = await supabase
     .from('package_stars')
     .select('*', { count: 'exact', head: true })
-    .eq('package_name', packageName)
+    .eq('package_name', slug)
   if (error) throw error
   return count ?? 0
 }
 
-// Get star counts for multiple packages (batch). Returns map of package_name -> count.
-export async function getStarCounts(packageNames: string[]): Promise<Record<string, number>> {
-  if (packageNames.length === 0) return {}
+// Get star counts for multiple packages (batch). Returns map of slug -> count.
+export async function getStarCounts(slugs: string[]): Promise<Record<string, number>> {
+  if (slugs.length === 0) return {}
 
-  // Use the denormalized star_count column on packages
+  // Use the denormalized star_count column on packages (query by slug)
   const { data, error } = await supabase
     .from('packages')
-    .select('name, star_count')
+    .select('slug, star_count')
+    .in('slug', slugs)
   if (error) throw error
 
   const counts: Record<string, number> = {}
-  for (const name of packageNames) counts[name] = 0
+  for (const slug of slugs) counts[slug] = 0
   for (const row of data ?? []) {
-    if (counts.hasOwnProperty(row.name)) counts[row.name] = row.star_count ?? 0
+    if (counts.hasOwnProperty(row.slug)) counts[row.slug] = row.star_count ?? 0
   }
   return counts
 }
 
 // Get paginated starrers for a package.
 export async function getPackageStarrers(
-  packageName: string,
+  slug: string,
   limitCount = 20,
   offsetCount = 0
 ): Promise<{ userId: string; starredAt: string }[]> {
   const { data, error } = await supabase
     .from('package_stars')
     .select('user_id, starred_at')
-    .eq('package_name', packageName)
+    .eq('package_name', slug)
     .order('starred_at', { ascending: false })
     .range(offsetCount, offsetCount + limitCount - 1)
   if (error) throw error
@@ -495,12 +509,12 @@ export async function listPackagesByStars(
   // Use the denormalized star_count column on packages
   const { data, error } = await supabase
     .from('packages')
-    .select('name, star_count')
+    .select('slug, star_count')
     .gt('star_count', 0)
     .order('star_count', { ascending: false })
     .range(offsetCount, offsetCount + limitCount - 1)
   if (error) throw error
-  return (data ?? []).map(r => ({ packageName: r.name, starCount: r.star_count ?? 0 }))
+  return (data ?? []).map(r => ({ packageName: r.slug, starCount: r.star_count ?? 0 }))
 }
 
 // === Ecosystem Health ===
