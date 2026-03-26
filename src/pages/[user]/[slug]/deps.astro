@@ -1,0 +1,6 @@
+---
+// Redirect to the main package page's deps tab
+// TODO: Create full deps page at this route
+const { user, slug } = Astro.params
+const packageSlug = `${user}/${slug}`
+return Astro.redirect(`/packages/${packageSlug}/deps`)

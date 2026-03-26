@@ -1,0 +1,9 @@
+---
+// Redirect to the main package page's diff view
+// TODO: Create full diff page at this route
+const { user, slug } = Astro.params
+const packageSlug = `${user}/${slug}`
+const v1 = Astro.url.searchParams.get('v1')
+const v2 = Astro.url.searchParams.get('v2')
+const queryString = v1 || v2 ? `?${new URLSearchParams({ ...(v1 && { v1 }), ...(v2 && { v2 }) }).toString()}` : ''
+return Astro.redirect(`/packages/${packageSlug}/diff${queryString}`)

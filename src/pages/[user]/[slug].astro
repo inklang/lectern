@@ -1,0 +1,92 @@
+---
+// Package page at /[user]/[slug]
+// This route handles packages in the format: lectern.inklang.org/[user]/[slug]
+// where [user] is the owner_slug and [slug] is the package name
+import Base from '../../layouts/Base.astro'
+import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount } from '../../lib/db.js'
+import { renderMarkdown } from '../../lib/markdown.js'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
+
+const { user, slug } = Astro.params
+
+// Construct the full package slug (e.g., "user/slug")
+const packageSlug = user && slug ? `${user}/${slug}` : slug
+
+const versions = await getPackageVersions(packageSlug!)
+
+if (versions.length === 0) {
+  // If package not found, redirect to old route format for backward compatibility
+  // Or check if this is a user/org instead
+  return Astro.redirect(`/packages/${encodeURIComponent(packageSlug!)}`)
+}
+
+const latest = versions[0]
+const owner = await getPackageOwner(packageName!)
+const readmeHtml = await renderMarkdown(latest.readme)
+const dependents = await getPackageDependents(packageName!)
+const stats = await getPackageStats(packageName!)
+const deprecation = await getPackageDeprecation(packageName!)
+const advisories = await getPackageAdvisories(packageName!)
+const tags = await getPackageTags(packageName!).catch(() => [])
+const starCount = await getStarCount(packageName!).catch(() => 0)
+
+// Check if user is logged in and has starred
+const supabase = createServerClient(
+  import.meta.env.SUPABASE_URL ?? '',
+  import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? '',
+  {
+    cookies: {
+      getAll() {
+        return parseCookieHeader(Astro.request.headers.get('Cookie') ?? '')
+      },
+      setAll() {},
+    },
+  }
+)
+const { data: { session } } = await supabase.auth.getSession()
+const userId = session?.user?.id ?? null
+
+// Check if user is org admin for this package
+let isOrgAdmin = false
+if (userId && owner) {
+  const { data: pkg } = await supabase
+    .from('packages')
+    .select('owner_id, owner_type')
+    .eq('name', packageName!)
+    .single()
+
+  if (pkg && pkg.owner_type === 'org') {
+    const { data: member } = await supabase
+      .from('org_members')
+      .select('role')
+      .eq('org_id', pkg.owner_id)
+      .eq('user_id', userId)
+      .single()
+    isOrgAdmin = member?.role === 'admin'
+  }
+}
+
+let isStarred = false
+if (userId) {
+  const { data: star } = await supabase
+    .from('stars')
+    .select('*')
+    .eq('package_name', packageName!)
+    .eq('user_id', userId)
+    .single()
+  isStarred = !!star
+}
+
+// TODO: Copy the rest of the package page rendering logic from packages/[name].astro
+// This is a stub to show the routing structure
+---
+
+<Base title={packageName!} description={latest.description ?? `${packageName!} on Lectern`}>
+  <h1>{packageName}</h1>
+  <p>Package page at new route: /{user}/{slug}</p>
+  <p>Version: {latest.version}</p>
+  <p>Description: {latest.description}</p>
+
+  <!-- TODO: Add full package page content -->
+  <p><a href={`/packages/${packageName}`}>View at old route</a></p>
+</Base>
