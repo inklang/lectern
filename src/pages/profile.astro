@@ -1397,6 +1397,8 @@ const accessToken = session.access_token
           const res = await fetch('/api/auth/mfa/enroll', { method: 'POST' })
           const data = await res.json()
 
+          console.log('MFA enroll response:', JSON.stringify(data))
+
           if (!res.ok || data.error) {
             formError.textContent = data.error ?? 'Failed to start enrollment'
             formError.style.display = 'block'
@@ -1405,6 +1407,8 @@ const accessToken = session.access_token
           }
 
           pendingFactorId = data.id
+          console.log('QR code length:', data.qrCode?.length)
+          console.log('QR code prefix:', data.qrCode?.substring(0, 50))
 
           if (data.existing) {
             // User has an unverified factor - they need to delete it first
