@@ -28,11 +28,11 @@ export const GET: APIRoute = async ({ url }) => {
   <rect x="40" y="40" width="1120" height="550" rx="16" fill="#18181b" stroke="#3f3f46" stroke-width="2"/>
   <rect x="80" y="160" width="80" height="80" rx="12" fill="#8b5cf6"/>
   <text x="120" y="215" font-family="Arial, sans-serif" font-size="40" fill="white" text-anchor="middle" font-weight="bold">&#x2B21;</text>
-  <text x="200" y="210" font-family="Arial, sans-serif" font-size="42" fill="#fafafa" font-weight="bold">\${escapeXml(title)}</text>
-  <rect x="200" y="225" width="\${version.length * 18 + 30}" height="32" rx="6" fill="#27272a"/>
-  <text x="215" y="248" font-family="Arial, sans-serif" font-size="16" fill="#a1a1aa">v\${escapeXml(version)}</text>
-  <text x="80" y="340" font-family="Arial, sans-serif" font-size="26" fill="#a1a1aa">\${escapeXml(description)}</text>
-  <text x="80" y="400" font-family="Arial, sans-serif" font-size="22" fill="#71717a">by \${escapeXml(author)}</text>
+  <text x="200" y="210" font-family="Arial, sans-serif" font-size="42" fill="#fafafa" font-weight="bold">${escapeXml(title)}</text>
+  <rect x="200" y="225" width="${version.length * 18 + 30}" height="32" rx="6" fill="#27272a"/>
+  <text x="215" y="248" font-family="Arial, sans-serif" font-size="16" fill="#a1a1aa">v${escapeXml(version)}</text>
+  <text x="80" y="340" font-family="Arial, sans-serif" font-size="26" fill="#a1a1aa">${escapeXml(description)}</text>
+  <text x="80" y="400" font-family="Arial, sans-serif" font-size="22" fill="#71717a">by ${escapeXml(author)}</text>
   <text x="80" y="520" font-family="Arial, sans-serif" font-size="18" fill="#52525b">lectern.inklang.org</text>
   <rect x="0" y="620" width="1200" height="10" fill="#8b5cf6"/>
 </svg>`
