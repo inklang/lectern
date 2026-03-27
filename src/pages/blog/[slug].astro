@@ -12,9 +12,33 @@ if (!post) {
 }
 
 const { Content } = await render(post)
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: post.data.title,
+  description: post.data.description,
+  datePublished: post.data.publishedAt?.toISOString(),
+  image: post.data.heroImage,
+  author: {
+    '@type': 'Organization',
+    name: 'Ink',
+    url: 'https://inklang.org',
+  },
+  publisher: {
+    '@type': 'Organization',
+    name: 'Ink',
+    url: 'https://inklang.org',
+  },
+  mainEntityOfPage: {
+    '@type': 'WebPage',
+    '@id': new URL(`/blog/${post.id}`, Astro.site).toString(),
+  },
+}
 ---
 
 <Base title={post.data.title} description={post.data.description}>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
   <article class="post">
     {post.data.heroImage && (
       <div class="post-hero">
