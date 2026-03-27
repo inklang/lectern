@@ -308,6 +308,28 @@ const ogDescription = latest.description
     }
     .dependents-link:hover { color: var(--text); opacity: 1; }
 
+    .mini-deps-preview {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+      padding: 0.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      width: fit-content;
+    }
+
+    .mini-preview-label {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .mini-preview-label:hover { color: var(--accent); opacity: 1; }
+
     .downloads-total {
       font-family: var(--font-mono);
       font-size: 0.8rem;
@@ -683,7 +705,7 @@ const ogDescription = latest.description
     )}
   </div>
 
-  <HealthPanel client:load health={health} />
+  <HealthPanel health={health} />
 
   {deprecation?.deprecated && (
     <div class="deprecation-banner">
@@ -742,7 +764,38 @@ const ogDescription = latest.description
           <div class="dep-item">
             <span class="dep-name">{dependents.length} package{dependents.length !== 1 ? 's' : ''} depend{dependents.length === 1 ? 's' : ''} on this</span>
           </div>
-          <a class="dependents-link" href={`/packages/${packageName}/deps`}>View dependency graph →</a>
+          <a class="dependents-link" href={`/${user}/${slug}/deps`}>View dependency graph →</a>
+          {Object.keys(latest.dependencies).length > 0 && (
+            <div class="mini-deps-preview">
+              <svg width="180" height="60" viewBox="0 0 180 60">
+                {/* Center node (this package) */}
+                <circle cx="90" cy="30" r="8" fill="var(--accent)" />
+                {/* Dependency nodes (left) */}
+                {Object.keys(latest.dependencies).slice(0, 3).map((dep, i) => {
+                  const x = 20 + i * 35
+                  const y = 30 + (i % 2 === 0 ? -15 : 15)
+                  return (
+                    <>
+                      <circle cx={x} cy={y} r="5" fill="var(--border)" stroke="var(--muted)" />
+                      <line x1={x + 5} y1={y} x2={82} y2={30} stroke="var(--muted)" stroke-opacity="0.4" stroke-width="1" stroke-dasharray="3 2" />
+                    </>
+                  )
+                })}
+                {/* Dependent nodes (right) */}
+                {dependents.slice(0, 3).map((dep, i) => {
+                  const x = 160 - i * 35
+                  const y = 30 + (i % 2 === 0 ? -15 : 15)
+                  return (
+                    <>
+                      <circle cx={x} cy={y} r="5" fill="#f59e0b" />
+                      <line x1={x - 5} y1={y} x2={98} y2={30} stroke="#f59e0b" stroke-opacity="0.5" stroke-width="1" />
+                    </>
+                  )
+                })}
+              </svg>
+              <a class="mini-preview-label" href={`/${user}/${slug}/deps`}>view full graph →</a>
+            </div>
+          )}
         </>
       ) : (
         <div class="no-deps">No packages depend on this one yet</div>
