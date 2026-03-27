@@ -1,0 +1,115 @@
+---
+import type { HealthStatus } from '../lib/db.js'
+
+interface Props {
+  score: number
+  status: HealthStatus
+  size?: 'sm' | 'md'
+  interactive?: boolean
+  packageSlug?: string
+}
+
+const { score, status, size = 'md', interactive = false, packageSlug = '' } = Astro.props
+
+const isUnknown = status === 'unknown' || score === 0
+
+// Map status to CSS variable names
+const statusColorVar = `--health-${status}`
+const statusBgVar = `--health-${status}-bg`
+---
+
+{interactive ? (
+  <button
+    class={`health-badge health-badge--${size} health-badge--${status}${isUnknown ? ' health-badge--unknown' : ''}`}
+    data-package={packageSlug}
+    id="health-badge-btn"
+    aria-expanded="false"
+    aria-controls="health-panel"
+  >
+    <span class="health-badge__score">{isUnknown ? '--' : score}</span>
+  </button>
+) : (
+  <span
+    class={`health-badge health-badge--${size} health-badge--${status}${isUnknown ? ' health-badge--unknown' : ''}`}
+    title={`Health: ${status}${isUnknown ? '' : ` (${score})`}`}
+  >
+    <span class="health-badge__score">{isUnknown ? '--' : score}</span>
+  </span>
+)}
+
+<style>
+  .health-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    border-radius: 6px;
+    border: 1px solid;
+    cursor: default;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: opacity 0.15s;
+  }
+
+  .health-badge--sm {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.4rem;
+    min-width: 36px;
+  }
+
+  .health-badge--md {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.6rem;
+    min-width: 44px;
+  }
+
+  /* Status colors */
+  .health-badge--excellent {
+    color: var(--health-excellent);
+    background: var(--health-excellent-bg);
+    border-color: var(--health-excellent);
+  }
+
+  .health-badge--good {
+    color: var(--health-good);
+    background: var(--health-good-bg);
+    border-color: var(--health-good);
+  }
+
+  .health-badge--fair {
+    color: var(--health-fair);
+    background: var(--health-fair-bg);
+    border-color: var(--health-fair);
+  }
+
+  .health-badge--poor {
+    color: var(--health-poor);
+    background: var(--health-poor-bg);
+    border-color: var(--health-poor);
+  }
+
+  .health-badge--unknown {
+    color: var(--health-unknown);
+    background: var(--health-unknown-bg);
+    border-color: var(--health-unknown);
+    border-style: dashed;
+  }
+
+  /* Interactive mode */
+  button.health-badge {
+    cursor: pointer;
+  }
+
+  button.health-badge:hover {
+    opacity: 0.8;
+  }
+
+  button.health-badge[aria-expanded="true"] {
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+
+  .health-badge__score {
+    font-variant-numeric: tabular-nums;
+  }
+</style>

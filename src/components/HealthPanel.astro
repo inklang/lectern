@@ -1,0 +1,271 @@
+---
+import type { PackageHealth } from '../lib/db.js'
+import HealthBadge from './HealthBadge.astro'
+
+interface Props {
+  health: PackageHealth | null
+}
+
+const { health } = Astro.props
+
+const isUnknown = !health || health.health_status === 'unknown'
+
+// 5-dot progress: each dot represents 20 points
+function dotsForScore(score: number): boolean[] {
+  const filled = Math.round(score / 20)
+  return Array.from({ length: 5 }, (_, i) => i < filled)
+}
+
+const categories = health ? [
+  { label: 'Maintenance', icon: '🔧', score: health.maintenance_score, status: health.maintenance_status },
+  { label: 'Popularity', icon: '📈', score: health.popularity_score, status: health.popularity_status },
+  { label: 'Quality', icon: '✨', score: health.quality_score, status: health.quality_status },
+  { label: 'Compliance', icon: '📋', score: health.compliance_score, status: health.compliance_status },
+] : []
+
+const signals = health ? [
+  {
+    label: 'Last release',
+    value: health.last_release_at
+      ? new Date(health.last_release_at).toLocaleDateString()
+      : 'Unknown',
+  },
+  {
+    label: 'Downloads (30d)',
+    value: health.downloads_30d.toLocaleString(),
+  },
+  {
+    label: 'Stars',
+    value: health.star_count.toLocaleString(),
+  },
+  {
+    label: 'Dependents',
+    value: health.dependent_count.toLocaleString(),
+  },
+  {
+    label: 'README',
+    value: health.has_readme ? 'Yes' : 'No',
+    good: health.has_readme,
+  },
+  {
+    label: 'Tests',
+    value: health.has_tests ? 'Yes' : 'No',
+    good: health.has_tests,
+  },
+  {
+    label: 'Changelog',
+    value: health.has_changelog ? 'Yes' : 'No',
+    good: health.has_changelog,
+  },
+  {
+    label: 'Vulnerabilities',
+    value: health.known_vuln_count === 0 ? 'None' : String(health.known_vuln_count),
+    good: health.known_vuln_count === 0,
+  },
+] : []
+---
+
+<div class="health-panel" id="health-panel" hidden>
+  {isUnknown ? (
+    <div class="health-panel__unknown">
+      <span class="health-panel__unknown-icon">?</span>
+      <span>Health data not yet available</span>
+    </div>
+  ) : (
+    <div class="health-panel__body">
+      <div class="health-panel__header">
+        <div class="health-panel__overall">
+          <HealthBadge
+            score={health!.health_score}
+            status={health!.health_status}
+            size="md"
+          />
+          <span class="health-panel__overall-label">Overall Health</span>
+        </div>
+      </div>
+
+      <div class="health-panel__categories">
+        {categories.map(cat => (
+          <div class="health-panel__cat-row">
+            <span class="health-panel__cat-icon">{cat.icon}</span>
+            <span class="health-panel__cat-label">{cat.label}</span>
+            <div class="health-panel__dots" aria-label={`${cat.score}/100`}>
+              {dotsForScore(cat.score).map(filled => (
+                <span class={`health-panel__dot${filled ? ' health-panel__dot--filled' : ''}`}></span>
+              ))}
+            </div>
+            <span class="health-panel__cat-score">{cat.score}</span>
+            <span class={`health-panel__cat-status health-panel__cat-status--${cat.status}`}>
+              {cat.status}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div class="health-panel__signals">
+        {signals.map(sig => (
+          <div class="health-panel__signal">
+            <span class="health-panel__signal-label">{sig.label}</span>
+            <span
+              class={`health-panel__signal-value${sig.good === false ? ' health-panel__signal-value--bad' : ''}${sig.good === true ? ' health-panel__signal-value--good' : ''}`}
+            >
+              {sig.value}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )}
+</div>
+
+<style>
+  .health-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    margin-top: 1rem;
+    margin-bottom: 1.5rem;
+    animation: slideDown 0.15s ease-out;
+  }
+
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .health-panel__unknown {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--muted);
+  }
+
+  .health-panel__unknown-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px dashed var(--muted);
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+
+  .health-panel__header {
+    margin-bottom: 1rem;
+  }
+
+  .health-panel__overall {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .health-panel__overall-label {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--muted);
+  }
+
+  .health-panel__categories {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .health-panel__cat-row {
+    display: grid;
+    grid-template-columns: 20px 90px 1fr auto auto;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+  }
+
+  .health-panel__cat-icon {
+    font-size: 0.875rem;
+    text-align: center;
+  }
+
+  .health-panel__cat-label {
+    color: var(--text);
+  }
+
+  .health-panel__dots {
+    display: flex;
+    gap: 3px;
+    align-items: center;
+  }
+
+  .health-panel__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1px solid var(--muted);
+    background: transparent;
+  }
+
+  .health-panel__dot--filled {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .health-panel__cat-score {
+    color: var(--muted);
+    min-width: 24px;
+    text-align: right;
+  }
+
+  .health-panel__cat-status {
+    font-size: 0.7rem;
+    text-transform: capitalize;
+    min-width: 60px;
+  }
+
+  .health-panel__cat-status--excellent { color: var(--health-excellent); }
+  .health-panel__cat-status--good { color: var(--health-good); }
+  .health-panel__cat-status--fair { color: var(--health-fair); }
+  .health-panel__cat-status--poor { color: var(--health-poor); }
+  .health-panel__cat-status--unknown { color: var(--health-unknown); }
+
+  .health-panel__signals {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .health-panel__signal {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .health-panel__signal-label {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--muted-2);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .health-panel__signal-value {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--text);
+  }
+
+  .health-panel__signal-value--good {
+    color: var(--health-excellent);
+  }
+
+  .health-panel__signal-value--bad {
+    color: var(--health-poor);
+  }
+</style>

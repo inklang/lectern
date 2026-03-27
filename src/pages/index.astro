@@ -1,6 +1,7 @@
 ---
 import Base from '../layouts/Base.astro'
-import { listAllPackages, listTags, getTrendingPackages, getPopularPackages } from '../lib/db.js'
+import HealthBadge from '../components/HealthBadge.astro'
+import { listAllPackages, listTags, getTrendingPackages, getPopularPackages, getHealthLeaders } from '../lib/db.js'
 import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 
 const supabase = createServerClient(
@@ -36,6 +37,7 @@ const trending = await getTrendingPackages(7, 5).catch(() => [])
 const featured = trending.slice(0, 3)
 const popular = await getPopularPackages(5).catch(() => [])
 const allTags = await listTags().catch(() => [])
+const healthLeaders = await getHealthLeaders(5).catch(() => [])
 
 const EXAMPLE_CODE = `import spawn_mob, Zombie from mobs;
 
@@ -357,6 +359,24 @@ on event:player_death(player) {
       color: var(--muted);
       padding: 2rem 0;
     }
+
+    .health-dots {
+      display: flex;
+      gap: 0.4rem;
+      align-items: center;
+    }
+    .health-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      border: 1px solid;
+    }
+    .health-dot--excellent { background: var(--health-excellent); border-color: var(--health-excellent); }
+    .health-dot--good { background: var(--health-good); border-color: var(--health-good); }
+    .health-dot--fair { background: var(--health-fair); border-color: var(--health-fair); }
+    .health-dot--poor { background: var(--health-poor); border-color: var(--health-poor); }
+    .health-dot--unknown { background: transparent; border-color: var(--health-unknown); border-style: dashed; }
   </style>
 
   <!-- Hero -->
@@ -415,6 +435,29 @@ on event:player_death(player) {
   </div>
 
   <hr class="divider" />
+
+  <!-- Health Leaders -->
+  {healthLeaders.length > 0 && (
+    <div class="featured-section">
+      <p class="featured-heading">Healthiest Packages</p>
+      <div class="featured-list">
+        {healthLeaders.map(leader => (
+          <a class="featured-card" href={`/${leader.package_name}`}>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span class="featured-card-name">{leader.package_name}</span>
+              <HealthBadge size="sm" score={leader.health_score} status={leader.health_status} />
+            </div>
+            <div class="health-dots">
+              <span title={`Maintenance: ${leader.maintenance_status}`}><span class={`health-dot health-dot--${leader.maintenance_status}`}></span></span>
+              <span title={`Popularity: ${leader.popularity_status}`}><span class={`health-dot health-dot--${leader.popularity_status}`}></span></span>
+              <span title={`Quality: ${leader.quality_status}`}><span class={`health-dot health-dot--${leader.quality_status}`}></span></span>
+              <span title={`Compliance: ${leader.compliance_status}`}><span class={`health-dot health-dot--${leader.compliance_status}`}></span></span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  )}
 
   <!-- Featured packages -->
   {featured.length > 0 && (

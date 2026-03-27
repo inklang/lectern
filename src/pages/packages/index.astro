@@ -2,23 +2,7 @@
 import Base from '../../layouts/Base.astro'
 import ComparePanel from '../../components/ComparePanel.astro'
 import HealthBadge from '../../components/HealthBadge.astro'
-import { listAllPackages, listTags, getPackagesByTag, getPopularPackages, listPackagesByStars, getStarCounts, getHealthForPackages } from '../../lib/db.js'
-import { createServerClient, parseCookieHeader } from '@supabase/ssr'
-
-const supabase = createServerClient(
-  import.meta.env.SUPABASE_URL ?? '',
-  import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? '',
-  {
-    cookies: {
-      getAll() {
-        return parseCookieHeader(Astro.request.headers.get('Cookie') ?? '')
-      },
-      setAll() {},
-    },
-  }
-)
-const { data: { session } } = await supabase.auth.getSession()
-const accessToken = session?.access_token ?? null
+import { listAllPackages, listTags, getPackagesByTag, getPopularPackages, listPackagesByStars, getStarCounts, getHealthForPackages, type HealthStatus } from '../../lib/db.js'
 
 const PAGE_SIZE = 20
 
@@ -97,20 +81,6 @@ if (sort !== 'popular' && sort !== 'stars' && packages.length > 0) {
   starCounts = await getStarCounts(packages.map(p => p.name)).catch(() => {})
 }
 
-// Fetch health data for displayed packages
-let healthMap: Record<string, { score: number; status: import('../../lib/db.js').HealthStatus } | null> = {}
-if (displayPackages.length > 0) {
-  const pkgNames = displayPackages.map((p: any) => p.name)
-  const healthRecords = await getHealthForPackages(pkgNames).catch(() => {})
-  if (healthRecords) {
-    for (const [name, health] of Object.entries(healthRecords)) {
-      healthMap[name] = health
-        ? { score: health.health_score, status: health.health_status }
-        : null
-    }
-  }
-}
-
 const displayPackages = sort === 'popular'
   ? popularPackages.map(p => ({
       name: p.package_name,
@@ -126,6 +96,20 @@ const displayPackages = sort === 'popular'
       downloadCount: 0,
       popularityScore: 0
     }))
+
+// Fetch health data for displayed packages
+let healthMap: Record<string, { score: number; status: HealthStatus } | null> = {}
+if (displayPackages.length > 0) {
+  const pkgNames = displayPackages.map((p: any) => p.name)
+  const healthRecords = await getHealthForPackages(pkgNames).catch(() => {})
+  if (healthRecords) {
+    for (const [name, health] of Object.entries(healthRecords)) {
+      healthMap[name] = health
+        ? { score: health.health_score, status: health.health_status }
+        : null
+    }
+  }
+}
 
 const allTags = await listTags().catch(() => [])
 
@@ -185,6 +169,13 @@ function buildPageUrl(p: number) {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 10px;
+      position: relative;
+    }
+
+    .pkg-card :global(.health-badge) {
+      position: absolute;
+      bottom: 0.625rem;
+      right: 1.25rem;
     }
 
     .pkg-card:hover { border-color: var(--accent); opacity: 1; }
@@ -224,40 +215,6 @@ function buildPageUrl(p: number) {
       font-size: 0.75rem;
       color: #f59e0b;
       margin-left: 0.5rem;
-    }
-
-    .pkg-star-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.2rem;
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
-      border: 1px solid var(--border);
-      background: transparent;
-      color: #f59e0b;
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      cursor: pointer;
-      transition: border-color 0.15s, background 0.15s;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-
-    .pkg-star-btn:hover {
-      border-color: #f59e0b;
-      background: rgba(245, 158, 11, 0.1);
-    }
-
-    .pkg-star-btn.starred {
-      border-color: #f59e0b;
-      background: rgba(245, 158, 11, 0.1);
-    }
-
-    .card-wrap {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      flex: 1;
     }
 
     .pkg-dl {
@@ -496,7 +453,7 @@ function buildPageUrl(p: number) {
   </style>
 
   <div class="page-header">
-    <h1>{sort === 'stars' ? 'Top starred packages' : 'packages'}</h1>
+    <h1>packages</h1>
     <span class="count">{totalCount} total</span>
   </div>
 
@@ -510,7 +467,7 @@ function buildPageUrl(p: number) {
   <div class="sort-chips" id="sort-chips">
     <button class="sort-chip active" data-sort="recent">recent</button>
     <button class="sort-chip" data-sort="popular">popular</button>
-    <button class="sort-chip" data-sort="stars">Top starred</button>
+    <button class="sort-chip" data-sort="stars">stars</button>
   </div>
 
   <div class="search-bar">
@@ -537,6 +494,9 @@ function buildPageUrl(p: number) {
                     <span class="pkg-name">{pkg.name}</span>
                     <span class="pkg-versions">{pkg.versionCount} version{pkg.versionCount !== 1 ? 's' : ''}</span>
                     {pkg.latest.description && <span class="pkg-description">{pkg.latest.description}</span>}
+                    {(sort === 'popular' || sort === 'stars') && pkg.starCount > 0 && (
+                      <span class="pkg-stars">★ {pkg.starCount}</span>
+                    )}
                   </div>
                   <div class="pkg-right">
                     <div class="pkg-ver">v{pkg.latest.version}</div>
@@ -545,17 +505,8 @@ function buildPageUrl(p: number) {
                       <div class="pkg-dl">{pkg.downloadCount.toLocaleString()} dl</div>
                     )}
                   </div>
+                  {healthMap[pkg.name] && <HealthBadge size="sm" score={healthMap[pkg.name]!.score} status={healthMap[pkg.name]!.status} />}
                 </a>
-                {pkg.starCount > 0 && (
-                  <button
-                    class="pkg-star-btn"
-                    data-package={pkg.name}
-                    data-starred="false"
-                    title="Star this package"
-                  >
-                    ★ <span class="pkg-star-count">{pkg.starCount}</span>
-                  </button>
-                )}
               ))}
 
               {totalPages > 1 && (
@@ -609,8 +560,7 @@ function buildPageUrl(p: number) {
 
   <ComparePanel packages={[]} />
 
-  <script define:vars={{ accessToken }}>
-    const input = document.getElementById('search-input') as HTMLInputElement
+  <script>
     const input = document.getElementById('search-input') as HTMLInputElement
     const sortChips = document.getElementById('sort-chips') as HTMLDivElement
     const list = document.getElementById('pkg-list') as HTMLDivElement
@@ -686,62 +636,6 @@ function buildPageUrl(p: number) {
       if (selectedPackages.size >= 2) {
         window.dispatchEvent(new CustomEvent('compare:open'))
       }
-    })
-
-    // ── Card star buttons ─────────────────────────────────────────────────
-    async function handleCardStarClick(btn: HTMLButtonElement) {
-      const packageName = btn.dataset.package
-      if (!packageName) return
-
-      if (!accessToken) {
-        window.location.href = `/login?next=/packages`
-        return
-      }
-
-      const isStarred = btn.dataset.starred === 'true'
-      const countEl = btn.querySelector('.pkg-star-count')
-      const currentCount = parseInt(countEl?.textContent ?? '0')
-
-      // Optimistic update
-      btn.dataset.starred = String(!isStarred)
-      countEl.textContent = String(isStarred ? currentCount - 1 : currentCount + 1)
-      if (!isStarred) btn.classList.add('starred')
-      else btn.classList.remove('starred')
-
-      try {
-        const method = isStarred ? 'DELETE' : 'PUT'
-        const res = await fetch(`/api/packages/${encodeURIComponent(packageName)}/star`, {
-          method,
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        })
-        if (!res.ok) {
-          // Revert on error
-          btn.dataset.starred = String(isStarred)
-          countEl.textContent = String(currentCount)
-          if (isStarred) btn.classList.add('starred')
-          else btn.classList.remove('starred')
-        } else {
-          const data = await res.json()
-          btn.dataset.starred = String(data.starred)
-          countEl.textContent = String(data.starCount ?? currentCount)
-          if (data.starred) btn.classList.add('starred')
-          else btn.classList.remove('starred')
-        }
-      } catch {
-        // Revert on error
-        btn.dataset.starred = String(isStarred)
-        countEl.textContent = String(currentCount)
-        if (isStarred) btn.classList.add('starred')
-        else btn.classList.remove('starred')
-      }
-    }
-
-    document.querySelectorAll('.pkg-star-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        handleCardStarClick(btn as HTMLButtonElement)
-      })
     })
 
     // ── Search input ───────────────────────────────────────────────────────
