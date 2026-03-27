@@ -1,0 +1,87 @@
+---
+title: Introduction
+description: What is Ink?
+---
+
+# Introduction
+
+ink is a compiled scripting language that runs on your PaperMC server. Write scripts to handle events, create game mechanics, and automate server behavior — with a syntax designed to be readable and a package system that lets you extend the language itself.
+
+## The Package System
+
+What makes ink different is its **package system**. Packages can do two things:
+
+1. **Add grammar** — inject new syntax directly into the language parser
+2. **Add classes and functions** — bundle runtime APIs that your scripts import
+
+Install a package and new syntax becomes available, looking and feeling like built-in language features.
+
+```ink
+import spawn_mob, Zombie from mobs;
+
+// Grammar injected by the mobs package:
+mob Dragon {
+    name: "Boss"
+    health: 500
+}
+
+// Functions provided by the mobs package:
+on event:player_death(player) {
+    spawn_mob(Zombie, player.location)
+}
+```
+
+What the grammar does is entirely up to the package developer. One package might add declarative mob definitions. Another might add quest structures, GUI layouts, or anything else.
+
+## Quick Example
+
+```ink
+// A simple event handler
+on event:player_join(player) {
+    print("Welcome, ${player.name}!")
+    player.setScore(0)
+}
+
+// Define your own functions
+fn announce(message) {
+    print("[Server] " + message)
+}
+
+// Classes with inheritance
+class Mob {
+    fn init(name, health) {
+        self.name = name
+        self.health = health
+    }
+
+    fn takeDamage(amount) {
+        self.health = self.health - amount
+        if self.health <= 0 {
+            print(self.name + " died!")
+        }
+    }
+}
+
+class Dragon extends Mob {
+    fn init(name, health) {
+        self.name = name
+        self.health = health
+        self.maxHealth = health
+    }
+
+    fn takeDamage(amount) {
+        self.health = self.health - amount
+        // Dragons take half damage
+        print("The dragon roars!")
+    }
+}
+```
+
+## Getting Started
+
+Head over to the [Installation Guide](./getting-started) to set up ink on your server.
+
+## Resources
+
+- [GitHub Repository](https://github.com/inklang/ink) — Source code and issue tracker
+- [ink Discord](https://discord.gg/ink) — Community chat

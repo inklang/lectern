@@ -1,0 +1,46 @@
+---
+title: Running ink Code
+description: Run your Ink programs
+---
+
+# Running ink Code
+
+Learn different ways to run your ink programs.
+
+## Running a Program
+
+```bash
+quill run hello.ink
+```
+
+## Running Multiple Files
+
+You can pass multiple files (they execute in order):
+
+```bash
+quill run main.ink utils.ink
+```
+
+## Building for Production
+
+Build a standalone JAR that can run on any Paper server:
+
+```bash
+quill build script.ink
+```
+
+This outputs a JAR file ready for deployment.
+
+## Common Issues
+
+### "command not found: quill"
+
+Run `npm install -g @ink/quill` to reinstall the CLI.
+
+### "File not found"
+
+Make sure the file path is correct and you're in the right directory.
+
+## Next Steps
+
+Now that you can run code, learn about [Variables](./variables) and [Data Types](./data-types).

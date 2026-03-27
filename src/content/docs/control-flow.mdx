@@ -1,0 +1,138 @@
+---
+title: Control Flow
+description: If statements, loops, and conditionals
+---
+
+# Control Flow
+
+Control how your program executes—making decisions and repeating actions.
+
+## If Statements
+
+Execute code only when a condition is true:
+
+```
+let score = 85
+
+if score >= 90 {
+    print("A - Excellent!")
+} else if score >= 80 {
+    print("B - Good job!")
+} else if score >= 70 {
+    print("C - Passing")
+} else {
+    print("F - Needs improvement")
+}
+```
+
+## While Loops
+
+Repeat code while a condition remains true:
+
+```
+let count = 0
+
+while count < 5 {
+    print(count)
+    count = count + 1
+}
+// Output: 0, 1, 2, 3, 4
+```
+
+## For Loops
+
+Iterate over ranges or collections:
+
+### Range Iteration
+
+```
+// 0 through 4
+for i in 0..5 {
+    print(i)
+}
+// Output: 0, 1, 2, 3, 4
+```
+
+### Array Iteration
+
+```
+let fruits = ["apple", "banana", "cherry"]
+
+for fruit in fruits {
+    print(fruit)
+}
+// Output: apple, banana, cherry
+```
+
+## Break and Continue
+
+Control loop execution:
+
+### Break — Exit Early
+
+```
+let i = 0
+while true {
+    if i >= 5 {
+        break  // Exit the loop
+    }
+    print(i)
+    i = i + 1
+}
+// Output: 0, 1, 2, 3, 4
+```
+
+### Continue — Skip Iterations
+
+```
+// Print only odd numbers
+for i in 0..10 {
+    if i % 2 == 0 {
+        continue  // Skip even numbers
+    }
+    print(i)
+}
+// Output: 1, 3, 5, 7, 9
+```
+
+## Nested Loops
+
+Loops inside loops:
+
+```
+for i in 0..3 {
+    for j in 0..3 {
+        if i == j {
+            print("(${i}, ${j}) - diagonal")
+        } else {
+            print("(${i}, ${j})")
+        }
+    }
+}
+```
+
+## Logical Conditions in Loops
+
+Combine operators for complex conditions:
+
+```
+let x = 0
+while x < 10 {
+    if x > 5 and x % 2 == 0 {
+        print("${x} is > 5 and even")
+    }
+    x = x + 1
+}
+```
+
+## When to Use Each Loop
+
+| Loop Type | Use When |
+|-----------|----------|
+| `while` | You don't know how many iterations you need |
+| `for..in range` | You need to iterate a specific number of times |
+| `for..in array` | You need to process each element in a collection |
+
+## Next Steps
+
+Learn how to organize code into reusable blocks with [Functions](./functions).

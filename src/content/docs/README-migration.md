@@ -1,3 +1,8 @@
+---
+title: Migration Notes
+description: Internal migration documentation
+---
+
 # Ink Docs Migration Notes
 
 ## Doc pages found (17 total)

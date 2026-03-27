@@ -1,0 +1,140 @@
+---
+title: Maps
+description: Key-value data storage
+---
+
+# Maps
+
+Maps store key-value pairs, allowing you to look up values by a key name.
+
+## Creating Maps
+
+```
+let scores = Map()
+
+// Or with initial values
+let config = Map()
+config.set("host", "localhost")
+config.set("port", 8080)
+```
+
+## Setting and Getting Values
+
+```
+let user = Map()
+
+// Set values
+user.set("name", "Alice")
+user.set("age", 30)
+user.set("isActive", true)
+
+// Get values
+print(user.get("name"))    // Alice
+print(user.get("age"))     // 30
+print(user.get("unknown")) // null (key doesn't exist)
+```
+
+## Checking Keys
+
+```
+let config = Map()
+config.set("host", "localhost")
+
+if config.get("host") != null {
+    print("Host is configured")
+}
+
+if config.get("port") == null {
+    print("Port not set")
+}
+```
+
+## Removing Entries
+
+```
+let data = Map()
+data.set("temp", 42)
+print(data.size())  // 1
+
+data.delete("temp")
+print(data.size())  // 0
+```
+
+## Getting Size
+
+```
+let map = Map()
+map.set("a", 1)
+map.set("b", 2)
+
+print(map.size())  // 2
+```
+
+## Getting All Keys or Values
+
+```
+let user = Map()
+user.set("name", "Alice")
+user.set("age", 30)
+
+let keys = user.keys()
+let values = user.values()
+
+print(keys.size())   // 2
+print(values.size()) // 2
+```
+
+## Iterating Over Maps
+
+Maps work well with `for..in` when combined with keys:
+
+```
+let settings = Map()
+settings.set("theme", "dark")
+settings.set("volume", 80)
+settings.set("language", "en")
+
+for key in settings.keys() {
+    let value = settings.get(key)
+    print("${key}: ${value}")
+}
+// Output:
+// theme: dark
+// volume: 80
+// language: en
+```
+
+## Practical Example: User Profile
+
+```
+let profile = Map()
+
+fn createProfile(name, email, age) {
+    profile.set("name", name)
+    profile.set("email", email)
+    profile.set("age", age)
+    profile.set("createdAt", "now")
+}
+
+fn showProfile() {
+    print("=== ${profile.get("name")} ===")
+    print("Email: ${profile.get("email")}")
+    print("Age: ${profile.get("age")}")
+}
+
+createProfile("Alice", "alice@example.com", 30)
+showProfile()
+```
+
+## Maps vs Arrays
+
+| Feature | Map | Array |
+|---------|-----|-------|
+| Access | By key name | By index |
+| Order | Unordered | Ordered |
+| Best for | Named data | Lists of items |
+| Lookup | O(1) by key | O(n) by value |
+
+## Next Steps
+
+Learn about [Classes](./classes) to create custom types with methods.
