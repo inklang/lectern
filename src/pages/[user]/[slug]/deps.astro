@@ -1,6 +1,190 @@
 ---
-// Redirect to the main package page's deps tab
-// TODO: Create full deps page at this route
+import Base from '../../../layouts/Base.astro'
+import DepsGraph from '../../../components/DepsGraph.astro'
+import { getPackageVersions, getPackageDependentsFast, getVersionDependencies } from '../../../lib/db.js'
+import { supabase } from '../../../lib/supabase.js'
+import type { PackageNode } from '../../../components/DepsGraph.astro'
+
 const { user, slug } = Astro.params
-const packageSlug = `${user}/${slug}`
-return Astro.redirect(`/packages/${packageSlug}/deps`)
+const packageSlug = user && slug ? `${user}/${slug}` : slug
+
+// Query by slug (case-insensitive) since URL may have different casing than DB
+const { data: pkgRow } = await supabase
+  .from('packages')
+  .select('slug, name')
+  .ilike('slug', packageSlug)
+  .single()
+
+if (!pkgRow) {
+  return Astro.redirect('/packages')
+}
+
+const dbSlug = pkgRow.slug
+const packageName = pkgRow.name // short name (bare package name, e.g., "test-package")
+
+const versions = await getPackageVersions(dbSlug)
+if (versions.length === 0) {
+  return Astro.redirect('/packages')
+}
+
+const latest = versions[0]
+
+// Get direct dependencies (packages this package depends on)
+const dependencies = await getVersionDependencies(dbSlug, latest.version)
+
+// Get dependents (packages that depend on this package) via GIN-indexed RPC
+const dependents = await getPackageDependentsFast(packageName)
+
+// Build dependsOn nodes (just name and version constraint, no download stats without extra lookups)
+const dependsOn: PackageNode[] = Object.entries(dependencies).map(([depName, depVersion]) => ({
+  name: depName,
+  depVersion,
+  latestVersion: null,
+  downloadCount: null,
+}))
+
+// Build dependedBy nodes — get unique packages and fetch their metadata
+const uniqueDepSlugSet = new Set(dependents.map(d => d.package_slug))
+const dependedBySlugList = [...uniqueDepSlugSet]
+
+// Batch fetch latest versions and download counts for dependents
+const dependedByMap = new Map<string, PackageNode>()
+
+if (dependedBySlugList.length > 0) {
+  // Fetch latest version info for dependents
+  const { data: versionRows } = await supabase
+    .from('package_versions')
+    .select('package_slug, version, download_count')
+    .in('package_slug', dependedBySlugList)
+    .order('published_at', { ascending: false })
+
+  // Build a map of package_slug -> {latestVersion, downloadCount}
+  const versionMap = new Map<string, { version: string; download_count: number }>()
+  for (const row of versionRows ?? []) {
+    if (!versionMap.has(row.package_slug)) {
+      versionMap.set(row.package_slug, { version: row.version, download_count: row.download_count ?? 0 })
+    }
+  }
+
+  for (const depSlug of dependedBySlugList) {
+    const ver = versionMap.get(depSlug)
+    // Extract short name from slug
+    const shortName = depSlug.includes('/') ? depSlug.split('/').pop()! : depSlug
+
+    dependedByMap.set(depSlug, {
+      name: shortName,
+      latestVersion: ver?.version ?? null,
+      downloadCount: ver?.download_count ?? null,
+    })
+  }
+}
+
+const dependedBy: PackageNode[] = [...dependedByMap.values()]
+---
+
+<Base
+  title={`Dependencies — ${packageSlug}`}
+  description={`Dependency graph for ${packageSlug}`}
+>
+  <style>
+    .back {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      display: inline-block;
+      margin-bottom: 2rem;
+    }
+    .back:hover { color: var(--text); opacity: 1; }
+
+    .page-header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.75rem;
+      margin-bottom: 2rem;
+    }
+
+    .page-title {
+      font-family: var(--font-mono);
+      font-size: 1.5rem;
+      font-weight: 600;
+      letter-spacing: -0.04em;
+    }
+
+    .pkg-name { color: var(--accent); }
+
+    .stats-row {
+      display: flex;
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+    }
+
+    .stat { display: flex; flex-direction: column; gap: 0.25rem; }
+    .stat-value { font-size: 1.25rem; font-weight: 600; color: var(--text); }
+    .stat-label { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .mini-preview {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      transition: border-color 0.15s;
+      width: fit-content;
+    }
+
+    .mini-preview:hover {
+      border-color: var(--accent);
+      color: var(--text);
+      opacity: 1;
+    }
+
+    .mini-preview svg {
+      flex-shrink: 0;
+    }
+  </style>
+
+  <a class="back" href={`/${user}/${slug}`}>← {packageSlug}</a>
+
+  <div class="page-header">
+    <div class="page-title">Dependency graph for <span class="pkg-name">{packageName}</span></div>
+    <a class="mini-preview" href={`/${user}/${slug}/deps`}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"/>
+        <circle cx="4" cy="8" r="2"/>
+        <circle cx="4" cy="16" r="2"/>
+        <circle cx="20" cy="8" r="2"/>
+        <circle cx="20" cy="16" r="2"/>
+        <line x1="6" y1="8" x2="9" y2="10"/>
+        <line x1="6" y1="16" x2="9" y2="14"/>
+        <line x1="18" y1="8" x2="15" y2="10"/>
+        <line x1="18" y1="16" x2="15" y2="14"/>
+      </svg>
+      View interactive graph
+    </a>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat">
+      <span class="stat-value">{dependsOn.length}</span>
+      <span class="stat-label">depends on</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value">{dependedBy.length}</span>
+      <span class="stat-label">depended by</span>
+    </div>
+  </div>
+
+  <DepsGraph
+    dependsOn={dependsOn}
+    dependedBy={dependedBy}
+    centerName={packageName}
+  />
+</Base>
