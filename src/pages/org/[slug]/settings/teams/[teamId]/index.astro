@@ -267,7 +267,7 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
   </style>
 
   <div class="settings-wrap" id="settings-container" data-url={supabaseUrl} data-key={supabaseKey}>
-    <a class="back-link" href={`/${org.slug}/settings`}>
+    <a class="back-link" href={`/org/${org.slug}/settings`}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
       <span id="org-team-name">{org.name} / {team.name}</span>
     </a>
@@ -544,7 +544,7 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
         })
 
         if (res.ok) {
-          window.location.href = `/${encodeURIComponent(slug)}/settings`
+          window.location.href = `/org/${encodeURIComponent(slug)}/settings`
         } else {
           const data = await res.json().catch(() => ({}))
           deleteError.textContent = data?.error ?? 'Failed to delete team.'

@@ -782,7 +782,7 @@ const accessToken = session.access_token
             if (!org) return ''
             return `
               <div class="row-item">
-                <a href="/${encodeURIComponent(org.slug)}" class="row-name">${escapeHtml(org.name)}</a>
+                <a href="/org/${encodeURIComponent(org.slug)}" class="row-name">${escapeHtml(org.name)}</a>
                 <span class="row-meta">@${escapeHtml(org.slug)} · ${m.role}</span>
               </div>
             `
@@ -1284,7 +1284,7 @@ const accessToken = session.access_token
           })
 
           if (res.ok) {
-            window.location.href = `/${encodeURIComponent(slug)}`
+            window.location.href = `/org/${encodeURIComponent(slug)}`
             return
           }
 
