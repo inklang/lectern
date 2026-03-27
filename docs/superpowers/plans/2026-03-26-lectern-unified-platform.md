@@ -891,17 +891,17 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 
 **Files:**
 - Modify: `src/pages/packages/index.astro`
-- Modify: `src/pages/[user]/[...path].astro`
+- Modify: `src/pages/[user]/[slug].astro`
 
 Check if these pages already use `Base.astro`. If they do, they should automatically get the new Nav + Footer. If they use a different layout, update them.
 
 - [ ] **Step 1: Check which layout package pages use**
 
 ```bash
-grep -l "layout" src/pages/packages/*.astro src/pages/[user]/[slug].astro 2>/dev/null
+grep -l "layout" src/pages/packages/*.astro "src/pages/[user]/[slug].astro" 2>/dev/null
 ```
 
-Run this and check the output. If a file uses a different layout or no layout at all, update it to use `Base.astro`.
+Run this and check the output. If a file uses a different layout or no layout at all, update it to use `Base.astro`. Note: `[slug].astro` must be quoted to prevent shell from interpreting `[slug]` as a glob character class.
 
 - [ ] **Step 2: If a page uses a different layout or no layout, add Base.astro import and usage**
 
