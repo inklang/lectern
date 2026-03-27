@@ -22,7 +22,7 @@ const {
   ogImagePath,
 } = Astro.props
 
-const resolvedOgImage = ogImage ?? (ogImagePath ? `https://lectern.inklang.org/api/og/${encodeURIComponent(ogImagePath)}` : undefined)
+const resolvedOgImage = ogImage ?? (ogImagePath ? `https://lectern.inklang.org/api/og?pkg=${encodeURIComponent(ogImagePath)}` : undefined)
 
 const supabase = createServerClient(
   import.meta.env.SUPABASE_URL ?? '',
@@ -64,6 +64,7 @@ const username = session?.user.user_metadata?.user_name ?? null
   {resolvedOgImage && <meta name="twitter:image" content={resolvedOgImage} />}
 
   <link rel="alternate" type="application/atom+xml" title="Lectern Feed" href="/api/feed.xml" />
+  <link rel="canonical" href={Astro.url.href} />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 

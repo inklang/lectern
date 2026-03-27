@@ -1,22 +1,24 @@
 import type { APIRoute } from 'astro'
 import { getPackageVersions, getPackageOwner } from '../../../lib/db.js'
 
-export const GET: APIRoute = async ({ params }) => {
-  const { name } = params
-  if (!name) {
-    return new Response('Not found', { status: 404 })
+export const GET: APIRoute = async ({ url }) => {
+  const pkg = url.searchParams.get('pkg')
+  if (!pkg) {
+    return new Response('Missing pkg parameter', { status: 400 })
   }
 
-  const versions = await getPackageVersions(name)
+  const packageSlug = pkg
+
+  const versions = await getPackageVersions(packageSlug)
   if (versions.length === 0) {
     return new Response('Package not found', { status: 404 })
   }
 
   const latest = versions[0]
-  const owner = await getPackageOwner(name)
+  const owner = await getPackageOwner(packageSlug)
 
-  const title = name
-  const description = latest.description?.slice(0, 150) || `${name} — an Ink package`
+  const title = packageSlug
+  const description = latest.description?.slice(0, 150) || `${packageSlug} — an Ink package`
   const version = latest.version
   const author = owner?.name || owner?.username || 'Unknown'
 

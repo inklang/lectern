@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://lectern.inklang.org/sitemap-index.xml
