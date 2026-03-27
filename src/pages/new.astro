@@ -273,7 +273,7 @@ const accessToken = (await supabase.auth.getSession()).data.session?.access_toke
         })
 
         if (res.ok) {
-          window.location.href = `/${encodeURIComponent(slug)}`
+          window.location.href = `/org/${encodeURIComponent(slug)}`
           return
         }
 

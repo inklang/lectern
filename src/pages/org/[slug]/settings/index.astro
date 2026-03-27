@@ -467,7 +467,7 @@ const orgBannerUrl = org.banner_url
   </style>
 
   <div class="settings-wrap" id="settings-container" data-url={supabaseUrl} data-key={supabaseKey}>
-    <a class="back-link" href={`/{org.slug}`}>
+    <a class="back-link" href={`/org/${org.slug}`}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
       <span id="org-name">{org.name}</span>
     </a>
@@ -478,7 +478,7 @@ const orgBannerUrl = org.banner_url
     </div>
 
     <div style="margin-bottom: 1.5rem; display: flex; gap: 0.5rem;">
-      <a href={`/{org.slug}/settings/audit`} style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); text-decoration: none; padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); transition: border-color 0.15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">View Audit Log</a>
+      <a href={`/org/${org.slug}/settings/audit`} style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); text-decoration: none; padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); transition: border-color 0.15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">View Audit Log</a>
     </div>
 
     <!-- General Section -->
@@ -600,11 +600,11 @@ const orgBannerUrl = org.banner_url
         {teams.map(team => (
           <div class="member-item" data-team-id={team.id}>
             <div class="member-info">
-              <a href={`/{org.slug}/settings/teams/${team.id}`} class="member-name" style="text-decoration: none; color: var(--text);">{team.name}</a>
+              <a href={`/org/${org.slug}/settings/teams/${team.id}`} class="member-name" style="text-decoration: none; color: var(--text);">{team.name}</a>
               <span class="member-email">{teamMemberCounts[team.id] ?? 0} member{(teamMemberCounts[team.id] ?? 0) !== 1 ? 's' : ''}</span>
             </div>
             <div class="btn-group">
-              <a href={`/{org.slug}/settings/teams/${team.id}`} class="btn btn-sm">Manage</a>
+              <a href={`/org/${org.slug}/settings/teams/${team.id}`} class="btn btn-sm">Manage</a>
             </div>
           </div>
         ))}
