@@ -4,7 +4,9 @@
 // where [user] is the owner_slug and [slug] is the package name
 import Base from '../../layouts/Base.astro'
 import Giscus from '../../components/Giscus.astro'
-import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount } from '../../lib/db.js'
+import HealthBadge from '../../components/HealthBadge.astro'
+import HealthPanel from '../../components/HealthPanel.astro'
+import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount, getPackageHealth } from '../../lib/db.js'
 import { renderMarkdown } from '../../lib/markdown.js'
 import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 import { supabase as supabaseAdmin } from '../../lib/supabase.js'
@@ -45,6 +47,7 @@ const deprecation = await getPackageDeprecation(packageName)
 const advisories = await getPackageAdvisories(dbSlug)
 const tags = await getPackageTags(dbSlug).catch(() => [])
 const starCount = await getStarCount(dbSlug).catch(() => 0)
+const health = await getPackageHealth(dbSlug).catch(() => null)
 
 // Check if user is logged in
 const supabase = createServerClient(
@@ -427,8 +430,12 @@ const ogDescription = latest.description
 
     .badges-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 1rem;
+    }
+
+    @media (max-width: 640px) {
+      .badges-grid { grid-template-columns: 1fr 1fr; }
     }
 
     .badge-card {
@@ -491,14 +498,14 @@ const ogDescription = latest.description
     .star-btn {
       display: inline-flex;
       align-items: center;
-      gap: 0.35rem;
-      padding: 0.2rem 0.6rem;
+      gap: 0.4rem;
+      padding: 0.35rem 0.75rem;
       border-radius: 4px;
       border: 1px solid var(--border);
       background: transparent;
       color: var(--muted);
       font-family: var(--font-mono);
-      font-size: 0.8rem;
+      font-size: 0.875rem;
       cursor: pointer;
       transition: border-color 0.15s, color 0.15s, background 0.15s;
     }
@@ -515,9 +522,17 @@ const ogDescription = latest.description
     }
 
     .star-icon {
-      font-size: 0.9rem;
+      font-size: 1.1rem;
       line-height: 1;
     }
+
+    @keyframes star-pop {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.3); }
+      100% { transform: scale(1); }
+    }
+
+    .star-btn.just-starred .star-icon { animation: star-pop 250ms ease-out; }
 
     .star-count {
       font-variant-numeric: tabular-nums;
@@ -645,10 +660,18 @@ const ogDescription = latest.description
       {latest.author && <span class="badge">{latest.author}</span>}
       {latest.license && <span class="badge">{latest.license}</span>}
       <span class="downloads-total">{stats.total.toLocaleString()} download{stats.total !== 1 ? 's' : ''}</span>
-      <button class="star-btn" id="star-btn" data-package={packageName} data-starred="false" data-logged-in={session ? 'true' : 'false'}>
+      <button class="star-btn" id="star-btn" data-package={packageName} data-starred="false" data-logged-in={session ? 'true' : 'false'} title="Sign in to star this package">
         <span class="star-icon">☆</span>
         <span class="star-count" id="star-count">{starCount}</span>
       </button>
+      <HealthBadge
+        client:load
+        score={health?.health_score ?? 0}
+        status={health?.health_status ?? 'unknown'}
+        size="md"
+        interactive={true}
+        packageSlug={dbSlug}
+      />
     </div>
     {latest.description && <p class="pkg-description">{latest.description}</p>}
     {tags.length > 0 && (
@@ -659,6 +682,8 @@ const ogDescription = latest.description
       </div>
     )}
   </div>
+
+  <HealthPanel client:load health={health} />
 
   {deprecation?.deprecated && (
     <div class="deprecation-banner">
@@ -770,6 +795,20 @@ const ogDescription = latest.description
           <code id="badge-downloads-md">![downloads]({Astro.url.origin}/api/badges/${encodeURIComponent(packageName)}/downloads)</code>
         </div>
       </div>
+      <div class="badge-card">
+        <p class="badge-card-label">health</p>
+        <div class="badge-preview">
+          {health && health.health_status !== 'unknown' ? (
+            <HealthBadge score={health.health_score} status={health.health_status} size="md" />
+          ) : (
+            <HealthBadge score={0} status="unknown" size="md" />
+          )}
+        </div>
+        <div class="badge-code">
+          <button class="badge-copy" data-copy="markdown">copy</button>
+          <code id="badge-health-md">![health]({Astro.url.origin}/api/badges/${encodeURIComponent(packageName)}/health)</code>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -821,7 +860,7 @@ const ogDescription = latest.description
 
   <Giscus term={packageName} />
 
-  <script define:vars={{ packageName }}>
+  <script define:vars={{ packageName, accessToken: session?.access_token ?? null }}>
     document.querySelectorAll('.badge-copy').forEach(btn => {
       btn.addEventListener('click', async () => {
         const codeEl = btn.parentElement?.querySelector('code')
@@ -901,6 +940,7 @@ const ogDescription = latest.description
     // Star button functionality
     const starBtn = document.getElementById('star-btn')
     const starCountEl = document.getElementById('star-count')
+    if (starBtn) starBtn.dataset.token = accessToken ?? ''
 
     async function fetchStarStatus() {
       if (!packageName) return
@@ -938,7 +978,13 @@ const ogDescription = latest.description
       const currentlyStarred = starBtn.dataset.starred === 'true'
       const currentCount = parseInt(starCountEl?.textContent ?? '0')
 
+      // Loading state: disable during request
+      starBtn.disabled = true
       updateStarUI(!currentlyStarred, currentlyStarred ? currentCount - 1 : currentCount + 1)
+
+      // Trigger animation
+      starBtn.classList.add('just-starred')
+      setTimeout(() => starBtn.classList.remove('just-starred'), 300)
 
       try {
         const method = currentlyStarred ? 'DELETE' : 'PUT'
@@ -957,10 +1003,31 @@ const ogDescription = latest.description
         }
       } catch {
         updateStarUI(currentlyStarred, currentCount)
+      } finally {
+        starBtn.disabled = false
       }
     })
 
     fetchStarStatus()
+
+    // Health panel toggle
+    const healthBadgeBtn = document.getElementById('health-badge-btn')
+    const healthPanel = document.getElementById('health-panel')
+
+    if (healthBadgeBtn && healthPanel) {
+      // Show panel by default if it has content (not unknown)
+      const isUnknown = healthPanel.querySelector('.health-panel__unknown') !== null
+      if (!isUnknown) {
+        healthPanel.hidden = false
+        healthBadgeBtn.setAttribute('aria-expanded', 'true')
+      }
+
+      healthBadgeBtn.addEventListener('click', () => {
+        const isHidden = healthPanel.hidden
+        healthPanel.hidden = !isHidden
+        healthBadgeBtn.setAttribute('aria-expanded', String(isHidden))
+      })
+    }
 
     // Pending releases functionality (for org admins)
     const pendingSection = document.getElementById('pending-releases-section')
