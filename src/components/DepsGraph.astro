@@ -1,0 +1,808 @@
+---
+// D3-powered dependency graph component
+// Props: dependsOn (packages this package depends on), dependedBy (packages that depend on this), centerName
+
+export interface PackageNode {
+  name: string
+  depVersion?: string | null  // version constraint for depends-on
+  downloadCount?: number
+  latestVersion?: string
+  ownerSlug?: string
+}
+
+interface Props {
+  dependsOn: PackageNode[]
+  dependedBy: PackageNode[]
+  centerName: string
+}
+
+const { dependsOn, dependedBy, centerName } = Astro.props
+
+// Serialize for client script
+const dependsOnJson = JSON.stringify(dependsOn)
+const dependedByJson = JSON.stringify(dependedBy)
+const centerNameJson = JSON.stringify(centerName)
+---
+
+<!-- Load D3 from CDN (define:vars scripts cannot use ES module imports) -->
+<script is:inline src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+
+<div class="deps-graph-wrapper">
+  <div class="graph-controls">
+    <div class="view-toggle">
+      <button class="view-btn active" data-view="force">force</button>
+      <button class="view-btn" data-view="hierarchical">tree</button>
+    </div>
+    <div class="filter-toggle">
+      <button class="filter-btn active" data-filter="both">both</button>
+      <button class="filter-btn" data-filter="depends-on">depends on</button>
+      <button class="filter-btn" data-filter="depended-by">depended by</button>
+    </div>
+  </div>
+
+  <div class="graph-container" id="deps-graph"></div>
+
+  <div class="graph-legend">
+    <div class="legend-item">
+      <div class="legend-dot center-node"></div>
+      <span>{centerName}</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot dep-node"></div>
+      <span>depends on</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot dependent-node"></div>
+      <span>depended by</span>
+    </div>
+  </div>
+
+  <div class="graph-tooltip" id="graph-tooltip"></div>
+</div>
+
+{dependsOn.length === 0 && dependedBy.length === 0 && (
+  <div class="empty-state">No dependencies and no dependents yet.</div>
+)}
+
+{dependsOn.length === 0 && dependedBy.length > 0 && (
+  <div class="empty-state">No dependencies. This package is self-contained.</div>
+)}
+
+{dependsOn.length > 0 && dependedBy.length === 0 && (
+  <div class="empty-state">No packages depend on this yet.</div>
+)}
+
+<style>
+  .deps-graph-wrapper {
+    position: relative;
+    width: 100%;
+  }
+
+  .graph-controls {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .view-toggle, .filter-toggle {
+    display: flex;
+    gap: 0.35rem;
+  }
+
+  .view-btn, .filter-btn {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    padding: 0.3rem 0.65rem;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: lowercase;
+  }
+
+  .view-btn:hover, .filter-btn:hover {
+    color: var(--text);
+    border-color: var(--text);
+  }
+
+  .view-btn.active, .filter-btn.active {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+  }
+
+  .graph-container {
+    width: 100%;
+    height: 480px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--surface);
+    cursor: grab;
+  }
+
+  .graph-container:active {
+    cursor: grabbing;
+  }
+
+  .graph-container svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .graph-legend {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 0.875rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .legend-dot.center-node {
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-dim, rgba(139, 92, 246, 0.3));
+  }
+
+  .legend-dot.dep-node {
+    background: var(--border);
+    stroke: var(--muted);
+    border: 1px solid var(--muted);
+  }
+
+  .legend-dot.dependent-node {
+    background: #f59e0b;
+  }
+
+  .graph-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 100;
+    min-width: 160px;
+    max-width: 220px;
+  }
+
+  .graph-tooltip.visible {
+    opacity: 1;
+  }
+
+  .tooltip-name {
+    font-weight: 600;
+    font-size: 0.8rem;
+    margin-bottom: 0.35rem;
+    color: var(--text);
+  }
+
+  .tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+
+  .tooltip-row span:last-child {
+    color: var(--text);
+    text-align: right;
+  }
+
+  .tooltip-type {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    margin-bottom: 0.35rem;
+    display: inline-block;
+  }
+
+  .tooltip-type.dep {
+    background: rgba(107, 114, 128, 0.15);
+    color: var(--muted);
+    border: 1px solid var(--muted);
+  }
+
+  .tooltip-type.dependent {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid #f59e0b;
+  }
+
+  .tooltip-type.self {
+    background: rgba(139, 92, 246, 0.15);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+
+  .empty-state {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--muted);
+    text-align: center;
+    padding: 3rem;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+
+  /* Node styles */
+  :global(.node-group) {
+    cursor: pointer;
+  }
+
+  :global(.node-circle) {
+    transition: r 0.15s;
+  }
+
+  :global(.node-circle.center) {
+    fill: var(--accent);
+    stroke: var(--accent);
+    stroke-width: 2;
+  }
+
+  :global(.node-circle.dep) {
+    fill: var(--border);
+    stroke: var(--muted);
+    stroke-width: 1.5;
+  }
+
+  :global(.node-circle.dependent) {
+    fill: #f59e0b;
+    stroke: #d97706;
+    stroke-width: 1.5;
+  }
+
+  :global(.node-label) {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    fill: var(--text);
+    text-anchor: middle;
+    pointer-events: none;
+  }
+
+  :global(.link-line) {
+    stroke-linecap: round;
+  }
+
+  :global(.link-line.depends-on) {
+    stroke: var(--muted);
+    stroke-opacity: 0.4;
+    stroke-dasharray: 4 3;
+  }
+
+  :global(.link-line.depended-by) {
+    stroke: #f59e0b;
+    stroke-opacity: 0.5;
+  }
+
+  /* Arrow markers */
+  :global(.arrow-depends-on) {
+    fill: var(--muted);
+    fill-opacity: 0.4;
+  }
+
+  :global(.arrow-depended-by) {
+    fill: #f59e0b;
+    fill-opacity: 0.5;
+  }
+
+  /* Hierarchical tree styles */
+  :global(.tree-link) {
+    fill: none;
+    stroke: var(--muted);
+    stroke-opacity: 0.5;
+    stroke-width: 1.5;
+  }
+
+  :global(.tree-node circle) {
+    stroke-width: 1.5;
+  }
+
+  :global(.tree-node text) {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    fill: var(--text);
+  }
+
+  /* Center node pulse animation */
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  :global(.node-circle.center) {
+    animation: pulse 2s ease-in-out infinite;
+  }
+</style>
+
+<script define:vars={{ dependsOnJson, dependedByJson, centerNameJson }}>
+  const dependsOn = JSON.parse(dependsOnJson)
+  const dependedBy = JSON.parse(dependedByJson)
+  const centerName = JSON.parse(centerNameJson)
+
+  const container = document.getElementById('deps-graph')
+  const tooltip = document.getElementById('graph-tooltip')
+
+  if (!container) throw new Error('Graph container not found')
+
+  // D3 is loaded from CDN as global 'd3'
+  const d3 = window.d3
+  if (!d3) throw new Error('D3 not loaded')
+
+  let currentView = 'force'
+  let currentFilter = 'both'
+  let simulation = null
+
+  // ─── Setup SVG ───────────────────────────────────────────────────────────────
+  const width = container.clientWidth || 800
+  const height = container.clientHeight || 480
+
+  const svg = d3.select(container)
+    .append('svg')
+    .attr('width', width)
+    .attr('height', height)
+    .attr('viewBox', `0 0 ${width} ${height}`)
+
+  // Arrow markers for directed edges
+  const defs = svg.append('defs')
+
+  defs.append('marker')
+    .attr('id', 'arrow-depends-on')
+    .attr('viewBox', '0 -5 10 10')
+    .attr('refX', 18)
+    .attr('refY', 0)
+    .attr('markerWidth', 6)
+    .attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path')
+    .attr('d', 'M0,-5L10,0L0,5')
+    .attr('class', 'arrow-depends-on')
+
+  defs.append('marker')
+    .attr('id', 'arrow-depended-by')
+    .attr('viewBox', '0 -5 10 10')
+    .attr('refX', 18)
+    .attr('refY', 0)
+    .attr('markerWidth', 6)
+    .attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path')
+    .attr('d', 'M0,-5L10,0L0,5')
+    .attr('class', 'arrow-depended-by')
+
+  // Main group for zoom/pan
+  const g = svg.append('g').attr('class', 'graph-main')
+
+  // Zoom behavior
+  const zoom = d3.zoom()
+    .scaleExtent([0.2, 4])
+    .on('zoom', (event) => {
+      g.attr('transform', event.transform)
+    })
+
+  svg.call(zoom)
+
+  // Initial centering
+  svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(0.9))
+
+  // ─── Build graph data ────────────────────────────────────────────────────────
+  function buildGraphData() {
+    const nodes = []
+    const links = []
+
+    // Center node
+    nodes.push({
+      id: centerName,
+      type: 'self',
+      name: centerName,
+      depVersion: null,
+      downloadCount: null,
+      latestVersion: null,
+    })
+
+    // Dependency nodes (this package depends on them)
+    for (const dep of dependsOn) {
+      nodes.push({
+        id: dep.name,
+        type: 'dependency',
+        name: dep.name,
+        depVersion: dep.depVersion || null,
+        downloadCount: dep.downloadCount || null,
+        latestVersion: dep.latestVersion || null,
+      })
+      links.push({
+        source: centerName,
+        target: dep.name,
+        type: 'depends-on',
+      })
+    }
+
+    // Dependent nodes (packages that depend on this)
+    for (const dep of dependedBy) {
+      // Avoid duplicates
+      if (!nodes.find(n => n.id === dep.name)) {
+        nodes.push({
+          id: dep.name,
+          type: 'dependent',
+          name: dep.name,
+          depVersion: null,
+          downloadCount: dep.downloadCount || null,
+          latestVersion: dep.latestVersion || null,
+        })
+      }
+      links.push({
+        source: dep.name,
+        target: centerName,
+        type: 'depended-by',
+      })
+    }
+
+    return { nodes, links }
+  }
+
+  // ─── Force-directed layout ───────────────────────────────────────────────────
+  function renderForce(nodes, links) {
+    // Clear previous render
+    g.selectAll('*').remove()
+
+    if (nodes.length <= 1) return
+
+    // Create links group
+    const linksG = g.append('g').attr('class', 'links')
+
+    const linkElements = linksG.selectAll('line')
+      .data(links)
+      .enter()
+      .append('line')
+      .attr('class', d => `link-line ${d.type}`)
+      .attr('marker-end', d => d.type === 'depends-on' ? 'url(#arrow-depends-on)' : 'url(#arrow-depended-by)')
+
+    // Create nodes group
+    const nodesG = g.append('g').attr('class', 'nodes')
+
+    const nodeElements = nodesG.selectAll('g')
+      .data(nodes)
+      .enter()
+      .append('g')
+      .attr('class', 'node-group')
+      .call(d3.drag()
+        .on('start', dragStarted)
+        .on('drag', dragged)
+        .on('end', dragEnded)
+      )
+
+    // Node circles
+    nodeElements.append('circle')
+      .attr('r', d => d.type === 'self' ? 12 : 8)
+      .attr('class', d => `node-circle ${d.type === 'self' ? 'center' : d.type}`)
+
+    // Node labels
+    nodeElements.append('text')
+      .attr('dy', d => d.type === 'self' ? -16 : -12)
+      .attr('class', 'node-label')
+      .text(d => d.name.length > 14 ? d.name.slice(0, 11) + '...' : d.name)
+
+    // Hover events
+    nodeElements
+      .on('mouseenter', (event, d) => {
+        showTooltip(event, d)
+        highlightConnections(d.id, true)
+      })
+      .on('mousemove', (event) => {
+        moveTooltip(event)
+      })
+      .on('mouseleave', () => {
+        hideTooltip()
+        highlightConnections(null, false)
+      })
+      .on('click', (event, d) => {
+        if (d.type !== 'self') {
+          window.location.href = `/packages/${d.name}`
+        }
+      })
+
+    // Simulation
+    if (simulation) simulation.stop()
+
+    simulation = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).id(d => d.id).distance(120).strength(0.5))
+      .force('charge', d3.forceManyBody().strength(-250))
+      .force('center', d3.forceCenter(0, 0))
+      .force('collision', d3.forceCollide().radius(30))
+      .on('tick', () => {
+        linkElements
+          .attr('x1', d => d.source.x)
+          .attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x)
+          .attr('y2', d => d.target.y)
+
+        nodeElements.attr('transform', d => `translate(${d.x}, ${d.y})`)
+      })
+
+    // Pin center node
+    const centerNode = nodes.find(n => n.type === 'self')
+    if (centerNode) {
+      centerNode.fx = 0
+      centerNode.fy = 0
+    }
+  }
+
+  // ─── Hierarchical/tree layout ───────────────────────────────────────────────
+  function renderHierarchical(nodes, links) {
+    g.selectAll('*').remove()
+
+    if (nodes.length <= 1) return
+
+    // Separate depends-on (left tree) and depended-by (right tree)
+    const depLinks = links.filter(l => l.type === 'depends-on')
+    const dependentLinks = links.filter(l => l.type === 'depended-by')
+
+    const treeWidth = 200
+    const nodeSpacingY = 50
+
+    // Build left tree (depends on)
+    const leftGroup = g.append('g').attr('class', 'tree-left')
+    renderTree(leftGroup, [nodes.find(n => n.type === 'self')], depLinks, -1, treeWidth, nodeSpacingY, 'depends-on')
+
+    // Build right tree (depended by)
+    const rightGroup = g.append('g').attr('class', 'tree-right').attr('transform', `translate(${width / 2}, 0)`)
+    const rightRoot = nodes.find(n => n.type === 'self')
+    renderTree(rightGroup, [rightRoot], dependentLinks, 1, treeWidth, nodeSpacingY, 'depended-by')
+  }
+
+  function renderTree(group, rootNodes, links, direction, treeWidth, nodeSpacingY, type) {
+    // Build adjacency
+    const adj = new Map()
+    for (const link of links) {
+      const sourceId = typeof link.source === 'object' ? link.source.id : link.source
+      const targetId = typeof link.target === 'object' ? link.target.id : link.target
+      if (!adj.has(sourceId)) adj.set(sourceId, [])
+      adj.get(sourceId).push({ id: targetId, link })
+    }
+
+    // BFS from root
+    const visited = new Set()
+    const queue = [...rootNodes]
+    const positions = new Map()
+
+    while (queue.length > 0) {
+      const node = queue.shift()
+      if (visited.has(node.id)) continue
+      visited.add(node.id)
+
+      const x = (node.type === 'self' ? 0 : node.depth * treeWidth * direction)
+      const y = (node.yPos !== undefined ? node.yPos : 0) * nodeSpacingY
+
+      positions.set(node.id, { x, y, node })
+
+      const children = adj.get(node.id) || []
+      children.forEach((child, i) => {
+        const childNode = nodes.find(n => n.id === child.id)
+        if (childNode && !visited.has(childNode.id)) {
+          childNode.yPos = i - (children.length - 1) / 2
+          childNode.depth = (node.type === 'self' ? 1 : node.depth + 1)
+          queue.push(childNode)
+        }
+      })
+    }
+
+    // Draw links
+    for (const link of links) {
+      const sourceId = typeof link.source === 'object' ? link.source.id : link.source
+      const targetId = typeof link.target === 'object' ? link.target.id : link.target
+      const sourcePos = positions.get(sourceId)
+      const targetPos = positions.get(targetId)
+      if (!sourcePos || !targetPos) continue
+
+      group.append('path')
+        .attr('class', 'tree-link')
+        .attr('d', `M${sourcePos.x},${sourcePos.y} C${sourcePos.x + direction * treeWidth * 0.5},${sourcePos.y} ${targetPos.x - direction * treeWidth * 0.5},${targetPos.y} ${targetPos.x},${targetPos.y}`)
+        .style('stroke', type === 'depends-on' ? 'var(--muted)' : '#f59e0b')
+        .style('stroke-opacity', type === 'depends-on' ? '0.4' : '0.5')
+        .style('stroke-dasharray', type === 'depends-on' ? '4 3' : 'none')
+    }
+
+    // Draw nodes
+    for (const [id, pos] of positions) {
+      const node = pos.node
+      const isSelf = node.type === 'self'
+
+      const treeNode = group.append('g')
+        .attr('class', 'tree-node')
+        .attr('transform', `translate(${pos.x}, ${pos.y})`)
+        .style('cursor', isSelf ? 'default' : 'pointer')
+
+      treeNode.append('circle')
+        .attr('r', isSelf ? 10 : 7)
+        .attr('fill', isSelf ? 'var(--accent)' : node.type === 'dependency' ? 'var(--border)' : '#f59e0b')
+        .attr('stroke', isSelf ? 'var(--accent)' : node.type === 'dependency' ? 'var(--muted)' : '#d97706')
+
+      treeNode.append('text')
+        .attr('x', direction * (isSelf ? 0 : 14))
+        .attr('y', 4)
+        .attr('text-anchor', direction === -1 ? 'end' : 'start')
+        .text(node.name.length > 16 ? node.name.slice(0, 13) + '...' : node.name)
+
+      if (!isSelf) {
+        treeNode
+          .on('mouseenter', (event) => {
+            showTooltip(event, node)
+          })
+          .on('mousemove', (event) => {
+            moveTooltip(event)
+          })
+          .on('mouseleave', () => {
+            hideTooltip()
+          })
+          .on('click', () => {
+            window.location.href = `/packages/${node.name}`
+          })
+      }
+    }
+  }
+
+  // ─── Tooltip functions ───────────────────────────────────────────────────────
+  function showTooltip(event, d) {
+    if (!tooltip) return
+
+    const typeClass = d.type === 'self' ? 'self' : d.type === 'dependency' ? 'dep' : 'dependent'
+    const typeLabel = d.type === 'self' ? centerName : d.type === 'dependency' ? 'depends on' : 'depended by'
+
+    tooltip.innerHTML = `
+      <div class="tooltip-type ${typeClass}">${typeLabel}</div>
+      <div class="tooltip-name">${d.name}</div>
+      ${d.depVersion ? `<div class="tooltip-row"><span>constraint</span><span>${d.depVersion}</span></div>` : ''}
+      ${d.latestVersion ? `<div class="tooltip-row"><span>version</span><span>${d.latestVersion}</span></div>` : ''}
+      ${d.downloadCount != null ? `<div class="tooltip-row"><span>downloads</span><span>${d.downloadCount.toLocaleString()}</span></div>` : ''}
+    `
+    tooltip.classList.add('visible')
+    moveTooltip(event)
+  }
+
+  function moveTooltip(event) {
+    if (!tooltip || !container) return
+    const rect = container.getBoundingClientRect()
+    const x = event.clientX - rect.left + 12
+    const y = event.clientY - rect.top - 10
+    tooltip.style.left = `${Math.min(x, rect.width - 230)}px`
+    tooltip.style.top = `${Math.max(0, y - tooltip.offsetHeight)}px`
+  }
+
+  function hideTooltip() {
+    if (tooltip) tooltip.classList.remove('visible')
+  }
+
+  // ─── Highlight connections on hover ────────────────────────────────────────
+  function highlightConnections(nodeId, highlight) {
+    g.selectAll('.link-line').each(function(d) {
+      const sourceId = typeof d.source === 'object' ? d.source.id : d.source
+      const targetId = typeof d.target === 'object' ? d.target.id : d.target
+      const isConnected = nodeId && (sourceId === nodeId || targetId === nodeId)
+
+      if (highlight && !isConnected) {
+        d3.select(this).style('stroke-opacity', 0.08)
+      } else {
+        d3.select(this).style('stroke-opacity', d.type === 'depends-on' ? 0.4 : 0.5)
+      }
+    })
+
+    g.selectAll('.node-group circle').each(function(d) {
+      const node = d
+      const isConnected = nodeId && (
+        links.some(l => {
+          const s = typeof l.source === 'object' ? l.source.id : l.source
+          const t = typeof l.target === 'object' ? l.target.id : l.target
+          return (s === nodeId && t === node.id) || (t === nodeId && s === node.id)
+        }) || node.id === nodeId
+      )
+
+      if (highlight && !isConnected && node.type !== 'self') {
+        d3.select(this.parentNode).style('opacity', 0.3)
+      } else {
+        d3.select(this.parentNode).style('opacity', 1)
+      }
+    })
+  }
+
+  // ─── Drag handlers ───────────────────────────────────────────────────────────
+  function dragStarted(event, d) {
+    if (d.type === 'self') return
+    if (!event.active) simulation.alphaTarget(0.3).restart()
+    event.subject.fx = event.subject.x
+    event.subject.fy = event.subject.y
+  }
+
+  function dragged(event, d) {
+    if (d.type === 'self') return
+    event.subject.fx = event.x
+    event.subject.fy = event.y
+  }
+
+  function dragEnded(event, d) {
+    if (d.type === 'self') return
+    if (!event.active) simulation.alphaTarget(0)
+    event.subject.fx = null
+    event.subject.fy = null
+  }
+
+  // ─── Filter logic ────────────────────────────────────────────────────────────
+  function applyFilter(filter) {
+    currentFilter = filter
+
+    g.selectAll('.node-group').each(function(d) {
+      const node = d
+      let show = true
+      if (filter === 'depends-on' && node.type !== 'self' && node.type !== 'dependency') show = false
+      if (filter === 'depended-by' && node.type !== 'self' && node.type !== 'dependent') show = false
+      d3.select(this).style('display', show ? '' : 'none')
+    })
+
+    g.selectAll('.link-line').each(function(d) {
+      let show = true
+      if (filter === 'depends-on' && d.type !== 'depends-on') show = false
+      if (filter === 'depended-by' && d.type !== 'depended-by') show = false
+      d3.select(this).style('display', show ? '' : 'none')
+    })
+  }
+
+  // ─── Controls ───────────────────────────────────────────────────────────────
+  document.querySelectorAll('.view-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+      currentView = btn.dataset.view
+
+      const { nodes, links } = buildGraphData()
+
+      if (currentView === 'force') {
+        renderForce(nodes, links)
+      } else {
+        renderHierarchical(nodes, links)
+      }
+
+      // Re-apply filter
+      applyFilter(currentFilter)
+    })
+  })
+
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+      applyFilter(btn.dataset.filter)
+    })
+  })
+
+  // ─── Initial render ─────────────────────────────────────────────────────────
+  const graphData = buildGraphData()
+
+  if (graphData.nodes.length > 1) {
+    renderForce(graphData.nodes, graphData.links)
+  }
+</script>
