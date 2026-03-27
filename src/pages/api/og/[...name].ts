@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro'
 import { getPackageVersions, getPackageOwner } from '../../../lib/db.js'
+import { Resvg } from '@resvg/resvg-js'
 
 export const GET: APIRoute = async ({ url }) => {
   const pkg = url.searchParams.get('pkg')
@@ -51,9 +52,19 @@ export const GET: APIRoute = async ({ url }) => {
   <rect x="0" y="620" width="1200" height="10" fill="#8b5cf6"/>
 </svg>`
 
-  return new Response(svg, {
+  // Convert SVG to PNG using resvg
+  const resvg = new Resvg(svg, {
+    fitTo: {
+      mode: 'width',
+      value: 1200,
+    },
+  })
+  const pngData = resvg.render()
+  const pngBuffer = pngData.asPng()
+
+  return new Response(pngBuffer, {
     headers: {
-      'Content-Type': 'image/svg+xml',
+      'Content-Type': 'image/png',
       'Cache-Control': 'public, max-age=3600',
     },
   })
