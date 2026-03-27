@@ -1,0 +1,73 @@
+---
+title: "How Ink Compiles to the Modern VM"
+description: "A deep-dive into Ink's compilation pipeline — from source text to efficient bytecode, and why we built a custom VM instead of targeting the JVM."
+publishedAt: 2026-03-27
+---
+
+Ink is compiled, not interpreted. When you run `quill build` or `quill publish`, the compiler transforms Ink source into bytecode for the Ink VM — a custom runtime we built specifically for this language.
+
+This post explains how the pipeline works and why we made the choices we did.
+
+## The pipeline
+
+Ink compilation happens in three stages:
+
+### 1. Parsing → AST
+
+The Ink parser reads `.ink` source files and produces an Abstract Syntax Tree. Ink uses a Pratt parser for expression parsing, which handles operator precedence cleanly without requiring a separate precedence declaration step.
+
+The parser is hand-written in Ink's bootstrap compiler (also written in Ink, bootstrapped from an earlier Java implementation).
+
+### 2. AST → SSA IR
+
+The AST is lowered into Static Single Assignment (SSA) Intermediate Representation. This is where type checking happens, where overload resolution occurs, and where the optimizer operates.
+
+```ink
+// Source
+mob Dragon {
+    health: 500
+    damage: 15
+}
+
+// SSA IR (simplified)
+%dragon = struct.new(Dragon)
+%dragon.health = consti 500
+%dragon.damage = consti 15
+%dragon.name = conststr "Dragon"
+```
+
+The SSA form makes several optimizations straightforward: constant propagation, dead code elimination, and register allocation all work on SSA.
+
+### 3. SSA IR → Bytecode
+
+Finally, the SSA IR is lowered to Ink VM bytecode. The Ink VM is stack-based (similar to the JVM), but with a fixed instruction set tuned for Ink's semantics — not Java's.
+
+Each instruction is one or two bytes. Common operations (`iload`, `istore`, `iadd`, `if_icmp`) are single-byte opcodes. Larger immediates use two-byte or four-byte encoding.
+
+## Why a custom VM?
+
+We briefly considered targeting the JVM directly, and even had a prototype. We abandoned it for three reasons:
+
+**Startup time.** The JVM has to warm up — class loading, JIT compilation. For a scripting language used in rapid development loops, this is painful. The Ink VM starts in milliseconds.
+
+**Memory model mismatch.** JVM objects have a fixed layout optimized for GC tracing. Ink's value types (structs, primitives) don't need this overhead. Our VM uses a simple bump allocator for most allocations and a copying GC for the heap.
+
+**Instruction set mismatch.** JVM bytecode is designed for Java — method invocations are central, class inheritance is baked in. Ink's model is different: functions are first-class, types are simpler, and we don't need the full class hierarchy at runtime.
+
+## Register allocation
+
+One interesting part of the compiler is register allocation. SSA form naturally uses an infinite number of virtual registers. The allocator must map these to a finite set of physical registers or spill to the stack.
+
+Ink uses linear scan register allocation — fast enough for whole-program compilation and good enough results for the workloads Ink targets. For most event handlers (the most common Ink code), no spills occur at all.
+
+## What's not implemented (yet)
+
+The current compiler has some rough edges:
+
+- **Tail call optimization** is not implemented. Recursive calls that should be tail-optimized currently allocate a new stack frame.
+- **Whole-program optimization** is limited. Cross-module inlining doesn't happen at compile time — it's left to the VM's JIT (which, yes, we have a JIT, a very simple one).
+- **Debug info** is minimal. `quill debug` can show you line numbers but not local variables yet.
+
+These are solvable. The core pipeline is solid and has been stable for six months. We're adding features on top of it now, not fixing fundamental issues.
+
+If you're curious about the internals, the compiler source is at [github.com/inklang/ink](https://github.com/inklang/ink) — it's organized by pipeline stage and reasonably readable.
