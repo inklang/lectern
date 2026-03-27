@@ -1,0 +1,52 @@
+---
+title: "Why We Built Ink Instead of Just Using Skript"
+description: "A comparison of Ink and Skript — why we chose to build a new language instead of extending what's already there."
+publishedAt: 2026-03-26
+heroImage: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&h=400&fit=crop"
+---
+
+When we started building server automation tools for PaperMC, Skript was the obvious choice. It's widely used, has a large community, and many server admins already know it. So why did we spend months building something new?
+
+## The Problems with Skript
+
+Skript has served the community well for over a decade. But as server complexity grew, so did its limitations.
+
+**Performance.** Skript is interpreted at runtime. For simple triggers this is fine, but when you're running economy systems, job queues, or complex event chains, the interpreted overhead adds up. Server owners often resort to Java plugins for performance-critical code, then use Skript for simpler logic — creating two codebases to maintain.
+
+**Syntax.** Skript's English-like syntax is readable at first, but it becomes verbose for complex logic:
+
+```skript
+if player's balance is greater than or equal to 1000:
+    if player's level is greater than or equal to 10:
+        if player's world is "spawn":
+            # finally do something
+```
+
+Nested conditionals get hard to follow fast.
+
+**No package ecosystem.** There are thousands of Skript scripts floating around on forums, but there's no standard way to share, version, or import code. You copy-paste and hope it works with your version.
+
+## What Ink Does Differently
+
+Ink is compiled to bytecode and runs on a custom VM optimized for server logic. The syntax is designed around common server patterns:
+
+```ink
+// Clean, expressive syntax
+if player.balance >= 1000 && player.level >= 10 && player.world == "spawn" {
+    broadcast("{player.name} qualifies for the event!")
+}
+```
+
+**Packages.** Ink has `quill`, a real package manager. You can publish a package, others can install it with a version constraint, and updates are handled automatically. The standard library itself is a package.
+
+**Type safety.** Variables have types, and the compiler catches mismatches before runtime. No more mysterious NPEs from typos in effect names.
+
+## Is It Worth It?
+
+Building a language is a massive investment. We talked to dozens of server admins who said "just fix Skript" — and they weren't wrong that it would be easier.
+
+But Skript's fundamental architecture (interpreted, dynamically typed, runtime-resolved) means there are limits you can't push past without breaking everything. We needed something designed from scratch for how modern PaperMC servers actually work.
+
+The compiler, VM, standard library, package manager, and docs are all done. We're not asking anyone to switch overnight — Ink and Skript can coexist. But if you've ever wished Skript was faster, cleaner, and more shareable, that's exactly what Ink is.
+
+Give it a try at [lectern.inklang.org](/docs/intro). The docs take about 15 minutes to get through, and by the end you'll have written and run your first Ink program.

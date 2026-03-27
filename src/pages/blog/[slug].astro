@@ -16,6 +16,11 @@ const { Content } = await render(post)
 
 <Base title={post.data.title} description={post.data.description}>
   <article class="post">
+    {post.data.heroImage && (
+      <div class="post-hero">
+        <img src={post.data.heroImage} alt="" />
+      </div>
+    )}
     <header class="post-header">
       <div class="post-meta">
         {post.data.publishedAt && (
@@ -49,6 +54,20 @@ const { Content } = await render(post)
     max-width: 680px;
     margin: 0 auto;
     padding: 3rem 2rem;
+  }
+
+  .post-hero {
+    margin-bottom: 2rem;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  .post-hero img {
+    width: 100%;
+    height: 300px;
+    object-fit: cover;
+    display: block;
   }
 
   .post-header {

@@ -1,0 +1,94 @@
+---
+title: "Community Spotlight: 5 Packages You Should Know"
+description: "A look at five useful community packages that extend Ink's standard library with powerful server features."
+publishedAt: 2026-03-24
+heroImage: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=400&fit=crop"
+---
+
+The Ink package ecosystem is growing. Here are five packages that showcase what's possible.
+
+## 1. `chat-formatter` by @niko
+
+The single most common request in Skript communities is "how do I format chat?" This package solves it with a clean API:
+
+```ink
+import format, { hover, click from chat-formatter
+
+format("{prefix}{player}{suffix}: {message}")
+    .prefix("[VIP]", player:has_permission("vip"))
+    .suffix(" [Admin]", player:is_op())
+    .on_hover(hover("Rank: {player.rank}"))
+    .on_click(click("suggest", "/msg {player.name} "))
+```
+
+## 2. `economy-core` by @theserverdev
+
+Full economy system with accounts, transactions, and interest:
+
+```ink
+import { get_balance, set_balance, add_balance from economy-core
+
+val bal = get_balance(player)
+if bal < 100 {
+    player:send_message("You need 100 coins minimum!")
+    return
+}
+add_balance(player, -100)
+broadcast("{player.name} bought a pass!")
+```
+
+## 3. `cooldowns` by @ink_master
+
+Simple cooldown system for command handlers:
+
+```ink
+import { cooldown, is_cooldown_active from cooldowns
+
+on event:player_command(player, command) {
+    if command == "/heal" {
+        if is_cooldown_active(player, "heal", 60) {
+            val remaining = cooldown_remaining(player, "heal", 60)
+            player:send_message("Wait {remaining}s before healing again")
+            cancel event
+            return
+        }
+        player:set_health(20)
+        cooldown(player, "heal", 60)
+    }
+}
+```
+
+## 4. `announcer` by @shadow
+
+Scheduled broadcast system with randomization:
+
+```ink
+import { add_message, start_rotation from announcer
+
+add_message("Welcome to the server!")
+add_message("Check out /rules for server rules")
+add_message("Donate at example.com/donate")
+
+start_rotation(300)  // Every 5 minutes
+```
+
+## 5. `menu-api` by @blocksmith
+
+GUI menus without Java:
+
+```ink
+import { create_menu, slot, item from menu-api
+
+create_menu("Warp Menu", 3)
+    .slot(0, item("COMPASS", "Warp to Spawn"))
+        .on_click(|p| p:teleport(location("spawn")))
+    .slot(1, item("NETHER_STAR", "Warp to End"))
+        .on_click(|p| p:teleport(location("world_the_end")))
+    .slot(2, item("BARRIER", "Close"))
+        .on_click(|p| close_menu(p))
+    .open(player)
+```
+
+## Browse More
+
+These are just the start. Browse all packages at [lectern.inklang.org/packages](/packages). Got a package to share? Publish it with `quill publish`.

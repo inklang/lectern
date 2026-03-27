@@ -26,22 +26,29 @@ const sorted = posts.sort((a, b) => {
         {sorted.map(post => (
           <li class="post-card">
             <a href={`/blog/${post.id}`} class="post-link">
-              <div class="post-meta">
-                {post.data.publishedAt && (
-                  <time datetime={post.data.publishedAt.toISOString()}>
-                    {post.data.publishedAt.toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
-                  </time>
-                )}
-              </div>
-              <h2 class="post-title">{post.data.title}</h2>
-              {post.data.description && (
-                <p class="post-description">{post.data.description}</p>
+              {post.data.heroImage && (
+                <div class="post-card-image">
+                  <img src={post.data.heroImage} alt="" />
+                </div>
               )}
-              <span class="read-more">Read more →</span>
+              <div class="post-card-content">
+                <div class="post-meta">
+                  {post.data.publishedAt && (
+                    <time datetime={post.data.publishedAt.toISOString()}>
+                      {post.data.publishedAt.toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      })}
+                    </time>
+                  )}
+                </div>
+                <h2 class="post-title">{post.data.title}</h2>
+                {post.data.description && (
+                  <p class="post-description">{post.data.description}</p>
+                )}
+                <span class="read-more">Read more →</span>
+              </div>
             </a>
           </li>
         ))}
@@ -102,9 +109,30 @@ const sorted = posts.sort((a, b) => {
 
   .post-link {
     display: block;
-    padding: 1.5rem;
     text-decoration: none;
     color: inherit;
+  }
+
+  .post-card-image {
+    width: 100%;
+    height: 200px;
+    overflow: hidden;
+  }
+
+  .post-card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.2s;
+  }
+
+  .post-card:hover .post-card-image img {
+    transform: scale(1.02);
+  }
+
+  .post-card-content {
+    padding: 1.5rem;
   }
 
   .post-meta {

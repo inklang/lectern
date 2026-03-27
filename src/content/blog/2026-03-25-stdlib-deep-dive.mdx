@@ -1,0 +1,100 @@
+---
+title: "The Ink Standard Library: A Deep Dive"
+description: "Tour of the 40+ built-in functions that come with Ink, from player manipulation to world management and beyond."
+publishedAt: 2026-03-25
+heroImage: "https://images.unsplash.com/photo-1555949963-aa79dcee981c?w=800&h=400&fit=crop"
+---
+
+Ink ships with a standard library covering the most common PaperMC server operations. No imports needed — they're available in every Ink script.
+
+This post tours the key modules.
+
+## Players
+
+Player-related functions are probably what you'll use most:
+
+```ink
+// Location and movement
+player:teleport(location("spawn"))
+player:send_message("Welcome back!")
+player:play_sound("entity.experience_orb.pickup", player.location)
+
+// Inventory
+val item = player:held_item()
+player:add_item(item("DIAMOND_SWORD", 1))
+player:clear_inventory()
+
+// Stats
+player:set_health(20)
+player:set_level(5)
+player:feed(20)  // Same as saturation
+```
+
+## World
+
+```ink
+// Spawning mobs
+spawn_mob("ZOMBIE", player.location)
+spawn_mob("Dragon", location(0, 64, 0, "world_the_end"))
+
+// Blocks
+if block_at(player.location).type == "WATER" {
+    broadcast("Someone's swimming!")
+}
+set_block("STONE", location(0, 64, 0))
+```
+
+## Server
+
+```ink
+// Broadcast to all players
+broadcast("Server restarting in 5 minutes!")
+
+// Console commands
+run_command("stop")
+run_command("pex user {player.name} add essentials.fly")
+
+// Get online players
+for player in server:online_players() {
+    player:send_message("Announcement!")
+}
+```
+
+## Events
+
+Ink's event system replaces Skript's `on` syntax:
+
+```ink
+on event:player_chat(player, message) {
+    if message.starts_with("!announce ") {
+        broadcast(message.slice(10))
+        cancel event
+    }
+}
+
+on event:player_join(player) {
+    if !player:has_permission("verified") {
+        player:send_message("Verify your account at example.com")
+        player:kick("Please verify first")
+    }
+}
+```
+
+## Data Storage
+
+Key-value storage persists across restarts:
+
+```ink
+// Save data
+storage:set("player:{player.name}:kills", 0)
+storage:incr("player:{player.name}:kills")
+
+// Load data
+val kills = storage:get("player:{player.name}:kills") ?? 0
+```
+
+## What's Missing?
+
+The standard library is actively growing. We're adding functions based on what packages need. If there's a common operation missing, file an issue at [github.com/inklang/ink](https://github.com/inklang/ink) or write a package that wraps the Java API and publish it.
+
+Full reference at [Standard Library docs](/docs/stdlib).

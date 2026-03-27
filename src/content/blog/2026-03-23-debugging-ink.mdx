@@ -1,0 +1,144 @@
+---
+title: "Debugging Ink Programs: Tips and Tricks"
+description: "How to find and fix bugs in your Ink scripts, from syntax errors to runtime issues."
+publishedAt: 2026-03-23
+heroImage: "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?w=800&h=400&fit=crop"
+---
+
+Even with a compiled language, bugs happen. Here's how to squash them in Ink.
+
+## Compiler Errors
+
+These are the easiest to fix — the compiler tells you exactly what's wrong.
+
+### Unexpected token
+
+Usually a typo or missing bracket:
+
+```
+Error: Unexpected token '}' at line 5
+```
+
+Check the matching `{` for your `}`. In Ink, `{` starts an expression block and `}` ends it.
+
+### Type mismatch
+
+```ink
+val name = "Steve"
+val health = name + 10  // Error: can't add string and number
+```
+
+Ink won't implicitly convert types. Use `to_string()` or `to_number()` as needed.
+
+### Unknown function
+
+```
+Error: Unknown function 'player:send_messsage'
+```
+
+Check the spelling — it's likely `send_message` not `send_messsage`.
+
+## Runtime Errors
+
+These happen when the code compiles but fails when running.
+
+### Null checks
+
+```ink
+on event:player_death(player) {
+    val killer = event:get_killer()  // Could be null for environmental deaths
+    if killer != null {  // Always check!
+        broadcast("{killer.name} killed {player.name}")
+    }
+}
+```
+
+Use the `??` null coalescing operator for defaults:
+
+```ink
+val killer_name = killer?.name ?? "unknown"
+```
+
+### Index out of bounds
+
+Arrays and lists are zero-indexed:
+
+```ink
+val items = ["sword", "shield", "potion"]
+val first = items[0]    // "sword"
+val last = items[2]     // "potion"
+// items[3] would crash!
+```
+
+## Debugging Techniques
+
+### Print statements
+
+The simplest approach:
+
+```ink
+broadcast("DEBUG: player location = {player.location}")
+broadcast("DEBUG: balance = {balance}")
+```
+
+### Quill debug
+
+Run with debug output:
+
+```bash
+quill run --debug myscript.ink
+```
+
+This prints the bytecode being executed, which can help trace execution flow.
+
+### Breakpoints (coming soon)
+
+We're working on a debugger that lets you step through code line by line and inspect variables. Expected in the next release.
+
+## Common Pitfalls
+
+**Mutating loop variables:**
+
+```ink
+// Wrong - don't modify the list while iterating
+for item in items {
+    if item == "bad" {
+        items:remove(item)  // Will cause issues
+    }
+}
+
+// Right - collect items to remove, then remove
+val to_remove = []
+for item in items {
+    if item == "bad" {
+        to_remove:push(item)
+    }
+}
+for item in to_remove {
+    items:remove(item)
+}
+```
+
+**Confusing `=` and `==`:**
+
+```ink
+val x = 5      // Assignment - sets x to 5
+if x == 5 {    // Comparison - checks if x equals 5
+    // This runs
+}
+```
+
+**Forgetting `break`:**
+
+```ink
+loop 100 {
+    val result = do_something()
+    if result == "done" {
+        break  // Exit the loop early
+    }
+}
+```
+
+## Getting Help
+
+Stuck? Ask in the [Discord](https://discord.gg/inklang) or open an issue on GitHub. Include your code and the exact error message for fastest help.
