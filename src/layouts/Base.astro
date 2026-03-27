@@ -22,7 +22,7 @@ const {
   ogImagePath,
 } = Astro.props
 
-const resolvedOgImage = ogImage ?? (ogImagePath ? `https://lectern.inklang.org/api/og.png?pkg=${encodeURIComponent(ogImagePath)}` : undefined)
+const resolvedOgImage = ogImage ?? (ogImagePath ? `https://lectern.inklang.org/api/ogimg?pkg=${encodeURIComponent(ogImagePath)}` : undefined)
 
 const supabase = createServerClient(
   import.meta.env.SUPABASE_URL ?? '',
