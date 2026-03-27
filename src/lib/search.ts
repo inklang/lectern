@@ -6,6 +6,9 @@ export interface SearchResult {
   version: string
   description: string | null
   score: number
+  star_count: number
+  download_count: number
+  tags: string[]
 }
 
 interface RrfItem { name: string; package_slug?: string; [key: string]: unknown }
@@ -76,12 +79,56 @@ export async function hybridSearch(query: string, limit = 20): Promise<SearchRes
     semDeduped.map(r => ({ name: r.package_name, package_slug: `${ownerMap.get(r.package_name) ?? ''}/${r.package_name}`, version: r.version, description: r.description })),
   )
 
+  const topNames = merged.slice(0, limit).map(r => r.name as string)
+
+  // Fetch star_count from packages (denormalized column)
+  let starMap = new Map<string, number>()
+  if (topNames.length > 0) {
+    const { data: starRows } = await supabase
+      .from('packages')
+      .select('name, star_count')
+      .in('name', topNames)
+    starMap = new Map(starRows?.map(r => [r.name, r.star_count ?? 0]) ?? [])
+  }
+
+  // Fetch total download_count across all versions for each package
+  let dlMap = new Map<string, number>()
+  if (topNames.length > 0) {
+    const { data: dlRows } = await supabase
+      .from('package_versions')
+      .select('package_name, download_count')
+      .in('package_name', topNames)
+    const dlSum = new Map<string, number>()
+    for (const row of dlRows ?? []) {
+      dlSum.set(row.package_name, (dlSum.get(row.package_name) ?? 0) + (row.download_count ?? 0))
+    }
+    dlMap = dlSum
+  }
+
+  // Fetch tags for each package
+  let tagsMap = new Map<string, string[]>()
+  if (topNames.length > 0) {
+    const { data: tagRows } = await supabase
+      .from('package_tags')
+      .select('package_name, tag')
+      .in('package_name', topNames)
+    const tagsByPkg = new Map<string, string[]>()
+    for (const row of tagRows ?? []) {
+      if (!tagsByPkg.has(row.package_name)) tagsByPkg.set(row.package_name, [])
+      tagsByPkg.get(row.package_name)!.push(row.tag)
+    }
+    tagsMap = tagsByPkg
+  }
+
   return merged.slice(0, limit).map(r => ({
     name: r.name as string,
     package_slug: r.package_slug as string,
     version: (r.version as string) ?? '',
     description: (r.description as string | null) ?? null,
     score: r.score,
+    star_count: starMap.get(r.name as string) ?? 0,
+    download_count: dlMap.get(r.name as string) ?? 0,
+    tags: tagsMap.get(r.name as string) ?? [],
   }))
 }
 
