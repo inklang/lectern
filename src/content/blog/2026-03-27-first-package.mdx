@@ -1,0 +1,99 @@
+---
+title: "Writing Your First Ink Package"
+description: "A step-by-step guide to creating and publishing your first Ink package using quill — the Ink package manager."
+publishedAt: 2026-03-27
+---
+
+Packages are how Ink grows. The standard library is a package. Community packages are packages. Everything is a package. In this guide, you'll create a simple utility package and publish it to the [lectern registry](/packages).
+
+## Prerequisites
+
+You'll need:
+- Ink installed (`quill install ink` or build from [github.com/inklang/ink](https://github.com/inklang/ink))
+- A GitHub account (for publishing)
+- An SSH key registered with lectern
+
+## Step 1: Initialize the package
+
+```bash
+mkdir my-utils
+cd my-utils
+quill init
+```
+
+This creates `ink.toml` — the package manifest:
+
+```toml
+[package]
+name = "my-utils"
+version = "0.1.0"
+description = "Handy utilities for server admins"
+```
+
+## Step 2: Write some Ink
+
+Create `src/lib.ink`:
+
+```ink
+import logs, config from ink
+
+// Format a player name with a prefix
+fn format_name(player) {
+    val prefix = config:get("chat.prefix") ?? "[Player]"
+    return "{prefix}{player.name}"
+}
+
+// Broadcast a formatted message to all players
+fn announce(message) {
+    for player in server:online_players() {
+        player:send_message(format_name(player) + ": " + message)
+    }
+}
+```
+
+## Step 3: Test locally
+
+```bash
+quill run my-script.ink
+```
+
+`quill run` executes an Ink file against your running server (in test mode). No need to rebuild the whole project.
+
+## Step 4: Publish
+
+```bash
+quill publish
+```
+
+`quill` will:
+1. Build a tarball of your package
+2. Sign it with your SSH key
+3. Upload it to lectern
+
+Anyone can now install it:
+
+```bash
+quill install my-utils
+```
+
+And use it in their scripts:
+
+```ink
+import announce from my-utils
+
+on event:player_chat(player, message) {
+    if message.starts_with("!announce ") {
+        announce(message.slice(10))
+    }
+}
+```
+
+## Sharing with the community
+
+Publish your package and add it to the [registry](/packages). Good packages include:
+
+- Clear `description` in `ink.toml`
+- A README with usage examples
+- Semantic versioning — update `version` before republishing
+
+The whole Ink ecosystem grows when people share their work. Even small utility packages can save other admins hours of scripting time.

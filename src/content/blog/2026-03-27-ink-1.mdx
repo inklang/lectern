@@ -1,0 +1,56 @@
+---
+title: "Ink 1.0: A New Beginning"
+description: "After months of work, Ink 1.0 is here. A compiled scripting language for PaperMC servers that gets out of your way and lets you build."
+publishedAt: 2026-03-27
+---
+
+After months of design, iteration, and a few late nights debugging register allocation, Ink 1.0 is finally here.
+
+## What is Ink?
+
+Ink is a compiled scripting language designed from scratch for PaperMC server administrators and plugin developers. It targets the modern VM — meaning fast startup, predictable performance, and a type system that catches bugs before runtime.
+
+```ink
+// Define a mob with custom behavior
+mob Dragon {
+    name: "Boss"
+    health: 500
+    damage: 15
+}
+
+on event:player_death(player) {
+    spawn_mob(Dragon, player.location)
+    broadcast("A dragon has spawned at {player.name}!")
+}
+```
+
+No more YAML hell. No more Java boilerplate. Ink compiles directly to efficient bytecode for a custom VM built around the needs of server-side game logic.
+
+## Why build another language?
+
+We looked at existing options — Skript, Flow, JavaScript via Nashorn — and found they all had the same problems: slow execution, awkward syntax for common patterns, and no package ecosystem worth mentioning.
+
+So we built Ink to be:
+- **Fast** — compiled ahead-of-time, no interpreter overhead
+- **Focused** — every feature serves server logic
+- **Extensible** — packages extend the language itself, written in Ink or Java
+
+## What's in 1.0
+
+- Core language: variables, functions, classes, inheritance
+- Standard library with 40+ built-in functions
+- Package manager (`quill`) with `quill install` and `quill publish`
+- Package registry at [lectern.inklang.org](/packages)
+- Full docs at [inklang.org/docs](/docs)
+
+## What's next
+
+This is just the beginning. We're working on:
+
+- Async/await for non-blocking event handlers
+- Generic types (lists, maps with type parameters)
+- Standard library expansion based on real package usage
+
+The language is stable. The tools work. Now it's your turn — [write a package](/docs/getting-started) and share it with the community.
+
+Welcome to Ink.

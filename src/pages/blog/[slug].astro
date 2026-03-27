@@ -1,51 +1,183 @@
 ---
+import { getCollection } from 'astro:content'
 import Base from '~/layouts/Base.astro'
 
 const { slug } = Astro.params
+
+const posts = await getCollection('blog')
+const post = posts.find(p => p.id === slug || p.id === `${slug}.mdx` || p.id === `${slug}/index.mdx`)
+
+if (!post) {
+  return Astro.redirect('/blog')
+}
+
+const { Content } = await post.render()
 ---
 
-<Base title="Blog Post">
-  <section class="placeholder-page">
-    <h1>Blog Post</h1>
-    <p>Post <code>{slug}</code> will appear here when the blog is built in Phase 2.</p>
-    <a href="/blog">← Back to blog</a>
-  </section>
+<Base title={post.data.title} description={post.data.description}>
+  <article class="post">
+    <header class="post-header">
+      <div class="post-meta">
+        {post.data.publishedAt && (
+          <time datetime={post.data.publishedAt.toISOString()}>
+            {post.data.publishedAt.toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            })}
+          </time>
+        )}
+      </div>
+      <h1 class="post-title">{post.data.title}</h1>
+      {post.data.description && (
+        <p class="post-description">{post.data.description}</p>
+      )}
+    </header>
+
+    <div class="post-content">
+      <Content />
+    </div>
+
+    <footer class="post-footer">
+      <a href="/blog" class="back-link">← Back to blog</a>
+    </footer>
+  </article>
 </Base>
 
 <style>
-  .placeholder-page {
-    max-width: 40ch;
+  .post {
+    max-width: 680px;
     margin: 0 auto;
-    text-align: center;
-    padding: 4rem 0;
+    padding: 3rem 2rem;
   }
 
-  h1 {
-    font-size: 2rem;
+  .post-header {
+    margin-bottom: 3rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .post-meta {
+    font-size: 0.8125rem;
+    color: var(--muted-2);
+    font-family: var(--font-mono);
+    margin-bottom: 0.75rem;
+  }
+
+  .post-title {
+    font-size: 2.25rem;
     font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
     margin-bottom: 1rem;
   }
 
-  p {
+  .post-description {
+    font-size: 1.125rem;
     color: var(--muted);
-    margin-bottom: 1rem;
     line-height: 1.6;
   }
 
-  a {
+  .post-content {
+    font-size: 1rem;
+    line-height: 1.75;
+  }
+
+  .post-content :global(h2) {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-top: 2.5rem;
+    margin-bottom: 1rem;
+    letter-spacing: -0.02em;
+  }
+
+  .post-content :global(h3) {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .post-content :global(p) {
+    margin-bottom: 1.25rem;
+  }
+
+  .post-content :global(code) {
+    font-family: var(--font-mono);
+    background: var(--surface);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.875em;
+  }
+
+  .post-content :global(pre) {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+    overflow-x: auto;
+    margin-bottom: 1.5rem;
+  }
+
+  .post-content :global(pre code) {
+    background: none;
+    padding: 0;
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+
+  .post-content :global(ul),
+  .post-content :global(ol) {
+    margin-bottom: 1.25rem;
+    padding-left: 1.5rem;
+  }
+
+  .post-content :global(li) {
+    margin-bottom: 0.5rem;
+  }
+
+  .post-content :global(a) {
     color: var(--accent);
     text-decoration: none;
   }
 
-  a:hover {
+  .post-content :global(a:hover) {
     text-decoration: underline;
   }
 
-  code {
-    font-family: var(--font-mono);
-    background: var(--surface);
-    padding: 0.1em 0.4em;
-    border-radius: 4px;
-    font-size: 0.875em;
+  .post-content :global(blockquote) {
+    border-left: 3px solid var(--accent);
+    margin-left: 0;
+    padding-left: 1.25rem;
+    color: var(--muted);
+    font-style: italic;
+    margin-bottom: 1.25rem;
+  }
+
+  .post-footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .back-link {
+    color: var(--muted);
+    font-size: 0.875rem;
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+
+  .back-link:hover {
+    color: var(--text);
+  }
+
+  @media (max-width: 640px) {
+    .post {
+      padding: 2rem 1rem;
+    }
+
+    .post-title {
+      font-size: 1.75rem;
+    }
   }
 </style>

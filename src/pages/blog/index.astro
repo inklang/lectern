@@ -1,30 +1,146 @@
 ---
+import { getCollection } from 'astro:content'
 import Base from '~/layouts/Base.astro'
+
+const posts = await getCollection('blog')
+const sorted = posts.sort((a, b) => {
+  const dateA = a.data.publishedAt?.getTime() ?? 0
+  const dateB = b.data.publishedAt?.getTime() ?? 0
+  return dateB - dateA
+})
 ---
 
 <Base title="Blog">
-  <section class="placeholder-page">
-    <h1>Blog</h1>
-    <p>The Ink blog is coming soon. Stay tuned for updates, tutorials, and announcements.</p>
+  <section class="blog-index">
+    <header class="blog-header">
+      <h1>Blog</h1>
+      <p class="blog-subtitle">Updates, tutorials, and announcements from the Ink team.</p>
+    </header>
+
+    {sorted.length === 0 ? (
+      <div class="empty-state">
+        <p>No posts yet. Check back soon!</p>
+      </div>
+    ) : (
+      <ul class="post-list">
+        {sorted.map(post => (
+          <li class="post-card">
+            <a href={`/blog/${post.id}`} class="post-link">
+              <div class="post-meta">
+                {post.data.publishedAt && (
+                  <time datetime={post.data.publishedAt.toISOString()}>
+                    {post.data.publishedAt.toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </time>
+                )}
+              </div>
+              <h2 class="post-title">{post.data.title}</h2>
+              {post.data.description && (
+                <p class="post-description">{post.data.description}</p>
+              )}
+              <span class="read-more">Read more →</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    )}
   </section>
 </Base>
 
 <style>
-  .placeholder-page {
-    max-width: 40ch;
+  .blog-index {
+    max-width: 720px;
     margin: 0 auto;
-    text-align: center;
-    padding: 4rem 0;
+    padding: 3rem 2rem;
+  }
+
+  .blog-header {
+    margin-bottom: 3rem;
   }
 
   h1 {
-    font-size: 2rem;
+    font-size: 2.5rem;
     font-weight: 700;
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.02em;
+  }
+
+  .blog-subtitle {
+    color: var(--muted);
+    font-size: 1.0625rem;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 4rem 0;
+    color: var(--muted);
+  }
+
+  .post-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .post-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+
+  .post-card:hover {
+    border-color: var(--accent);
+  }
+
+  .post-link {
+    display: block;
+    padding: 1.5rem;
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .post-meta {
+    font-size: 0.8125rem;
+    color: var(--muted-2);
+    font-family: var(--font-mono);
+    margin-bottom: 0.5rem;
+  }
+
+  .post-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.01em;
+  }
+
+  .post-description {
+    color: var(--muted);
+    font-size: 0.9375rem;
+    line-height: 1.6;
     margin-bottom: 1rem;
   }
 
-  p {
-    color: var(--muted);
-    line-height: 1.6;
+  .read-more {
+    font-size: 0.875rem;
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  @media (max-width: 640px) {
+    .blog-index {
+      padding: 2rem 1rem;
+    }
+
+    h1 {
+      font-size: 2rem;
+    }
   }
 </style>
