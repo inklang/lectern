@@ -563,11 +563,11 @@ In `Base.astro`, replace the entire `<header>` block (which contains inline nav 
 
 ```astro
   <header class="site-header">
-    <Nav>
-      <a href="/login" slot="nav-right" class="nav-login">login</a>
-    </Nav>
+    <Nav />
   </header>
 ```
+
+**Important:** Nav.astro handles auth state internally via Supabase — it shows "login" link or the user avatar based on the session. Do NOT pass any slot content into `<Nav />`. The `slot="nav-right"` approach was in an earlier draft and does not apply to the final Nav.astro design.
 
 Replace the existing inline `<style>` block's header/main/footer rules with:
 
@@ -833,7 +833,16 @@ const { slug } = Astro.params
 </style>
 ```
 
-- [ ] **Step 4: Create content collection config for blog only**
+- [ ] **Step 4: Create blog content directory**
+
+Create the blog collection directory with a `.gitkeep` marker:
+
+```bash
+mkdir -p src/content/blog
+touch src/content/blog/.gitkeep
+```
+
+- [ ] **Step 5: Create content collection config for blog only**
 
 **Important:** Do NOT define a `docs` collection here — Starlight auto-manages the `docs` collection from `src/content/docs/`. Defining a `docs` collection manually will conflict with Starlight's built-in behavior.
 
@@ -860,16 +869,16 @@ export const collections = {
 }
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/pages/forum/index.astro src/pages/blog/index.astro src/pages/blog/[slug].astro src/content/config.ts
+git add src/pages/forum/index.astro src/pages/blog/index.astro src/pages/blog/[slug].astro src/content/blog/.gitkeep src/content/config.ts
 git commit -m "feat: add placeholder routes for /forum and /blog
 
 - /forum: placeholder page with link to GitHub Discussions
 - /blog: placeholder index + catch-all [slug] page
+- Blog content collection directory created with .gitkeep
 - Blog content collection configured (docs managed by Starlight)
-- Content collections configured for blog only (docs is Starlight-managed)
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 ```
@@ -889,10 +898,10 @@ Check if these pages already use `Base.astro`. If they do, they should automatic
 - [ ] **Step 1: Check which layout package pages use**
 
 ```bash
-grep -l "layout" src/pages/packages/*.astro src/pages/[user]/*.astro 2>/dev/null
+grep -l "layout" src/pages/packages/*.astro src/pages/[user]/[slug].astro 2>/dev/null
 ```
 
-Run this and check the output. Then read each file to confirm it imports and uses `Base.astro`.
+Run this and check the output. If a file uses a different layout or no layout at all, update it to use `Base.astro`.
 
 - [ ] **Step 2: If a page uses a different layout or no layout, add Base.astro import and usage**
 
