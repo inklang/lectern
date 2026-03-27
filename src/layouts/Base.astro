@@ -82,6 +82,18 @@ const username = session?.user.user_metadata?.user_name ?? null
       --accent: #8b5cf6;
       --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
       --font-sans: ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+      /* Health status colors */
+      --health-excellent: #22c55e;
+      --health-excellent-bg: rgba(34, 197, 94, 0.15);
+      --health-good: #06b6d4;
+      --health-good-bg: rgba(6, 182, 212, 0.15);
+      --health-fair: #f59e0b;
+      --health-fair-bg: rgba(245, 158, 11, 0.15);
+      --health-poor: #ef4444;
+      --health-poor-bg: rgba(239, 68, 68, 0.15);
+      --health-unknown: #6b7280;
+      --health-unknown-bg: rgba(107, 114, 128, 0.15);
     }
 
     body {
@@ -130,5 +142,17 @@ const username = session?.user.user_metadata?.user_name ?? null
   <footer class="site-footer">
     <Footer />
   </footer>
+
+  <script>
+    // Global Cmd+K / Ctrl+K shortcut — focuses the nav search input
+    document.addEventListener('keydown', (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        if (typeof (window as any).__focusNavSearch === 'function') {
+          ;(window as any).__focusNavSearch()
+        }
+      }
+    })
+  </script>
 </body>
 </html>
