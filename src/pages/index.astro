@@ -80,6 +80,42 @@ on event:player_death(player) {
       color: var(--muted-2);
       margin-bottom: 2rem;
     }
+    .hero-search {
+      margin-bottom: 1.5rem;
+    }
+    .hero-search-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      max-width: 480px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .hero-search-wrap:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+    }
+    .hero-search-icon {
+      position: absolute;
+      left: 0.875rem;
+      color: var(--muted);
+      pointer-events: none;
+    }
+    .hero-search-input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      outline: none;
+      padding: 0.75rem 1rem 0.75rem 2.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.9375rem;
+      color: var(--text);
+    }
+    .hero-search-input::placeholder { color: var(--muted-2); }
+    .hero-search-input::-webkit-search-cancel-button { display: none; }
     .hero-ctas {
       display: flex;
       gap: 0.75rem;
@@ -328,6 +364,22 @@ on event:player_death(player) {
     <h1 class="hero-title">ink</h1>
     <p class="hero-tagline">A compiled scripting language for PaperMC servers.</p>
     <p class="hero-sub">Packages extend the language itself.</p>
+    <form class="hero-search" action="/search" method="get">
+      <div class="hero-search-wrap">
+        <svg class="hero-search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <input
+          type="search"
+          name="q"
+          class="hero-search-input"
+          placeholder="Search packages…"
+          autocomplete="off"
+          aria-label="Search packages"
+        />
+      </div>
+    </form>
     <div class="hero-ctas">
       <a href="/docs" class="btn btn-primary">Get Started</a>
       <a href="/docs/intro" class="btn btn-outline">Learn More</a>
