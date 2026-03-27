@@ -1,0 +1,179 @@
+---
+title: Examples
+description: Practical scripts for your PaperMC server
+---
+
+# Examples
+
+Practical scripts for your PaperMC server. Copy, paste, adapt.
+
+## Player Join Message
+
+Greet players when they join:
+
+```ink
+on event:player_join(player) {
+    print("Welcome to the server, ${player.name}!")
+    player.setScore(0)
+}
+```
+
+## Broadcast Command
+
+Send a message to all players:
+
+```ink
+fn broadcast(message) {
+    print("[Broadcast] " + message)
+}
+
+broadcast("Server restarting in 5 minutes!")
+```
+
+## Simple Score
+
+Track and update a player's score:
+
+```ink
+on event:player_join(player) {
+    player.setScore(0)
+    print("${player.name} joined with score: 0")
+}
+
+on event:player_kill_player(killer, victim) {
+    let current = killer.getScore()
+    killer.setScore(current + 1)
+    print("${killer.name} now has ${current + 1} kills")
+}
+```
+
+## Countdown Timer
+
+A basic countdown using a loop:
+
+```ink
+fn countdown(seconds) {
+    for i in 0..seconds {
+        print("T-minus ${seconds - i}")
+    }
+    print("Time's up!")
+}
+
+countdown(5)
+```
+
+## Mob Drops
+
+Custom drop logic on death:
+
+```ink
+on event:entity_death(entity, killer) {
+    if killer != null {
+        let mobType = entity.getType()
+        if mobType == "ZOMBIE" {
+            killer.giveItem("rotten_flesh", 1)
+            print("${killer.name} looted a zombie!")
+        }
+    }
+}
+```
+
+## Random Teleport
+
+Teleport a player to a random location:
+
+```ink
+fn randomLocation() {
+    let x = random.random() * 1000 - 500
+    let z = random.random() * 1000 - 500
+    return location(x, 64, z)
+}
+
+on event:player_command(player, command) {
+    if command == "/rtp" {
+        player.teleport(randomLocation())
+        print("${player.name} was teleported to ${player.location}")
+    }
+}
+```
+
+## Class-Based Inventory
+
+Manage a player's inventory with a class:
+
+```ink
+class Inventory {
+    fn init(owner) {
+        self.owner = owner
+        self.items = []
+    }
+
+    fn add(item, amount) {
+        self.items.push({"item": item, "amount": amount})
+        print("${self.owner.name} received ${amount}x ${item}")
+    }
+
+    fn show() {
+        print("${self.owner.name}'s inventory:")
+        for entry in self.items {
+            print("  - ${entry.amount}x ${entry.item}")
+        }
+    }
+}
+
+on event:player_join(player) {
+    let inv = Inventory(player)
+    inv.add("diamond", 1)
+    inv.show()
+}
+```
+
+## Range Loop
+
+Iterate over a range of numbers:
+
+```ink
+// Print 1 to 10
+for i in 1..11 {
+    print(i)
+}
+
+// Sum numbers 1 to 100
+fn sumTo(n) {
+    let total = 0
+    for i in 1..n + 1 {
+        total = total + i
+    }
+    return total
+}
+
+print("Sum 1-100: " + sumTo(100))
+```
+
+## String Interpolation
+
+Build messages with embedded expressions:
+
+```ink
+let playerName = "Craftmaster42"
+let kills = 57
+let level = 12
+
+print("Player: ${playerName}")
+print("${playerName} is level ${level} with ${kills} kills")
+print("K/D ratio: ${kills / level}")
+```
+
+## Elvis and Safe Call
+
+Handle null values safely:
+
+```ink
+// Elvis operator - use default if null
+let playerName = maybeNull ?? "Anonymous"
+let health = player.getHealth() ?? 20
+
+// Safe call - only access if not null
+let score = player?.getScore()
+let world = player?.location?.world
+```

@@ -1,4 +1,5 @@
 ---
+import Base from '../layouts/Base.astro'
 import { listAllPackages, listTags, getTrendingPackages, getPopularPackages } from '../lib/db.js'
 import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 
@@ -19,6 +20,10 @@ const username = session?.user.user_metadata?.user_name ?? null
 const allPackagesMap = await listAllPackages()
 const packages = Object.entries(allPackagesMap)
 const totalVersions = packages.reduce((n, [, versions]) => n + Object.keys(versions).length, 0)
+const totalDownloads = packages.reduce(
+  (n, [, versions]) => n + Object.values(versions).reduce((s, v) => s + (v.download_count ?? 0), 0),
+  0
+)
 
 const recent = packages
   .flatMap(([name, versions]) =>
@@ -28,225 +33,121 @@ const recent = packages
   .slice(0, 6)
 
 const trending = await getTrendingPackages(7, 5).catch(() => [])
+const featured = trending.slice(0, 3)
 const popular = await getPopularPackages(5).catch(() => [])
 const allTags = await listTags().catch(() => [])
+
+const EXAMPLE_CODE = `import spawn_mob, Zombie from mobs;
+
+mob Dragon {
+    name: "Boss"
+    health: 500
+}
+
+on event:player_death(player) {
+    spawn_mob(Zombie, player.location)
+}`
 ---
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="The Ink package registry — discover and publish grammar packages, scripts, and runtime extensions." />
-  <title>Home — Lectern</title>
-  <link rel="alternate" type="application/atom+xml" title="Lectern Feed" href="/api/feed.xml" />
+
+<Base title="Home" description="The Ink package registry — discover and publish grammar packages, scripts, and runtime extensions.">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --bg: #09090b;
-      --surface: #18181b;
-      --border: #3f3f46;
-      --text: #fafafa;
-      --muted: #a1a1aa;
-      --muted-2: #71717a;
-      --accent: #8b5cf6;
-      --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
-      --font-sans: ui-sans-serif, system-ui, -apple-system, sans-serif;
-    }
-
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--font-sans);
-      font-size: 0.9375rem;
-      line-height: 1.6;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      -webkit-font-smoothing: antialiased;
-    }
-
-    .home-nav {
-      border-bottom: 1px solid var(--border);
-      padding: 0 2rem;
-      height: 3.5rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .home-nav a.wordmark {
-      font-family: var(--font-mono);
-      font-size: 1rem;
-      font-weight: 600;
-      color: var(--text);
-      text-decoration: none;
-      letter-spacing: -0.02em;
-    }
-
-    .home-nav nav {
-      display: flex;
-      gap: 0.25rem;
-    }
-
-    .home-nav nav a {
-      font-size: 0.875rem;
-      color: var(--muted);
-      text-decoration: none;
-      padding: 0.25rem 0.75rem;
-      border-radius: 6px;
-      transition: color 0.15s, background 0.15s;
-      letter-spacing: 0.01em;
-    }
-
-    .home-nav nav a:hover {
-      color: var(--text);
-      background: var(--surface);
-    }
-
-    .nav-login {
-      font-size: 0.8125rem;
-      padding: 0.35rem 0.875rem;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--text);
-      text-decoration: none;
-      transition: background 0.15s, border-color 0.15s;
-    }
-
-    .nav-login:hover {
-      background: var(--surface);
-      border-color: var(--accent);
-      opacity: 1;
-    }
-
-    .nav-avatar {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-decoration: none;
-      border-radius: 50%;
-      border: 2px solid transparent;
-      transition: border-color 0.15s;
-      overflow: hidden;
-      width: 2rem;
-      height: 2rem;
-      flex-shrink: 0;
-    }
-
-    .nav-avatar:hover { border-color: var(--accent); opacity: 1; }
-    .nav-avatar img { width: 2rem; height: 2rem; border-radius: 50%; object-fit: cover; display: block; }
-
-    main {
-      flex: 1;
-      max-width: 860px;
-      width: 100%;
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 4rem 2rem 3rem;
+      max-width: 680px;
       margin: 0 auto;
-      padding: 2rem 2rem 4rem;
     }
-
-    footer {
-      border-top: 1px solid var(--border);
-      padding: 1.25rem 2rem;
+    .hero-title {
       font-family: var(--font-mono);
-      font-size: 0.75rem;
-      color: var(--muted-2);
-      text-align: center;
+      font-size: clamp(3rem, 8vw, 5rem);
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      margin-bottom: 0.75rem;
+      background: linear-gradient(135deg, var(--text) 0%, var(--muted) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
     }
-
-    a { color: var(--text); }
-    a:hover { opacity: 0.8; }
-
-    /* Title */
-    .home-title {
-      text-align: center;
-      margin-bottom: 1.5rem;
-    }
-    .home-title h1 {
-      font-family: var(--font-mono);
-      font-size: 1.75rem;
-      font-weight: 600;
-      letter-spacing: -0.03em;
-      margin-bottom: 0.4rem;
-    }
-    .home-title p {
+    .hero-tagline {
+      font-size: 1.125rem;
       color: var(--muted);
-      font-size: 0.875rem;
+      margin-bottom: 0.5rem;
     }
-
-    /* Search */
-    .search-wrap {
-      margin-bottom: 1rem;
-    }
-    .search-input {
-      width: 100%;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0.75rem 1rem;
-      font-family: var(--font-mono);
+    .hero-sub {
       font-size: 0.9rem;
-      color: var(--text);
-      outline: none;
-      transition: border-color 0.15s;
-      box-sizing: border-box;
-    }
-    .search-input:focus { border-color: var(--accent); }
-    .search-input::placeholder { color: var(--muted-2); }
-
-    /* Filter chips */
-    .filter-row {
-      display: flex;
-      gap: 0.5rem;
-      flex-wrap: wrap;
-      margin-bottom: 1.75rem;
-      justify-content: center;
-    }
-    .filter-label {
-      font-family: var(--font-mono);
-      font-size: 0.7rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
       color: var(--muted-2);
-      display: flex;
-      align-items: center;
-    }
-    .filter-chip {
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      padding: 0.25rem 0.6rem;
-      border-radius: 6px;
-      border: 1px solid var(--border);
-      color: var(--muted);
-      text-decoration: none;
-      transition: border-color 0.15s, color 0.15s, background 0.15s;
-    }
-    .filter-chip:hover {
-      border-color: var(--accent);
-      color: var(--text);
-      opacity: 1;
-    }
-    .filter-chip.active {
-      border-color: var(--accent);
-      color: var(--accent);
-      background: rgba(139, 92, 246, 0.08);
-    }
-
-    /* Search results */
-    #search-results {
-      display: none;
-      flex-direction: column;
       margin-bottom: 2rem;
     }
-    #search-results.visible { display: flex; }
+    .hero-ctas {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-block;
+      padding: 0.625rem 1.375rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border: 1px solid var(--accent);
+    }
+    .btn-primary:hover { background: #7c3aed; border-color: #7c3aed; opacity: 1; }
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover { border-color: var(--accent); opacity: 1; }
 
-    /* Stats row */
+    /* Code preview */
+    .code-preview {
+      max-width: 640px;
+      margin: 0 auto 3rem;
+      padding: 0 2rem;
+    }
+    .code-preview-label {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--muted-2);
+      margin-bottom: 0.5rem;
+      text-align: center;
+      letter-spacing: 0.05em;
+    }
+    .code-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      overflow-x: auto;
+    }
+    .code-block pre {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      line-height: 1.7;
+      color: var(--text);
+      margin: 0;
+    }
+    .code-block code {
+      font-family: inherit;
+    }
+
+    /* Stats */
     .stats-row {
       display: flex;
       gap: 2rem;
-      margin-bottom: 2rem;
-      padding: 0 0.5rem;
+      margin-bottom: 2.5rem;
+      padding: 0 2rem;
+      justify-content: center;
     }
     .stat {
       display: flex;
@@ -263,11 +164,86 @@ const allTags = await listTags().catch(() => [])
       color: var(--muted);
     }
 
-    /* Sections grid */
+    /* Divider */
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      max-width: 640px;
+      margin: 0 auto 2.5rem;
+    }
+
+    /* Featured */
+    .featured-section {
+      max-width: 860px;
+      margin: 0 auto 3rem;
+      padding: 0 2rem;
+    }
+    .featured-heading {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .featured-heading::before { content: '★'; }
+    .featured-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 0.75rem;
+    }
+    .featured-card {
+      display: flex;
+      flex-direction: column;
+      padding: 1rem 1.25rem;
+      text-decoration: none;
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .featured-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+      opacity: 1;
+    }
+    .featured-card-name {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+    }
+    .featured-card-desc {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .featured-card-meta {
+      display: flex;
+      gap: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: auto;
+    }
+
+    /* Activity sections */
     .home-sections {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: repeat(3, 1fr);
       gap: 2rem;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0 2rem 4rem;
     }
     @media (max-width: 768px) {
       .home-sections { grid-template-columns: 1fr 1fr; }
@@ -287,7 +263,6 @@ const allTags = await listTags().catch(() => [])
     }
 
     .pkg-list { display: flex; flex-direction: column; }
-
     .pkg-row {
       display: flex;
       align-items: center;
@@ -303,19 +278,10 @@ const allTags = await listTags().catch(() => [])
       gap: 1rem;
     }
     .pkg-row:hover { border-color: var(--accent); opacity: 1; }
-
-    .pkg-name {
-      font-family: var(--font-mono);
-      font-size: 0.875rem;
-    }
-    .pkg-meta {
-      font-family: var(--font-mono);
-      font-size: 0.775rem;
-      color: var(--muted);
-    }
+    .pkg-name { font-family: var(--font-mono); font-size: 0.875rem; }
+    .pkg-meta { font-family: var(--font-mono); font-size: 0.775rem; color: var(--muted); }
 
     .trending-list { display: flex; flex-direction: column; }
-
     .trending-row {
       display: flex;
       align-items: center;
@@ -331,23 +297,14 @@ const allTags = await listTags().catch(() => [])
       gap: 1rem;
     }
     .trending-row:hover { border-color: var(--accent); opacity: 1; }
-
     .trending-rank {
       font-family: var(--font-mono);
       font-size: 0.8rem;
       color: var(--accent);
       min-width: 1.5rem;
     }
-    .trending-name {
-      font-family: var(--font-mono);
-      font-size: 0.875rem;
-      flex: 1;
-    }
-    .trending-dl {
-      font-family: var(--font-mono);
-      font-size: 0.775rem;
-      color: var(--muted);
-    }
+    .trending-name { font-family: var(--font-mono); font-size: 0.875rem; flex: 1; }
+    .trending-dl { font-family: var(--font-mono); font-size: 0.775rem; color: var(--muted); }
 
     .view-all {
       display: inline-block;
@@ -364,214 +321,117 @@ const allTags = await listTags().catch(() => [])
       color: var(--muted);
       padding: 2rem 0;
     }
-
-    /* Search result card */
-    .sr-card {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0.75rem 1rem;
-      margin-bottom: 0.4rem;
-      text-decoration: none;
-      color: var(--text);
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      gap: 1rem;
-    }
-    .sr-card:hover { border-color: var(--accent); opacity: 1; }
-    .sr-name { font-family: var(--font-mono); font-size: 0.875rem; }
-    .sr-desc { font-size: 0.8rem; color: var(--muted); display: block; margin-top: 0.15rem; }
-    .sr-ver { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); flex-shrink: 0; }
   </style>
-</head>
-<body>
-  <nav class="home-nav">
-    <a class="wordmark" href="/">lectern</a>
-    <nav>
-      <a href="/packages">packages</a>
-      <a href="https://inklang.org" target="_blank" rel="noopener">docs</a>
-      {session ? (
-        <a href="/profile" class="nav-avatar" title={username ?? 'profile'}>
-          {avatar
-            ? <img src={avatar} alt={username ?? 'avatar'} />
-            : <span style="width:2rem;height:2rem;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:var(--muted)">{(username ?? 'U')[0].toUpperCase()}</span>
-          }
-        </a>
-      ) : (
-        <a href="/login" class="nav-login">login</a>
-      )}
-    </nav>
-  </nav>
 
-  <main>
-    <div class="home-title">
-      <h1>the ink package registry.</h1>
-      <p>Discover and publish grammar packages, scripts, and runtime extensions.</p>
+  <!-- Hero -->
+  <section class="hero">
+    <h1 class="hero-title">ink</h1>
+    <p class="hero-tagline">A compiled scripting language for PaperMC servers.</p>
+    <p class="hero-sub">Packages extend the language itself.</p>
+    <div class="hero-ctas">
+      <a href="/docs" class="btn btn-primary">Get Started</a>
+      <a href="/docs/intro" class="btn btn-outline">Learn More</a>
     </div>
+  </section>
 
-    <div class="search-wrap">
-      <input
-        id="search-input"
-        class="search-input"
-        type="search"
-        placeholder="Search packages… (e.g. &quot;JSON parsing&quot;, &quot;async HTTP&quot;)"
-        autocomplete="off"
-      />
+  <!-- Code preview -->
+  <div class="code-preview">
+    <p class="code-preview-label">After installing the mobs package:</p>
+    <div class="code-block">
+      <pre><code>{EXAMPLE_CODE}</code></pre>
     </div>
+  </div>
 
-    <div class="filter-row" id="filter-row">
-      <span class="filter-label">filter:</span>
-      <a class="filter-chip active" href="?" data-tag="">all</a>
-      {allTags.map(t => (
-        <a class="filter-chip" href={`?tag=${encodeURIComponent(t.name)}`} data-tag={t.name}>{t.name}</a>
-      ))}
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat">
+      <span class="stat-num">{packages.length}</span>
+      <span class="stat-label">packages</span>
     </div>
+    <div class="stat">
+      <span class="stat-num">{totalVersions}</span>
+      <span class="stat-label">versions</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">{totalDownloads.toLocaleString()}</span>
+      <span class="stat-label">downloads</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">{allTags.length}</span>
+      <span class="stat-label">tags</span>
+    </div>
+  </div>
 
-    <div id="search-results"></div>
+  <hr class="divider" />
 
-    <div id="default-content">
-      <div class="stats-row">
-        <div class="stat">
-          <span class="stat-num">{packages.length}</span>
-          <span class="stat-label">packages</span>
-        </div>
-        <div class="stat">
-          <span class="stat-num">{totalVersions}</span>
-          <span class="stat-label">versions</span>
-        </div>
-        <div class="stat">
-          <span class="stat-num">{allTags.length}</span>
-          <span class="stat-label">tags</span>
-        </div>
-      </div>
-
-      <div class="home-sections">
-        <div>
-          <p class="section-heading">recently published</p>
-          {recent.length === 0
-            ? <p class="empty">no packages yet.</p>
-            : <div class="pkg-list">
-                {recent.map(pkg => (
-                  <a class="pkg-row" href={`/${pkg.name}`}>
-                    <span class="pkg-name">{pkg.name}</span>
-                    <span class="pkg-meta">v{pkg.version} · {new Date(pkg.published_at).toLocaleDateString()}</span>
-                  </a>
-                ))}
-              </div>
-          }
-          {recent.length > 0 && <a class="view-all" href="/packages">view all packages →</a>}
-        </div>
-
-        <div>
-          <p class="section-heading">trending this week</p>
-          {trending.length === 0
-            ? <p class="empty">no download data yet.</p>
-            : <div class="trending-list">
-                {trending.map((pkg, i) => (
-                  <a class="trending-row" href={`/${pkg.package_slug}`}>
-                    <span class="trending-rank">#{i + 1}</span>
-                    <span class="trending-name">{pkg.package_name}</span>
-                    <span class="trending-dl">{pkg.download_count.toLocaleString()} dl</span>
-                  </a>
-                ))}
-              </div>
-          }
-        </div>
-
-        <div>
-          <p class="section-heading">top packages</p>
-          {popular.length === 0
-            ? <p class="empty">no packages yet.</p>
-            : <div class="trending-list">
-                {popular.map((pkg, i) => (
-                  <a class="trending-row" href={`/${pkg.package_slug}`}>
-                    <span class="trending-rank">#{i + 1}</span>
-                    <span class="trending-name">{pkg.package_name}</span>
-                    <span class="trending-dl">{pkg.popularity_score.toFixed(2)}</span>
-                  </a>
-                ))}
-              </div>
-          }
-          {popular.length > 0 && <a class="view-all" href="/packages?sort=popular">view all →</a>}
-        </div>
+  <!-- Featured packages -->
+  {featured.length > 0 && (
+    <div class="featured-section">
+      <p class="featured-heading">Featured Packages</p>
+      <div class="featured-list">
+        {featured.map(pkg => (
+          <a class="featured-card" href={`/${pkg.package_slug}`}>
+            <span class="featured-card-name">{pkg.package_name}</span>
+            {pkg.description && <span class="featured-card-desc">{pkg.description}</span>}
+            <div class="featured-card-meta">
+              <span>v{pkg.latest_version}</span>
+              <span>{pkg.download_count.toLocaleString()} dl</span>
+            </div>
+          </a>
+        ))}
       </div>
     </div>
-  </main>
+  )}
 
-  <footer>
-    lectern — the ink package registry
-  </footer>
-
-  <script>
-    const input = document.getElementById('search-input') as HTMLInputElement
-    const results = document.getElementById('search-results') as HTMLDivElement
-    const defaultContent = document.getElementById('default-content') as HTMLDivElement
-    const filterRow = document.getElementById('filter-row') as HTMLDivElement
-
-    // Tag filter: highlight active chip
-    const url = new URL(location.href)
-    const activeTag = url.searchParams.get('tag') ?? ''
-    filterRow.querySelectorAll('.filter-chip').forEach(chip => {
-      const el = chip as HTMLAnchorElement
-      if (el.dataset.tag === activeTag) {
-        el.classList.add('active')
-      } else {
-        el.classList.remove('active')
+  <!-- Activity sections -->
+  <div class="home-sections">
+    <div>
+      <p class="section-heading">recently published</p>
+      {recent.length === 0
+        ? <p class="empty">no packages yet.</p>
+        : <div class="pkg-list">
+            {recent.map(pkg => (
+              <a class="pkg-row" href={`/${pkg.name}`}>
+                <span class="pkg-name">{pkg.name}</span>
+                <span class="pkg-meta">v{pkg.version} · {new Date(pkg.published_at).toLocaleDateString()}</span>
+              </a>
+            ))}
+          </div>
       }
-    })
+      {recent.length > 0 && <a class="view-all" href="/packages">view all packages →</a>}
+    </div>
 
-    function esc(s: string): string {
-      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-    }
-
-    let debounce: ReturnType<typeof setTimeout>
-
-    input.addEventListener('input', () => {
-      clearTimeout(debounce)
-      const q = input.value.trim()
-
-      if (!q) {
-        results.classList.remove('visible')
-        results.innerHTML = ''
-        defaultContent.style.display = ''
-        return
+    <div>
+      <p class="section-heading">trending this week</p>
+      {trending.length === 0
+        ? <p class="empty">no download data yet.</p>
+        : <div class="trending-list">
+            {trending.map((pkg, i) => (
+              <a class="trending-row" href={`/${pkg.package_slug}`}>
+                <span class="trending-rank">#{i + 1}</span>
+                <span class="trending-name">{pkg.package_name}</span>
+                <span class="trending-dl">{pkg.download_count.toLocaleString()} dl</span>
+              </a>
+            ))}
+          </div>
       }
+    </div>
 
-      debounce = setTimeout(async () => {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
-        const data = await res.json() as Array<{ name: string; package_slug: string; version: string; description: string | null }>
-
-        defaultContent.style.display = 'none'
-        results.classList.add('visible')
-
-        if (!data.length) {
-          results.innerHTML = '<p class="empty">no results for "' + esc(q) + '".</p>'
-          return
-        }
-
-        results.innerHTML = data.map(pkg => {
-          const slug = pkg.package_slug ? esc(pkg.package_slug) : esc(pkg.name)
-          const name = esc(pkg.name)
-          const desc = pkg.description ? esc(pkg.description) : ''
-          const ver = esc(pkg.version)
-          return '<a class="sr-card" href="/' + slug + '">' +
-            '<div>' +
-              '<span class="sr-name">' + name + '</span>' +
-              (pkg.description ? '<span class="sr-desc">' + desc + '</span>' : '') +
-            '</div>' +
-            '<span class="sr-ver">v' + ver + '</span>' +
-          '</a>'
-        }).join('')
-      }, 300)
-    })
-
-    // If page loaded with a tag filter, fetch filtered packages
-    if (activeTag) {
-      // Hide search + recent/trending, show tag-filtered list
-      // The filter chips already handle navigation via href,
-      // so we just let normal link behavior work
-    }
-  </script>
-</body>
-</html>
+    <div>
+      <p class="section-heading">top packages</p>
+      {popular.length === 0
+        ? <p class="empty">no packages yet.</p>
+        : <div class="trending-list">
+            {popular.map((pkg, i) => (
+              <a class="trending-row" href={`/${pkg.package_slug}`}>
+                <span class="trending-rank">#{i + 1}</span>
+                <span class="trending-name">{pkg.package_name}</span>
+                <span class="trending-dl">{pkg.popularity_score.toFixed(2)}</span>
+              </a>
+            ))}
+          </div>
+      }
+      {popular.length > 0 && <a class="view-all" href="/packages?sort=popular">view all →</a>}
+    </div>
+  </div>
+</Base>

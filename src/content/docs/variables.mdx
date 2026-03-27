@@ -1,0 +1,78 @@
+---
+title: Variables
+description: Store and manage data in variables
+---
+
+# Variables
+
+Variables store values that your program can use and modify.
+
+## Declaring Variables
+
+Use `let` to declare a variable:
+
+```
+let name = "ink"
+let version = 1.0
+let isAwesome = true
+```
+
+## Reassigning Variables
+
+Change a variable's value after declaration:
+
+```
+let count = 0
+count = 1
+count = count + 1
+print(count)  // 2
+```
+
+## Variable Names
+
+Variable names must:
+
+- Start with a letter or underscore
+- Contain only letters, numbers, and underscores
+- Not be a reserved keyword
+
+```
+// Valid names
+let myVar = 1
+let _private = 2
+let userName123 = 3
+let camelCase = 4
+let PI = 3.14159
+
+// Invalid names (will cause errors)
+// let 123var = 1
+// let my-var = 2
+// let let = 3  // 'let' is a keyword
+```
+
+## Scope
+
+Variables are scoped to the block they're declared in:
+
+```
+let global = "I'm global"
+
+fn example() {
+    let local = "I'm local"
+    print(global)  // Works - global is accessible
+    print(local)   // Works - local is in scope
+}
+
+print(global)  // Works
+// print(local)  // Error! local is not in scope here
+```
+
+## Best Practices
+
+- Use descriptive names: `userCount` instead of `x`
+- Use camelCase for multi-word names: `firstName`, `isActive`
+- Use UPPER_SNAKE_CASE for constants: `MAX_SIZE`, `DEFAULT_TIMEOUT`
+
+## Next Steps
+
+Now learn about the different [Data Types](./data-types) that variables can hold.

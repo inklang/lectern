@@ -1,0 +1,131 @@
+---
+title: Class Inheritance
+description: Extend classes with inheritance
+---
+
+# Class Inheritance
+
+Inheritance lets you create a class based on another class, reusing and extending its functionality.
+
+## Basic Inheritance
+
+```
+class Animal {
+    init(name) {
+        this.name = name
+    }
+
+    speak() {
+        return "${this.name} makes a sound"
+    }
+}
+
+class Dog extends Animal {
+    speak() {
+        return "${this.name} barks!"
+    }
+}
+
+class Cat extends Animal {
+    speak() {
+        return "${this.name} meows!"
+    }
+}
+
+let dog = Dog("Buddy")
+let cat = Cat("Whiskers")
+
+print(dog.speak())  // Buddy barks!
+print(cat.speak())  // Whiskers meows!
+print(dog.speak())  // Buddy makes a sound
+```
+
+## Calling the Parent Method
+
+Use `super` to call the parent's `init` or other methods:
+
+```
+class Vehicle {
+    init(type) {
+        this.type = type
+        this.speed = 0
+    }
+
+    describe() {
+        return "${this.type} at ${this.speed} km/h"
+    }
+}
+
+class Car extends Vehicle {
+    init(brand) {
+        super.init("Car")
+        this.brand = brand
+    }
+
+    describe() {
+        return "${this.brand} ${super.describe()}"
+    }
+}
+
+let car = Car("Toyota")
+print(car.describe())  // Toyota Car at 0 km/h
+```
+
+## Inheritance and Initialization
+
+When a subclass has its own `init`, call the parent's `init` with `super.init`:
+
+```
+class Shape {
+    init(x, y) {
+        this.x = x
+        this.y = y
+    }
+}
+
+class Rectangle extends Shape {
+    init(x, y, width, height) {
+        super.init(x, y)
+        this.width = width
+        this.height = height
+    }
+
+    area() {
+        return this.width * this.height
+    }
+}
+
+class Square extends Shape {
+    init(x, y, size) {
+        super.init(x, y)
+        this.size = size
+    }
+
+    area() {
+        return this.size * this.size
+    }
+}
+
+let rect = Rectangle(0, 0, 10, 5)
+print(rect.area())  // 50
+
+let square = Square(0, 0, 7)
+print(square.area())  // 49
+```
+
+## When to Use Inheritance
+
+Use inheritance when:
+
+- You have a "is a" relationship (Dog **is an** Animal)
+- You want to reuse code from a parent class
+- You want to override or extend behavior
+
+Consider alternatives like composition when:
+
+- You have a "has a" relationship
+- You just want to group functionality
+
+## Next Steps
+
+See [Examples](./examples) for practical programs that combine everything you've learned!

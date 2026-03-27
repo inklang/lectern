@@ -1,0 +1,199 @@
+---
+title: Data Types
+description: Numbers, strings, booleans, and more
+---
+
+# Data Types
+
+ink has several built-in data types for storing different kinds of values.
+
+## Numbers
+
+ink uses a single number type for integers and decimals:
+
+```
+let integer = 42
+let decimal = 3.14159
+let negative = -100
+
+// Arithmetic
+print(10 + 5)   // 15
+print(10 - 5)   // 5
+print(10 * 5)   // 50
+print(10 / 5)   // 2
+print(10 % 3)   // 1 (modulo - remainder after division)
+```
+
+## Strings
+
+Text values enclosed in double quotes:
+
+```
+let greeting = "Hello"
+let name = "World"
+
+// Concatenation with +
+let message = greeting + ", " + name + "!"
+print(message)  // Hello, World!
+
+// String interpolation - embed expressions in strings
+let interpolated = "Hello ${name}!"
+print(interpolated)  // Hello World!
+
+// String methods
+let text = "  Hello  "
+print(text.trim())           // "Hello" (removes whitespace)
+print(text.toUpperCase())    // "  HELLO  "
+print("hello".contains("ell"))  // true
+print("hello".length())      // 5
+```
+
+### String Methods
+
+Strings have useful built-in methods:
+
+```
+let s = "Hello World"
+
+// Length
+s.length()        // 11
+
+// Case conversion
+s.toUpperCase()   // "HELLO WORLD"
+s.toLowerCase()   // "hello world"
+
+// Search
+s.contains("World")  // true
+s.startsWith("Hello") // true
+s.endsWith("World")  // true
+s.indexOf("World")   // 6
+
+// Split
+let parts = "a,b,c".split(",")
+print(parts.size())  // 3
+
+// Check
+"".isEmpty()   // true
+"   ".isBlank()  // true
+```
+
+## Booleans
+
+True or false values for logical operations:
+
+```
+let isActive = true
+let isComplete = false
+
+// Negation
+print(!isActive)        // false
+
+// And - both must be true
+print(true and false)   // false
+print(true and true)    // true
+
+// Or - at least one must be true
+print(true or false)    // true
+print(false or false)   // false
+```
+
+## Null
+
+Represents the absence of a value:
+
+```
+let empty = null
+print(empty)  // null
+
+// Check for null
+if empty == null {
+    print("It's null!")
+}
+```
+
+## Arrays
+
+Ordered collections of values:
+
+```
+let numbers = [1, 2, 3, 4, 5]
+let mixed = [1, "two", true]
+
+// Access elements (0-indexed)
+print(numbers[0])  // 1
+print(numbers[2])  // 3
+
+// Modify elements
+numbers[0] = 10
+
+// Array size
+print(numbers.size())  // 5
+
+// Add elements
+numbers.push(6)
+
+// Iterate
+for num in numbers {
+    print(num)
+}
+```
+
+## Maps
+
+Key-value pairs for storing named data:
+
+```
+let user = Map()
+user.set("name", "Alice")
+user.set("age", 30)
+
+// Access values
+print(user.get("name"))  // Alice
+
+// Check size
+print(user.size())  // 2
+
+// Get all keys or values
+let keys = user.keys()
+let values = user.values()
+
+// Delete
+user.delete("age")
+```
+
+## Ranges
+
+Create ranges for iteration:
+
+```
+// 0, 1, 2, 3, 4 (excludes end)
+for i in 0..5 {
+    print(i)
+}
+
+// Works with any numbers
+for n in 10..15 {
+    print(n)  // 10, 11, 12, 13, 14
+}
+```
+
+## Type Checking
+
+Check if a value is a specific type:
+
+```
+let x = "hello"
+
+if x is string {
+    print("x is a string")
+}
+
+let num = 42
+if num is int {
+    print("num is an integer")
+}
+```
+
+## Next Steps
+
+Learn about [Operators](./operators) to perform computations with these types.
