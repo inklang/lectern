@@ -24,6 +24,11 @@ export default defineConfig({
       expressiveCode: {
         themes: ['github-dark-default', 'github-light-default'],
       },
+      defaultLocale: 'root',
+      locales: {
+        root: { label: 'English', lang: 'en' },
+      },
+      customCss: ['./src/styles/starlight.css'],
       editLink: {
         baseUrl: 'https://github.com/inklang/lectern/edit/master/',
       },

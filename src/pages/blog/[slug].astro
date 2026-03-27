@@ -1,5 +1,5 @@
 ---
-import { getCollection } from 'astro:content'
+import { getCollection, render } from 'astro:content'
 import Base from '~/layouts/Base.astro'
 
 const { slug } = Astro.params
@@ -11,7 +11,7 @@ if (!post) {
   return Astro.redirect('/blog')
 }
 
-const { Content } = await post.render()
+const { Content } = await render(post)
 ---
 
 <Base title={post.data.title} description={post.data.description}>
