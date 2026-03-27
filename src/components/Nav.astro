@@ -43,6 +43,25 @@ function isActive(href: string) {
       <rect y="15" width="20" height="2" rx="1" fill="currentColor"/>
     </svg>
   </button>
+  <div class="nav-search-wrap" id="nav-search-wrap">
+    <div class="nav-search" id="nav-search">
+      <svg class="nav-search-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M8.5 8.5L12 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <input
+        id="nav-search-input"
+        type="search"
+        placeholder="Search packages…"
+        autocomplete="off"
+        aria-label="Search packages"
+        aria-autocomplete="list"
+        aria-controls="nav-search-dropdown"
+      />
+      <kbd class="nav-search-kbd" id="nav-search-kbd">⌘K</kbd>
+    </div>
+    <div class="nav-search-dropdown" id="nav-search-dropdown" role="listbox" aria-label="Search results"></div>
+  </div>
   <div class="nav-links" id="nav-links">
     {navLinks.map(link => (
       <a
@@ -73,6 +92,138 @@ function isActive(href: string) {
   toggle?.addEventListener('click', () => {
     links?.classList.toggle('open')
   })
+
+  // ── Search bar ─────────────────────────────────────────────────────────────
+  const input = document.getElementById('nav-search-input') as HTMLInputElement
+  const dropdown = document.getElementById('nav-search-dropdown') as HTMLDivElement
+  const searchWrap = document.getElementById('nav-search-wrap') as HTMLDivElement
+  const kbd = document.getElementById('nav-search-kbd') as HTMLElement
+
+  let activeIndex = -1
+  let debounceTimer: ReturnType<typeof setTimeout>
+  let currentQuery = ''
+  let isLoading = false
+
+  function esc(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  }
+
+  function closeDropdown() {
+    dropdown.classList.remove('open')
+    dropdown.innerHTML = ''
+    activeIndex = -1
+  }
+
+  function openDropdown() {
+    dropdown.classList.add('open')
+  }
+
+  function setLoading(loading: boolean) {
+    isLoading = loading
+    input.classList.toggle('loading', loading)
+    kbd.style.display = loading ? 'none' : ''
+  }
+
+  function renderResults(results: Array<{
+    name: string
+    package_slug: string
+    version: string
+    description: string | null
+    star_count: number
+    download_count: number
+  }>) {
+    if (results.length === 0) {
+      dropdown.innerHTML = `<div class="nav-search-empty">No packages matching <strong>"${esc(currentQuery)}"</strong></div>`
+      openDropdown()
+      return
+    }
+
+    dropdown.innerHTML = results.slice(0, 8).map((r, i) => `
+      <a
+        class="nav-search-item${i === activeIndex ? ' active' : ''}"
+        href="/${esc(r.package_slug)}"
+        role="option"
+        aria-selected="${i === activeIndex}"
+        data-index="${i}"
+      >
+        <span class="ns-name">${esc(r.name)}</span>
+        <span class="ns-desc">${r.description ? esc(r.description.slice(0, 80)) : ''}</span>
+        <span class="ns-meta">
+          ${r.star_count > 0 ? `<span class="ns-stars">★ ${r.star_count}</span>` : ''}
+          ${r.download_count > 0 ? `<span class="ns-dls">${r.download_count.toLocaleString()} dl</span>` : ''}
+        </span>
+      </a>
+    `).join('')
+    activeIndex = -1
+    openDropdown()
+  }
+
+  async function doSearch(q: string) {
+    if (!q.trim()) {
+      closeDropdown()
+      return
+    }
+    currentQuery = q
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
+      const results = await res.json()
+      renderResults(results)
+    } catch {
+      dropdown.innerHTML = `<div class="nav-search-empty">Search failed. Try again.</div>`
+      openDropdown()
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  input.addEventListener('input', () => {
+    clearTimeout(debounceTimer)
+    const q = input.value.trim()
+    if (!q) {
+      closeDropdown()
+      return
+    }
+    debounceTimer = setTimeout(() => doSearch(q), 200)
+  })
+
+  input.addEventListener('keydown', (e: KeyboardEvent) => {
+    const items = dropdown.querySelectorAll('.nav-search-item')
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      activeIndex = Math.min(activeIndex + 1, items.length - 1)
+      items.forEach((el, i) => el.classList.toggle('active', i === activeIndex))
+      ;(items[activeIndex] as HTMLElement)?.scrollIntoView({ block: 'nearest' })
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      activeIndex = Math.max(activeIndex - 1, -1)
+      items.forEach((el, i) => el.classList.toggle('active', i === activeIndex))
+    } else if (e.key === 'Enter') {
+      if (activeIndex >= 0 && items[activeIndex]) {
+        e.preventDefault()
+        ;(items[activeIndex] as HTMLAnchorElement).click()
+      } else if (input.value.trim()) {
+        e.preventDefault()
+        location.href = `/search?q=${encodeURIComponent(input.value.trim())}`
+      }
+    } else if (e.key === 'Escape') {
+      closeDropdown()
+      input.blur()
+    }
+  })
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (e: MouseEvent) => {
+    if (!searchWrap.contains(e.target as Node)) {
+      closeDropdown()
+    }
+  })
+
+  // Global focus function (called by Base.astro Cmd+K listener)
+  ;(window as any).__focusNavSearch = () => {
+    input.focus()
+    input.select()
+  }
 </script>
 
 <style>
@@ -194,6 +345,161 @@ function isActive(href: string) {
     color: var(--muted);
   }
 
+  /* ── Search bar ──────────────────────────────────────────────────────── */
+  .nav-search-wrap {
+    position: relative;
+  }
+
+  .nav-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 280px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .nav-search:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+  }
+
+  .nav-search.loading {
+    border-color: var(--muted-2);
+    animation: searchPulse 1s ease-in-out infinite;
+  }
+
+  @keyframes searchPulse {
+    0%, 100% { border-color: var(--border); }
+    50% { border-color: var(--muted-2); }
+  }
+
+  .nav-search-icon {
+    position: absolute;
+    left: 0.625rem;
+    color: var(--muted);
+    pointer-events: none;
+    flex-shrink: 0;
+  }
+
+  .nav-search input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 0.4rem 2rem 0.4rem 2rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--text);
+  }
+
+  .nav-search input::placeholder {
+    color: var(--muted-2);
+  }
+
+  /* Hide native clear button */
+  .nav-search input::-webkit-search-cancel-button { display: none; }
+
+  .nav-search-kbd {
+    position: absolute;
+    right: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--muted-2);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.1rem 0.3rem;
+    pointer-events: none;
+    flex-shrink: 0;
+  }
+
+  .nav-search-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    z-index: 100;
+    display: none;
+    flex-direction: column;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  .nav-search-dropdown.open {
+    display: flex;
+  }
+
+  .nav-search-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.65rem 0.875rem;
+    text-decoration: none;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+    cursor: pointer;
+  }
+
+  .nav-search-item:last-child {
+    border-bottom: none;
+  }
+
+  .nav-search-item:hover,
+  .nav-search-item.active {
+    background: rgba(139, 92, 246, 0.12);
+  }
+
+  .ns-name {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .ns-desc {
+    font-size: 0.775rem;
+    color: var(--muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.4;
+  }
+
+  .ns-meta {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.1rem;
+  }
+
+  .ns-stars {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: #f59e0b;
+  }
+
+  .ns-dls {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+
+  .nav-search-empty {
+    padding: 1rem 0.875rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
   @media (max-width: 768px) {
     .hamburger {
       display: flex;
@@ -218,6 +524,16 @@ function isActive(href: string) {
 
     .nav-link {
       padding: 0.5rem 0;
+    }
+
+    .nav-search-wrap {
+      order: -1;
+      width: 100%;
+      margin-bottom: 0.5rem;
+    }
+
+    .nav-search {
+      width: 100%;
     }
   }
 </style>
