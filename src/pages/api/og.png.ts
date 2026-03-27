@@ -23,7 +23,7 @@ export const GET: APIRoute = async ({ url }) => {
   const version = latest.version
   const author = owner?.name || owner?.username || 'Unknown'
 
-  const svg = \`<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+  const svg = `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
   <rect width="1200" height="630" fill="#09090b"/>
   <rect x="40" y="40" width="1120" height="550" rx="16" fill="#18181b" stroke="#3f3f46" stroke-width="2"/>
   <rect x="80" y="160" width="80" height="80" rx="12" fill="#8b5cf6"/>
@@ -35,7 +35,7 @@ export const GET: APIRoute = async ({ url }) => {
   <text x="80" y="400" font-family="Arial, sans-serif" font-size="22" fill="#71717a">by \${escapeXml(author)}</text>
   <text x="80" y="520" font-family="Arial, sans-serif" font-size="18" fill="#52525b">lectern.inklang.org</text>
   <rect x="0" y="620" width="1200" height="10" fill="#8b5cf6"/>
-</svg>\`
+</svg>`
 
   const pngBuffer = await sharp(Buffer.from(svg)).png().toBuffer()
 
