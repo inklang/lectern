@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro'
 import { getPackageVersions, getPackageOwner } from '../../../lib/db.js'
-import { Resvg } from '@resvg/resvg-js'
+import { ImageResponse } from '@vercel/og'
 
 export const GET: APIRoute = async ({ url }) => {
   const pkg = url.searchParams.get('pkg')
@@ -23,58 +23,113 @@ export const GET: APIRoute = async ({ url }) => {
   const version = latest.version
   const author = owner?.name || owner?.username || 'Unknown'
 
-  // Generate SVG OG image
-  const svg = `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1200" height="630" fill="#09090b"/>
-  <rect x="40" y="40" width="1120" height="550" rx="16" fill="#18181b" stroke="#3f3f46" stroke-width="2"/>
-
-  <!-- Package icon -->
-  <rect x="80" y="180" width="80" height="80" rx="12" fill="#8b5cf6"/>
-  <text x="120" y="235" font-family="monospace" font-size="40" fill="white" text-anchor="middle">⬡</text>
-
-  <!-- Package name -->
-  <text x="200" y="230" font-family="ui-monospace, monospace" font-size="48" font-weight="600" fill="#fafafa">${escapeXml(title)}</text>
-
-  <!-- Version badge -->
-  <rect x="200" y="250" width="${version.length * 20 + 30}" height="36" rx="6" fill="#27272a"/>
-  <text x="215" y="276" font-family="ui-monospace, monospace" font-size="18" fill="#a1a1aa">v${escapeXml(version)}</text>
-
-  <!-- Description -->
-  <text x="80" y="360" font-family="ui-sans-serif, system-ui, sans-serif" font-size="28" fill="#a1a1aa">${escapeXml(description)}</text>
-
-  <!-- Author -->
-  <text x="80" y="430" font-family="ui-sans-serif, system-ui, sans-serif" font-size="24" fill="#71717a">by ${escapeXml(author)}</text>
-
-  <!-- Footer -->
-  <text x="80" y="540" font-family="ui-monospace, monospace" font-size="20" fill="#52525b">lectern.inklang.org</text>
-
-  <!-- Accent line -->
-  <rect x="0" y="620" width="1200" height="10" fill="#8b5cf6"/>
-</svg>`
-
-  // Convert SVG to PNG using resvg
-  const resvg = new Resvg(svg, {
-    fitTo: {
-      mode: 'width',
-      value: 1200,
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundColor: '#09090b',
+          padding: '40px',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            backgroundColor: '#18181b',
+            borderRadius: '16px',
+            border: '2px solid #3f3f46',
+            flex: 1,
+            padding: '40px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '30px' }}>
+            <div
+              style={{
+                width: '80px',
+                height: '80px',
+                backgroundColor: '#8b5cf6',
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '40px',
+                marginRight: '20px',
+              }}
+            >
+              ⬡
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span
+                style={{
+                  fontSize: '48px',
+                  fontWeight: 600,
+                  color: '#fafafa',
+                  fontFamily: 'ui-monospace, monospace',
+                }}
+              >
+                {title}
+              </span>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  backgroundColor: '#27272a',
+                  color: '#a1a1aa',
+                  fontSize: '18px',
+                  padding: '4px 12px',
+                  borderRadius: '6px',
+                  marginTop: '8px',
+                  fontFamily: 'ui-monospace, monospace',
+                }}
+              >
+                v{version}
+              </span>
+            </div>
+          </div>
+          <span
+            style={{
+              fontSize: '28px',
+              color: '#a1a1aa',
+              marginBottom: '20px',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {description}
+          </span>
+          <span style={{ fontSize: '24px', color: '#71717a', marginBottom: '20px' }}>
+            by {author}
+          </span>
+          <span
+            style={{
+              fontSize: '20px',
+              color: '#52525b',
+              fontFamily: 'ui-monospace, monospace',
+              marginTop: 'auto',
+            }}
+          >
+            lectern.inklang.org
+          </span>
+        </div>
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            width: '100%',
+            height: '10px',
+            backgroundColor: '#8b5cf6',
+          }}
+        />
+      </div>
+    ),
+    {
+      width: 1200,
+      height: 630,
     },
-  })
-  const pngData = resvg.render()
-  const pngBuffer = pngData.asPng()
-
-  return new Response(pngBuffer, {
-    headers: {
-      'Content-Type': 'image/png',
-      'Cache-Control': 'public, max-age=3600',
-    },
-  })
-}
-
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;')
+  )
 }
