@@ -1,0 +1,384 @@
+---
+import Base from '../layouts/Base.astro'
+import { hybridSearch } from '../lib/search.js'
+import { listTags } from '../lib/db.js'
+
+const PAGE_SIZE = 20
+
+const q = Astro.url.searchParams.get('q')?.trim() ?? ''
+const sort = Astro.url.searchParams.get('sort') ?? 'relevance'
+const page = Math.max(1, parseInt(Astro.url.searchParams.get('page') ?? '1'))
+
+// Fetch all results (hybridSearch returns up to 20, which is also our PAGE_SIZE)
+// For stars/downloads sort we fetch more and sort client-side
+const rawResults = q ? await hybridSearch(q, 60).catch(() => []) : []
+
+// Client-side resort
+let results = rawResults
+if (sort === 'stars') {
+  results = [...rawResults].sort((a, b) => b.star_count - a.star_count)
+} else if (sort === 'downloads') {
+  results = [...rawResults].sort((a, b) => b.download_count - a.download_count)
+}
+// else relevance — keep hybridSearch RRF order
+
+const totalCount = results.length
+const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+const clampedPage = Math.min(page, totalPages)
+const paginatedResults = results.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE)
+
+const allTags = await listTags().catch(() => [])
+
+function buildPageUrl(p: number) {
+  const params = new URLSearchParams()
+  params.set('q', q)
+  params.set('page', String(p))
+  if (sort !== 'relevance') params.set('sort', sort)
+  return `/search?${params.toString()}`
+}
+---
+
+<Base title="Search" description={`Search results for "${q}" — Lectern`}>
+  <style>
+    .search-header {
+      margin-bottom: 2rem;
+    }
+    .search-title {
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .search-count {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .search-form {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .search-form input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--text);
+      outline: none;
+      max-width: 480px;
+    }
+    .search-form input:focus { border-color: var(--accent); }
+    .search-form button {
+      padding: 0.6rem 1.25rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+    .search-form button:hover { opacity: 0.85; }
+
+    .sort-chips {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    .sort-chip {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      background: none;
+      text-decoration: none;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .sort-chip:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+    .sort-chip.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(139, 92, 246, 0.08);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 200px;
+      gap: 2.5rem;
+      align-items: start;
+    }
+
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    .pkg-list { display: flex; flex-direction: column; }
+
+    .pkg-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.25rem;
+      margin-bottom: 0.5rem;
+      text-decoration: none;
+      color: var(--text);
+      gap: 1rem;
+      transition: border-color 0.15s;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .pkg-card:hover { border-color: var(--accent); opacity: 1; }
+
+    .pkg-left { display: flex; flex-direction: column; gap: 0.25rem; flex: 1; min-width: 0; }
+    .pkg-name {
+      font-family: var(--font-mono);
+      font-size: 0.9375rem;
+      font-weight: 500;
+    }
+    .pkg-desc {
+      font-size: 0.8rem;
+      color: var(--muted);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .pkg-tags {
+      display: flex;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+      margin-top: 0.25rem;
+    }
+    .pkg-tag {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .pkg-right { text-align: right; flex-shrink: 0; }
+    .pkg-ver {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--text);
+    }
+    .pkg-date {
+      font-family: var(--font-mono);
+      font-size: 0.775rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+    .pkg-stars {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: #f59e0b;
+      margin-top: 0.2rem;
+    }
+    .pkg-dl {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+
+    .empty {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      padding: 3rem 0;
+    }
+
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25rem;
+      margin-top: 2.5rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+    }
+    .page-btn {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      text-decoration: none;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      min-width: 2rem;
+      text-align: center;
+    }
+    .page-btn:hover {
+      background: var(--surface);
+      color: var(--text);
+      opacity: 1;
+      border-color: var(--accent);
+    }
+    .page-btn.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .page-btn.disabled {
+      opacity: 0.25;
+      pointer-events: none;
+    }
+
+    .sidebar-heading {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .sidebar-tags {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .tag-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.3rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      text-decoration: none;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .tag-link:hover {
+      background: var(--surface);
+      color: var(--text);
+      opacity: 1;
+      border-color: var(--border);
+    }
+    .tag-link.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--surface);
+    }
+    .tag-count {
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+  </style>
+
+  <div class="search-header">
+    <h1 class="search-title">search</h1>
+    {q && (
+      <p class="search-count">{totalCount} result{totalCount !== 1 ? 's' : ''} for <strong>"{q}"</strong></p>
+    )}
+  </div>
+
+  <form class="search-form" action="/search" method="get">
+    <input
+      type="search"
+      name="q"
+      value={q}
+      placeholder="Search packages…"
+      autocomplete="off"
+      autofocus={!q}
+    />
+    <button type="submit">Search</button>
+  </form>
+
+  <div class="sort-chips">
+    <a class={`sort-chip${sort === 'relevance' ? ' active' : ''}`} href={`/search?q=${encodeURIComponent(q)}&sort=relevance`}>relevance</a>
+    <a class={`sort-chip${sort === 'stars' ? ' active' : ''}`} href={`/search?q=${encodeURIComponent(q)}&sort=stars`}>stars</a>
+    <a class={`sort-chip${sort === 'downloads' ? ' active' : ''}`} href={`/search?q=${encodeURIComponent(q)}&sort=downloads`}>downloads</a>
+  </div>
+
+  <div class="layout">
+    <div>
+      {!q ? (
+        <p class="empty">Enter a query to search packages.</p>
+      ) : paginatedResults.length === 0 ? (
+        <p class="empty">No packages matching "{q}".</p>
+      ) : (
+        <div class="pkg-list">
+          {paginatedResults.map(pkg => (
+            <a class="pkg-card" href={`/${pkg.package_slug}`}>
+              <div class="pkg-left">
+                <span class="pkg-name">{pkg.name}</span>
+                {pkg.description && <span class="pkg-desc">{pkg.description}</span>}
+                {pkg.tags.length > 0 && (
+                  <div class="pkg-tags">
+                    {pkg.tags.slice(0, 5).map(tag => (
+                      <span class="pkg-tag">{tag}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div class="pkg-right">
+                <div class="pkg-ver">v{pkg.version}</div>
+                {pkg.star_count > 0 && <div class="pkg-stars">★ {pkg.star_count.toLocaleString()}</div>}
+                {pkg.download_count > 0 && <div class="pkg-dl">{pkg.download_count.toLocaleString()} dl</div>}
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <nav class="pagination" aria-label="Pagination">
+          <a
+            class={`page-btn${clampedPage === 1 ? ' disabled' : ''}`}
+            href={buildPageUrl(clampedPage - 1)}
+            aria-label="Previous page"
+          >←</a>
+
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+            <a
+              class={`page-btn${p === clampedPage ? ' active' : ''}`}
+              href={buildPageUrl(p)}
+            >{p}</a>
+          ))}
+
+          <a
+            class={`page-btn${clampedPage === totalPages ? ' disabled' : ''}`}
+            href={buildPageUrl(clampedPage + 1)}
+            aria-label="Next page"
+          >→</a>
+        </nav>
+      )}
+    </div>
+
+    <aside>
+      <p class="sidebar-heading">browse tags</p>
+      <div class="sidebar-tags">
+        <a class="tag-link" href="/packages">all packages</a>
+        {allTags.map(t => (
+          <a class="tag-link" href={`/packages?tag=${encodeURIComponent(t.name)}`}>
+            <span>{t.name}</span>
+            <span class="tag-count">{t.package_count}</span>
+          </a>
+        ))}
+      </div>
+    </aside>
+  </div>
+</Base>
