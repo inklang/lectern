@@ -97,24 +97,16 @@ export interface PackageDependentsResult {
 
 // Returns packages/versions that depend on the given package name (short name, not slug)
 // The JSONB column stores deps as {"pkgName": "versionRange", ...}
-// We filter client-side since the @> operator checks full value containment
-export async function getPackageDependents(pkgName: string): Promise<PackageDependentsResult[]> {
-  const { data, error } = await supabase
-    .from('package_versions')
-    .select('package_slug, version, dependencies')
+// Uses GIN index via RPC function: WHERE dependencies @> jsonb_build_object($1, '')
+export async function getPackageDependentsFast(pkgName: string): Promise<PackageDependentsResult[]> {
+  const { data, error } = await supabase.rpc('get_package_dependents', { pkg_name: pkgName })
   if (error) throw error
+  return (data as PackageDependentsResult[]) ?? []
+}
 
-  // Filter to only those whose dependencies include pkgName
-  return (data ?? [])
-    .filter(row => (row.dependencies as Record<string, string>)?.hasOwnProperty(pkgName))
-    .map(row => {
-      const depVersion = (row.dependencies as Record<string, string>)?.[pkgName] ?? null
-      return {
-        package_slug: row.package_slug,
-        version: row.version,
-        dep_version: depVersion,
-      }
-    })
+// Legacy function kept for backward compatibility — uses GIN index via RPC
+export async function getPackageDependents(pkgName: string): Promise<PackageDependentsResult[]> {
+  return getPackageDependentsFast(pkgName)
 }
 
 // Returns the dependency tree for a specific version
@@ -607,7 +599,156 @@ export async function getHealthLeaders(limit = 5): Promise<HealthLeadersResult[]
   return (data ?? []) as HealthLeadersResult[];
 }
 
+// Batch query to fetch health for multiple packages in one call
+export async function getHealthForPackages(names: string[]): Promise<Record<string, PackageHealth | null>> {
+  if (names.length === 0) return {};
+  const { data, error } = await supabase.rpc('get_health_for_packages', { p_names: names });
+  if (error) throw error;
+  const results: Record<string, PackageHealth | null> = {};
+  // Initialize all to null
+  for (const name of names) results[name] = null;
+  for (const row of (data ?? []) as PackageHealth[]) {
+    results[row.package_name] = row;
+  }
+  return results;
+}
+
 export async function computePackageHealth(packageName: string): Promise<void> {
   const { error } = await supabase.rpc('compute_package_health', { p_package_name: packageName });
   if (error) throw error;
+}
+
+// ─── Feed ──────────────────────────────────────────────────────────────────────
+
+export interface FeedEvent {
+  id: string;
+  type: 'new_package' | 'new_version' | 'starred_package';
+  actor: { username: string; avatarUrl?: string };
+  package: { slug: string; name: string; description?: string };
+  version?: string;
+  publishedAt: string;
+}
+
+export async function getFeedEvents(
+  userId: string,
+  limit = 20,
+  offset = 0
+): Promise<{ events: FeedEvent[]; total: number }> {
+  // Get users and orgs the current user follows
+  const [{ data: userFollows }, { data: orgFollows }] = await Promise.all([
+    supabase.from('user_follows').select('following_id').eq('follower_id', userId),
+    supabase.from('org_follows').select('org_id').eq('follower_id', userId),
+  ])
+
+  const followingUserIds = userFollows?.map(f => f.following_id) ?? []
+  const followingOrgIds = orgFollows?.map(f => f.org_id) ?? []
+  const allOwnerIds = [...followingUserIds, ...followingOrgIds]
+
+  if (allOwnerIds.length === 0) {
+    return { events: [], total: 0 }
+  }
+
+  // Fetch version events from followed owners
+  const { data: versions, count } = await supabase
+    .from('package_versions')
+    .select('package_slug, version, published_at', { count: 'exact' })
+    .in('owner_id', allOwnerIds)
+    .order('published_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  // Fetch package details and created_at for these packages
+  const packageSlugs = [...new Set((versions ?? []).map(v => v.package_slug))]
+  let packageMap = new Map<string, { name: string; display_name: string; owner_id: string; description: string | null }>()
+  let createdAtMap = new Map<string, string>()
+
+  if (packageSlugs.length > 0) {
+    const { data: packages } = await supabase
+      .from('packages')
+      .select('slug, name, display_name, owner_id, description, created_at')
+      .in('slug', packageSlugs)
+    packageMap = new Map(packages?.map(p => [p.slug, { name: p.name, display_name: p.display_name, owner_id: p.owner_id, description: p.description }]) ?? [])
+    createdAtMap = new Map(packages?.map(p => [p.slug, p.created_at]) ?? [])
+  }
+
+  // Fetch owner metadata for actor info
+  const ownerIds = [...new Set([...packageMap.values()].map(p => p.owner_id))]
+  const { data: ownerUsers } = await supabase
+    .from('users')
+    .select('id, user_name, avatar_url')
+    .in('id', ownerIds.filter(id => followingUserIds.includes(id)))
+  const { data: ownerOrgs } = await supabase
+    .from('orgs')
+    .select('id, name, avatar_url')
+    .in('id', ownerIds.filter(id => followingOrgIds.includes(id)))
+
+  const actorMap = new Map<string, { username: string; avatarUrl?: string }>()
+  for (const u of ownerUsers ?? []) {
+    actorMap.set(u.id, { username: u.user_name ?? 'unknown', avatarUrl: u.avatar_url ?? undefined })
+  }
+  for (const o of ownerOrgs ?? []) {
+    actorMap.set(o.id, { username: o.name ?? 'unknown', avatarUrl: o.avatar_url ?? undefined })
+  }
+
+  // Build version events
+  const events: FeedEvent[] = (versions ?? []).map(v => {
+    const pkg = packageMap.get(v.package_slug)
+    const actor = pkg ? actorMap.get(pkg.owner_id) : undefined
+    const isNewPackage = createdAtMap.get(v.package_slug) === v.published_at
+    return {
+      id: `${v.package_slug}:${v.version}`,
+      type: isNewPackage ? 'new_package' : 'new_version',
+      actor: actor ?? { username: 'unknown' },
+      package: {
+        slug: v.package_slug,
+        name: pkg?.display_name ?? pkg?.name ?? v.package_slug,
+        description: pkg?.description ?? undefined,
+      },
+      version: v.version,
+      publishedAt: v.published_at,
+    } satisfies FeedEvent
+  })
+
+  // If following >= 5 users, also fetch starred packages
+  let starEvents: FeedEvent[] = []
+  if (followingUserIds.length >= 5) {
+    const { data: stars } = await supabase
+      .from('package_stars')
+      .select('user_id, package_name, starred_at')
+      .in('user_id', followingUserIds)
+      .order('starred_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    if (stars && stars.length > 0) {
+      const starredSlugs = [...new Set(stars.map(s => s.package_name))]
+      const { data: starredPkgs } = await supabase
+        .from('packages')
+        .select('slug, name, display_name, description')
+        .in('slug', starredSlugs)
+      const starredPkgMap = new Map(starredPkgs?.map(p => [p.slug, p]) ?? [])
+      const starActorMap = new Map((ownerUsers ?? []).map(u => [u.id, { username: u.user_name ?? 'unknown', avatarUrl: u.avatar_url ?? undefined }]))
+
+      starEvents = stars.map(s => {
+        const pkg = starredPkgMap.get(s.package_name)
+        const actor = starActorMap.get(s.user_id)
+        return {
+          id: `star:${s.user_id}:${s.package_name}`,
+          type: 'starred_package' as const,
+          actor: actor ?? { username: 'unknown' },
+          package: {
+            slug: s.package_name,
+            name: pkg?.display_name ?? pkg?.name ?? s.package_name,
+            description: pkg?.description ?? undefined,
+          },
+          publishedAt: s.starred_at,
+        } satisfies FeedEvent
+      })
+    }
+  }
+
+  // Merge and re-sort all events by publishedAt desc
+  const allEvents = [...events, ...starEvents]
+  allEvents.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+
+  const total = (count ?? 0) + starEvents.length
+  return { events: allEvents.slice(0, limit), total }
 }

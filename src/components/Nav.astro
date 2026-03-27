@@ -63,6 +63,14 @@ function isActive(href: string) {
     <div class="nav-search-dropdown" id="nav-search-dropdown" role="listbox" aria-label="Search results"></div>
   </div>
   <div class="nav-links" id="nav-links">
+    {session && (
+      <a
+        href="/feed"
+        class:list={['nav-link', { active: isActive('/feed') }]}
+      >
+        Feed
+      </a>
+    )}
     {navLinks.map(link => (
       <a
         href={link.href}
