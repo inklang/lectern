@@ -62,6 +62,39 @@ export async function getPackageOwner(slug: string): Promise<string | null> {
   return data?.owner_id ?? null
 }
 
+// Resolves a bare package name to its full slug (e.g., "ink.mobs" -> "owner/ink.mobs")
+// Returns null if the package is not found
+export async function resolvePackageSlug(bareName: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('packages')
+    .select('slug')
+    .eq('name', bareName)
+    .single()
+  return data?.slug ?? null
+}
+
+// Batch version of resolvePackageSlug — resolves multiple bare names at once
+// Returns a map of bareName -> fullSlug (or null if not found)
+export async function resolvePackageSlugs(bareNames: string[]): Promise<Map<string, string | null>> {
+  if (bareNames.length === 0) return new Map()
+
+  const { data, error } = await supabase
+    .from('packages')
+    .select('name, slug')
+    .in('name', bareNames)
+
+  if (error) throw error
+
+  const result = new Map<string, string | null>()
+  // Initialize all names as not found
+  for (const name of bareNames) result.set(name, null)
+  // Fill in found ones
+  for (const row of data ?? []) {
+    result.set(row.name, row.slug)
+  }
+  return result
+}
+
 // Registers a new package (first publish)
 export async function createPackage(slug: string, displayName: string, ownerSlug: string, ownerId: string, ownerType: 'user' | 'org' = 'user'): Promise<void> {
   const { error } = await supabase
@@ -151,6 +184,83 @@ export async function getPackageStats(name: string): Promise<{ total: number; la
   const { data, error } = await supabase.rpc('get_package_stats', { pkg_name: name })
   if (error) throw error
   return data as { total: number; last7d: number; last30d: number }
+}
+
+// Returns daily download counts for the last N days for a single package.
+// Returns array sorted oldest → newest.
+export async function getDownloadTimeline(
+  packageName: string,
+  days = 30
+): Promise<{ date: string; count: number }[]> {
+  const since = new Date()
+  since.setDate(since.getDate() - days)
+
+  const { data, error } = await supabase
+    .from('download_logs')
+    .select('downloaded_at')
+    .eq('package_name', packageName)
+    .gte('downloaded_at', since.toISOString())
+
+  if (error) throw error
+
+  // Group by date
+  const counts: Record<string, number> = {}
+  for (const row of data ?? []) {
+    const date = row.downloaded_at.slice(0, 10) // YYYY-MM-DD
+    counts[date] = (counts[date] ?? 0) + 1
+  }
+
+  // Fill in all days in range
+  const result: { date: string; count: number }[] = []
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    const dateStr = d.toISOString().slice(0, 10)
+    result.push({ date: dateStr, count: counts[dateStr] ?? 0 })
+  }
+  return result
+}
+
+// Batch version: fetches timelines for multiple packages in one query.
+export async function getDownloadTimelines(
+  packages: string[],
+  days = 30
+): Promise<Record<string, { date: string; count: number }[]>> {
+  if (packages.length === 0) return {}
+
+  const since = new Date()
+  since.setDate(since.getDate() - days)
+
+  const { data, error } = await supabase
+    .from('download_logs')
+    .select('package_name, downloaded_at')
+    .in('package_name', packages)
+    .gte('downloaded_at', since.toISOString())
+
+  if (error) throw error
+
+  // Group by package_name + date
+  const counts: Record<string, Record<string, number>> = {}
+  for (const pkg of packages) counts[pkg] = {}
+  for (const row of data ?? []) {
+    const date = row.downloaded_at.slice(0, 10)
+    if (counts[row.package_name]) {
+      counts[row.package_name][date] = (counts[row.package_name][date] ?? 0) + 1
+    }
+  }
+
+  // Build result with all days filled in for each package
+  const result: Record<string, { date: string; count: number }[]> = {}
+  for (const pkg of packages) {
+    result[pkg] = []
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      const dateStr = d.toISOString().slice(0, 10)
+      result[pkg].push({ date: dateStr, count: counts[pkg]?.[dateStr] ?? 0 })
+    }
+  }
+  return result
 }
 
 export interface TrendingPackage {

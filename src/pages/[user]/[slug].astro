@@ -6,7 +6,8 @@ import Base from '../../layouts/Base.astro'
 import Giscus from '../../components/Giscus.astro'
 import HealthBadge from '../../components/HealthBadge.astro'
 import HealthPanel from '../../components/HealthPanel.astro'
-import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount, getPackageHealth } from '../../lib/db.js'
+import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount, getPackageHealth, getDownloadTimeline, resolvePackageSlugs } from '../../lib/db.js'
+import DownloadSparkline from '../../components/DownloadSparkline.astro'
 import { renderMarkdown } from '../../lib/markdown.js'
 import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 import { supabase as supabaseAdmin } from '../../lib/supabase.js'
@@ -40,6 +41,10 @@ if (versions.length === 0) {
 
 const latest = versions[0]
 const owner = await getPackageOwner(dbSlug)
+
+// Resolve dependency bare names to full slugs for correct linking
+const depNames = Object.keys(latest.dependencies)
+const depSlugMap = depNames.length > 0 ? await resolvePackageSlugs(depNames) : new Map<string, string | null>()
 const readmeHtml = await renderMarkdown(latest.readme)
 const dependents = await getPackageDependents(dbSlug)
 const stats = await getPackageStats(dbSlug)
@@ -48,6 +53,7 @@ const advisories = await getPackageAdvisories(dbSlug)
 const tags = await getPackageTags(dbSlug).catch(() => [])
 const starCount = await getStarCount(dbSlug).catch(() => 0)
 const health = await getPackageHealth(dbSlug).catch(() => null)
+const downloadTimeline = await getDownloadTimeline(dbSlug).catch(() => [])
 
 // Check if user is logged in
 const supabase = createServerClient(
@@ -682,6 +688,7 @@ const ogDescription = latest.description
       {latest.author && <span class="badge">{latest.author}</span>}
       {latest.license && <span class="badge">{latest.license}</span>}
       <span class="downloads-total">{stats.total.toLocaleString()} download{stats.total !== 1 ? 's' : ''}</span>
+      {downloadTimeline.length > 0 && <DownloadSparkline data={downloadTimeline} />}
       <button class="star-btn" id="star-btn" data-package={packageName} data-starred="false" data-logged-in={session ? 'true' : 'false'} title="Sign in to star this package">
         <span class="star-icon">☆</span>
         <span class="star-count" id="star-count">{starCount}</span>
@@ -746,12 +753,16 @@ const ogDescription = latest.description
     <div class="section">
       <p class="section-heading">dependencies</p>
       <div class="deps-list">
-        {Object.entries(latest.dependencies).map(([dep, range]) => (
-          <div class="dep-item">
-            <a class="dep-name" href={`/packages/${dep}`}>{dep}</a>
-            <span class="dep-range">{range}</span>
-          </div>
-        ))}
+        {Object.entries(latest.dependencies).map(([dep, range]) => {
+          const depSlug = depSlugMap.get(dep)
+          const depHref = depSlug ? `/${depSlug}` : `/packages?search=${encodeURIComponent(dep)}`
+          return (
+            <div class="dep-item">
+              <a class="dep-name" href={depHref}>{dep}</a>
+              <span class="dep-range">{range}</span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )}
