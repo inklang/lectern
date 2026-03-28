@@ -2,10 +2,14 @@ import type { APIRoute } from 'astro'
 import { getPackageVersions, getPackageOwner } from '../../lib/db.js'
 import satori from 'satori'
 import sharp from 'sharp'
-import { readFileSync } from 'fs'
-import { fileURLToPath } from 'url'
-import path from 'path'
-import fontData from './fonts/DejaVuSans.ttf?raw'
+
+// Use Inter font from Google Fonts (via @fontsource or bundled)
+const fontUrl = 'https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff2'
+
+async function getFontData(): Promise<ArrayBuffer> {
+  const response = await fetch(fontUrl)
+  return response.arrayBuffer()
+}
 
 export const GET: APIRoute = async ({ url }) => {
   const pkg = url.searchParams.get('pkg')
@@ -27,6 +31,8 @@ export const GET: APIRoute = async ({ url }) => {
   const description = latest.description?.slice(0, 150) || `${packageSlug} — an Ink package`
   const version = latest.version
   const author = owner?.name || owner?.username || 'Unknown'
+
+  const fontData = await getFontData()
 
   const svg = await satori(
     {
@@ -172,13 +178,13 @@ export const GET: APIRoute = async ({ url }) => {
       height: 630,
       fonts: [
         {
-          name: 'DejaVu Sans',
+          name: 'Inter',
           data: fontData,
           weight: 400,
           style: 'normal',
         },
         {
-          name: 'DejaVu Sans',
+          name: 'Inter',
           data: fontData,
           weight: 700,
           style: 'normal',

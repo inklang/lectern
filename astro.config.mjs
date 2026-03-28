@@ -12,7 +12,6 @@ export default defineConfig({
   output: 'server',
   site: 'https://lectern.inklang.org',
   adapter: vercel({
-    includeFiles: ['src/fonts/', 'src/pages/api/fonts/'],
   }),
   integrations: [
     starlight({
