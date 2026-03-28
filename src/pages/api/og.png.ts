@@ -16,8 +16,8 @@ function loadFont(): ArrayBuffer | undefined {
   for (const fontPath of fontPaths) {
     try {
       const buffer = readFileSync(fontPath)
-      // Return a copy of the buffer as ArrayBuffer
-      return new Uint8Array(buffer).buffer.slice(0)
+      // Return proper ArrayBuffer with correct byte offset and length
+      return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
     } catch (e) {
       // Font not found, try next
       console.error('Failed to load font:', fontPath, e)
@@ -78,7 +78,6 @@ export const GET: APIRoute = async ({ url }) => {
             flexDirection: 'column',
             backgroundColor: '#18181b',
             borderRadius: '16px',
-            border: '2px solid #3f3f46',
             flex: 1,
             padding: '40px',
           },
@@ -208,10 +207,15 @@ export const GET: APIRoute = async ({ url }) => {
     }
   }
 
+  // Return SVG to inspect (uncomment for debugging)
+  // return new Response(svg, { headers: { 'Content-Type': 'image/svg+xml' } })
+
   // Convert SVG to PNG using sharp
   const sharpModule = await import('sharp')
   const sharpInstance = sharpModule.default
-  const pngBuffer = await sharpInstance(Buffer.from(svg)).png().toBuffer()
+  const pngBuffer = await sharpInstance(Buffer.from(svg))
+    .png()
+    .toBuffer()
 
   return new Response(pngBuffer, {
     headers: {
