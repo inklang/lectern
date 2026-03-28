@@ -2,8 +2,10 @@
 import Base from '../../layouts/Base.astro'
 import ComparePanel from '../../components/ComparePanel.astro'
 import HealthBadge from '../../components/HealthBadge.astro'
+import VerifiedBadge from '../../components/VerifiedBadge.astro'
 import { listAllPackages, listTags, getPackagesByTag, getPopularPackages, listPackagesByStars, getStarCounts, getHealthForPackages, getDownloadTimelines, getDeprecationsForPackages, type HealthStatus } from '../../lib/db.js'
 import DownloadSparkline from '../../components/DownloadSparkline.astro'
+import { supabase } from '../../lib/supabase.js'
 
 const PAGE_SIZE = 20
 
@@ -133,6 +135,19 @@ if (displayPackages.length > 0) {
   }
 }
 
+// Fetch verified status for displayed packages
+let verifiedMap: Record<string, boolean> = {}
+if (displayPackages.length > 0) {
+  const pkgNames = displayPackages.map((p: any) => p.name)
+  const { data: verifiedRows } = await supabase
+    .from('packages')
+    .select('name, verified')
+    .in('name', pkgNames)
+  for (const row of verifiedRows ?? []) {
+    verifiedMap[row.name] = row.verified ?? false
+  }
+}
+
 const allTags = await listTags().catch(() => [])
 
 function buildPageUrl(p: number) {
@@ -143,7 +158,14 @@ function buildPageUrl(p: number) {
   return `/packages?${params.toString()}`
 }
 ---
-<Base title="Packages">
+<Base
+  title="Packages"
+  description="Browse all Ink packages — discover scripts, grammar extensions, and runtime packages for PaperMC servers."
+  ogTitle="Packages — Ink Package Registry"
+  ogDescription="Browse all Ink packages — discover scripts, grammar extensions, and runtime packages for PaperMC servers."
+  ogUrl="https://lectern.inklang.org/packages"
+  ogImage="https://lectern.inklang.org/api/home-og.png"
+>
   <style>
     .page-header {
       display: flex;
@@ -529,6 +551,7 @@ function buildPageUrl(p: number) {
                 <a class="pkg-card" href={`/${pkg.name}`}>
                   <div class="pkg-left">
                     <span class="pkg-name">{pkg.name}</span>
+                    {verifiedMap[pkg.name] && <VerifiedBadge size="sm" />}
                     {deprecationMap[pkg.name]?.deprecated && (
                       <span class="pkg-deprecated" title={deprecationMap[pkg.name].deprecation_message ?? undefined}>deprecated</span>
                     )}
@@ -610,7 +633,7 @@ function buildPageUrl(p: number) {
 
     const url = new URL(location.href)
     let activeSort = url.searchParams.get('sort') ?? 'recent'
-    let cachedResults: Array<{ name: string; package_slug: string; version: string; description: string | null; deprecated: boolean; deprecation_message: string | null }> = []
+    let cachedResults: Array<{ name: string; package_slug: string; version: string; description: string | null; deprecated: boolean; deprecation_message: string | null; verified: boolean }> = []
 
     function esc(s: string): string {
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -719,12 +742,16 @@ function buildPageUrl(p: number) {
           const deprecatedLabel = pkg.deprecated
             ? '<span class="pkg-deprecated"' + (pkg.deprecation_message ? ' title="' + esc(pkg.deprecation_message) + '"' : '') + '>deprecated</span>'
             : ''
+          const verifiedBadge = pkg.verified
+            ? '<span class="verified-badge" style="display:inline-flex;align-items:center;gap:0.25rem;padding:0.1rem 0.3rem;background:rgba(34,197,94,0.1);border:1px solid #22c55e;border-radius:4px;color:#22c55e;font-family:var(--font-mono,monospace);font-size:0.65rem;font-weight:500;vertical-align:middle;" title="This package is from a verified publisher"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>'
+            : ''
           return '<label class="pkg-checkbox-label">' +
             '<input type="checkbox" class="pkg-checkbox" value="' + name + '" />' +
           '</label>' +
           '<a class="pkg-card" href="/' + slug + '" style="flex:1;">' +
             '<div class="pkg-left">' +
               '<span class="pkg-name">' + name + '</span>' +
+              verifiedBadge +
               deprecatedLabel +
               (pkg.description ? '<span class="pkg-description">' + desc + '</span>' : '') +
             '</div>' +

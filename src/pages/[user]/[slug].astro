@@ -7,7 +7,9 @@ import Giscus from '../../components/Giscus.astro'
 import HealthBadge from '../../components/HealthBadge.astro'
 import HealthPanel from '../../components/HealthPanel.astro'
 import DeprecationBanner from '../../components/DeprecationBanner.astro'
-import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount, getPackageHealth, getDownloadTimeline, resolvePackageSlugs } from '../../lib/db.js'
+import VerifiedBadge from '../../components/VerifiedBadge.astro'
+import StarPicker from '../../components/StarPicker.astro'
+import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount, getPackageHealth, getDownloadTimeline, resolvePackageSlugs, getPackageReviewsWithUsers, getUserReview, getPackageRating, type ReviewWithUser } from '../../lib/db.js'
 import { canUserPublish } from '../../lib/authz.js'
 import DownloadSparkline from '../../components/DownloadSparkline.astro'
 import { renderMarkdown } from '../../lib/markdown.js'
@@ -23,7 +25,7 @@ const packageSlug = user && slug ? `${user}/${slug}` : slug
 // Query by slug (case-insensitive) since URL may have different casing than DB
 const { data: pkgRow } = await supabaseAdmin
   .from('packages')
-  .select('slug, owner_slug, name')
+  .select('slug, owner_slug, name, verified')
   .ilike('slug', packageSlug)
   .single()
 
@@ -72,6 +74,13 @@ const supabase = createServerClient(
 )
 const { data: { session } } = await supabase.auth.getSession()
 const userId = session?.user?.id ?? null
+
+// Fetch reviews data
+const [reviews, packageRating, userReview] = await Promise.all([
+  getPackageReviewsWithUsers(dbSlug, 20, 0),
+  getPackageRating(dbSlug),
+  userId ? getUserReview(userId, dbSlug) : Promise.resolve(null),
+])
 
 // Check if user is org admin
 let isOrgAdmin = false
@@ -704,6 +713,267 @@ const ogDescription = latest.description
       font-size: 0.875rem;
       color: var(--muted);
     }
+
+    /* Reviews section */
+    .reviews-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+
+    .reviews-summary {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .reviews-avg {
+      font-family: var(--font-mono);
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .reviews-meta {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .reviews-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .review-card {
+      padding: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .review-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .review-avatar {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 50%;
+      background: var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .review-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .review-avatar-placeholder {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    .review-info {
+      flex: 1;
+    }
+
+    .review-username {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .review-date {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    .review-body {
+      font-family: system-ui, sans-serif;
+      font-size: 0.875rem;
+      line-height: 1.6;
+      color: var(--text);
+      white-space: pre-wrap;
+    }
+
+    .no-reviews {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .review-form {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .review-form-title {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 500;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+
+    .review-form-row {
+      margin-bottom: 1rem;
+    }
+
+    .review-form-label {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .review-textarea {
+      width: 100%;
+      min-height: 6rem;
+      padding: 0.75rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: system-ui, sans-serif;
+      font-size: 0.875rem;
+      color: var(--text);
+      resize: vertical;
+      box-sizing: border-box;
+    }
+
+    .review-textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .review-submit-btn {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      padding: 0.5rem 1.25rem;
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: opacity 0.15s;
+    }
+
+    .review-submit-btn:hover { opacity: 0.85; }
+    .review-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .review-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .review-action-btn {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: transparent;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .review-action-btn.edit {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .review-action-btn.delete {
+      color: #ef4444;
+      border-color: #ef4444;
+    }
+
+    .review-action-btn:hover {
+      opacity: 0.8;
+    }
+
+    .sign-in-prompt {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 1.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .sign-in-prompt a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .sign-in-prompt a:hover {
+      text-decoration: underline;
+    }
+
+    .review-edit-form {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-top: 1rem;
+    }
+
+    .review-edit-form.visible {
+      display: block;
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .pagination-btn {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      padding: 0.4rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .pagination-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .pagination-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   </style>
 
   {deprecation?.deprecated && (
@@ -717,7 +987,10 @@ const ogDescription = latest.description
   <a class="back" href="/packages">← packages</a>
 
   <div class="pkg-header">
-    <div class="pkg-name">{packageSlug}</div>
+    <div class="pkg-name">
+      {packageSlug}
+      {pkgRow?.verified && <VerifiedBadge size="sm" />}
+    </div>
     <div class="pkg-meta-row">
       <span class="badge latest">v{latest.version}</span>
       {latest.author && <span class="badge">{latest.author}</span>}
@@ -771,6 +1044,89 @@ const ogDescription = latest.description
       <div class="readme-body" set:html={readmeHtml} />
     </div>
   )}
+
+  <div class="section" id="reviews-section">
+    <div class="reviews-header">
+      <p class="section-heading" style="margin-bottom: 0;">reviews</p>
+      {packageRating.count > 0 && (
+        <div class="reviews-summary">
+          <span class="reviews-avg">★ {packageRating.avg.toFixed(1)}</span>
+          <span class="reviews-meta">({packageRating.count} review{packageRating.count !== 1 ? 's' : ''})</span>
+        </div>
+      )}
+    </div>
+
+    {session ? (
+      userReview ? (
+        <div class="review-form" id="review-form">
+          <p class="review-form-title">Your Review</p>
+          <div class="review-header">
+            <StarPicker name="rating" value={userReview.rating} readonly={true} />
+          </div>
+          {userReview.body && <p class="review-body">{userReview.body}</p>}
+          <div class="review-actions">
+            <button class="review-action-btn edit" id="edit-review-btn">Edit</button>
+            <button class="review-action-btn delete" id="delete-review-btn">Delete</button>
+          </div>
+        </div>
+        <div class="review-edit-form" id="review-edit-form">
+          <p class="review-form-title">Edit Your Review</p>
+          <div class="review-form-row">
+            <StarPicker name="edit-rating" value={userReview.rating} />
+          </div>
+          <div class="review-form-row">
+            <textarea class="review-textarea" id="edit-review-body" placeholder="Share your experience with this package...">{userReview.body ?? ''}</textarea>
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="review-submit-btn" id="submit-edit-btn">Update Review</button>
+            <button class="review-submit-btn" id="cancel-edit-btn" style="background: transparent; border: 1px solid var(--border); color: var(--muted);">Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <div class="review-form" id="review-form">
+          <p class="review-form-title">Leave a Review</p>
+          <div class="review-form-row">
+            <label class="review-form-label">Rating</label>
+            <StarPicker name="rating" value={0} />
+          </div>
+          <div class="review-form-row">
+            <textarea class="review-textarea" id="review-body" placeholder="Share your experience with this package... (optional)"></textarea>
+          </div>
+          <button class="review-submit-btn" id="submit-review-btn">Submit Review</button>
+        </div>
+      )
+    ) : (
+      <div class="sign-in-prompt">
+        <a href={`/login?next=/${encodeURIComponent(packageSlug)}`}>Sign in</a> to leave a review
+      </div>
+    )}
+
+    {reviews.length > 0 ? (
+      <div class="reviews-list">
+        {reviews.map(review => (
+          <div class="review-card">
+            <div class="review-header">
+              <div class="review-avatar">
+                {review.avatar_url ? (
+                  <img src={review.avatar_url} alt={review.username} />
+                ) : (
+                  <span class="review-avatar-placeholder">{review.username[0]?.toUpperCase() ?? '?'}</span>
+                )}
+              </div>
+              <div class="review-info">
+                <div class="review-username">@{review.username}</div>
+                <div class="review-date">{new Date(review.created_at).toLocaleDateString()}</div>
+              </div>
+              <StarPicker name={`review-${review.id}`} value={review.rating} readonly={true} />
+            </div>
+            {review.body && <p class="review-body">{review.body}</p>}
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div class="no-reviews">No reviews yet. Be the first to review this package!</div>
+    )}
+  </div>
 
   {owner && (
     <div class="section">
@@ -1200,5 +1556,184 @@ const ogDescription = latest.description
     if (pendingSection) {
       loadPendingReleases(packageName ?? '')
     }
+
+    // Reviews functionality
+    const reviewForm = document.getElementById('review-form')
+    const submitReviewBtn = document.getElementById('submit-review-btn')
+    const reviewBodyInput = document.getElementById('review-body') as HTMLTextAreaElement | null
+    const editReviewBtn = document.getElementById('edit-review-btn')
+    const deleteReviewBtn = document.getElementById('delete-review-btn')
+    const reviewEditForm = document.getElementById('review-edit-form')
+    const submitEditBtn = document.getElementById('submit-edit-btn')
+    const cancelEditBtn = document.getElementById('cancel-edit-btn')
+    const editBodyInput = document.getElementById('edit-review-body') as HTMLTextAreaElement | null
+
+    // Get rating from a star picker
+    function getRatingFromPicker(name: string): number {
+      const picker = document.querySelector(`.star-picker[data-name="${name}"]`)
+      return parseInt(picker?.dataset.value ?? '0', 10)
+    }
+
+    // Get token from star button (reusing the same auth pattern)
+    function getToken(): string | null {
+      const starBtn = document.getElementById('star-btn')
+      return starBtn?.dataset.token ?? null
+    }
+
+    submitReviewBtn?.addEventListener('click', async () => {
+      if (!submitReviewBtn || !reviewBodyInput) return
+      const rating = getRatingFromPicker('rating')
+      if (rating < 1 || rating > 5) {
+        alert('Please select a rating')
+        return
+      }
+
+      submitReviewBtn.disabled = true
+      const body = reviewBodyInput.value
+
+      try {
+        const res = await fetch('/api/reviews', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken() ?? ''}`
+          },
+          body: JSON.stringify({ packageName, rating, body })
+        })
+
+        if (res.ok) {
+          window.location.reload()
+        } else {
+          const data = await res.json()
+          alert(data.error ?? 'Failed to submit review')
+          submitReviewBtn.disabled = false
+        }
+      } catch {
+        alert('Failed to submit review')
+        submitReviewBtn.disabled = false
+      }
+    })
+
+    editReviewBtn?.addEventListener('click', () => {
+      if (reviewForm) reviewForm.style.display = 'none'
+      if (reviewEditForm) reviewEditForm.classList.add('visible')
+    })
+
+    cancelEditBtn?.addEventListener('click', () => {
+      if (reviewForm) reviewForm.style.display = 'block'
+      if (reviewEditForm) reviewEditForm.classList.remove('visible')
+    })
+
+    submitEditBtn?.addEventListener('click', async () => {
+      if (!submitEditBtn || !editBodyInput) return
+      const rating = getRatingFromPicker('edit-rating')
+      if (rating < 1 || rating > 5) {
+        alert('Please select a rating')
+        return
+      }
+
+      // Get the review ID from the user's existing review
+      const userReviewId = window.location.pathname // We need to fetch this from the page data
+      // For now, we'll reload the page after edit - a better implementation would pass the review ID via data attribute
+
+      submitEditBtn.disabled = true
+      const body = editBodyInput.value
+
+      try {
+        // We need the review ID - let's fetch it via an API call first
+        const reviewRes = await fetch(`/api/reviews?package=${encodeURIComponent(packageName)}`, {
+          headers: { 'Authorization': `Bearer ${getToken() ?? ''}` }
+        })
+        if (!reviewRes.ok) {
+          alert('Failed to find your review')
+          submitEditBtn.disabled = false
+          return
+        }
+        const reviewData = await reviewRes.json()
+        // Find the current user's review
+        const token = getToken()
+        let reviewId = null
+        // Decode JWT to get user ID (simplified - in production use a proper JWT library)
+        if (token) {
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]))
+            const currentUserId = payload.sub
+            const myReview = reviewData.reviews?.find((r: any) => r.user_id === currentUserId)
+            if (myReview) reviewId = myReview.id
+          } catch {}
+        }
+
+        if (!reviewId) {
+          alert('Could not identify your review')
+          submitEditBtn.disabled = false
+          return
+        }
+
+        const res = await fetch(`/api/reviews/${reviewId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken() ?? ''}`
+          },
+          body: JSON.stringify({ rating, body })
+        })
+
+        if (res.ok) {
+          window.location.reload()
+        } else {
+          const data = await res.json()
+          alert(data.error ?? 'Failed to update review')
+          submitEditBtn.disabled = false
+        }
+      } catch {
+        alert('Failed to update review')
+        submitEditBtn.disabled = false
+      }
+    })
+
+    deleteReviewBtn?.addEventListener('click', async () => {
+      if (!confirm('Are you sure you want to delete your review?')) return
+
+      try {
+        // Find the review ID
+        const reviewRes = await fetch(`/api/reviews?package=${encodeURIComponent(packageName)}`, {
+          headers: { 'Authorization': `Bearer ${getToken() ?? ''}` }
+        })
+        if (!reviewRes.ok) {
+          alert('Failed to find your review')
+          return
+        }
+        const reviewData = await reviewRes.json()
+        const token = getToken()
+        let reviewId = null
+        if (token) {
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]))
+            const currentUserId = payload.sub
+            const myReview = reviewData.reviews?.find((r: any) => r.user_id === currentUserId)
+            if (myReview) reviewId = myReview.id
+          } catch {}
+        }
+
+        if (!reviewId) {
+          alert('Could not identify your review')
+          return
+        }
+
+        const res = await fetch(`/api/reviews/${reviewId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${getToken() ?? ''}` }
+        })
+
+        if (res.ok) {
+          window.location.reload()
+        } else {
+          const data = await res.json()
+          alert(data.error ?? 'Failed to delete review')
+        }
+      } catch {
+        alert('Failed to delete review')
+      }
+    })
   </script>
 </Base>

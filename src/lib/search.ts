@@ -11,6 +11,7 @@ export interface SearchResult {
   tags: string[]
   deprecated: boolean
   deprecation_message: string | null
+  verified: boolean
 }
 
 interface RrfItem { name: string; package_slug?: string; [key: string]: unknown }
@@ -137,6 +138,18 @@ export async function hybridSearch(query: string, limit = 20): Promise<SearchRes
     }
   }
 
+  // Fetch verified status for each package
+  let verifiedMap = new Map<string, boolean>()
+  if (topNames.length > 0) {
+    const { data: verifiedRows } = await supabase
+      .from('packages')
+      .select('name, verified')
+      .in('name', topNames)
+    for (const row of verifiedRows ?? []) {
+      verifiedMap.set(row.name, row.verified ?? false)
+    }
+  }
+
   return merged.slice(0, limit).map(r => ({
     name: r.name as string,
     package_slug: r.package_slug as string,
@@ -148,6 +161,7 @@ export async function hybridSearch(query: string, limit = 20): Promise<SearchRes
     tags: tagsMap.get(r.name as string) ?? [],
     deprecated: deprecationMap.get(r.name as string)?.deprecated ?? false,
     deprecation_message: deprecationMap.get(r.name as string)?.deprecation_message ?? null,
+    verified: verifiedMap.get(r.name as string) ?? false,
   }))
 }
 
