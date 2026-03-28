@@ -1,0 +1,151 @@
+---
+title: Webhooks
+description: Receive real-time notifications when packages are starred, published, or depended on.
+---
+
+# Webhooks
+
+Get notified in Discord, Slack, or any HTTP endpoint when events happen on your packages.
+
+## Creating a Webhook
+
+Navigate to your package settings → **Webhooks** (`/[user]/[pkg]/settings/webhooks`).
+
+1. Enter your **Endpoint URL** — a Discord webhook URL, Slack webhook URL, or any HTTP endpoint
+2. Select which **Events** to receive:
+   - `package.starred` — when someone stars your package
+   - `package.published` — when a new version is published
+   - `package.new_dependent` — when another package starts depending on yours
+3. Save — your **signing secret** is shown once, copy it
+
+## Payload Format
+
+All webhook payloads are HTTP POST requests with `Content-Type: application/json`:
+
+```json
+{
+  "event": "package.starred",
+  "package": "alice/mobs",
+  "timestamp": "2026-03-27T14:23:00.000Z",
+  "data": {
+    "starer": "bob"
+  }
+}
+```
+
+### Event: `package.starred`
+
+```json
+{
+  "event": "package.starred",
+  "package": "alice/mobs",
+  "timestamp": "2026-03-27T14:23:00.000Z",
+  "data": {
+    "starer": "bob"
+  }
+}
+```
+
+### Event: `package.published`
+
+```json
+{
+  "event": "package.published",
+  "package": "alice/mobs",
+  "timestamp": "2026-03-27T14:23:00.000Z",
+  "data": {
+    "version": "1.2.0",
+    "published_by": "alice"
+  }
+}
+```
+
+### Event: `package.new_dependent`
+
+```json
+{
+  "event": "package.new_dependent",
+  "package": "alice/mobs",
+  "timestamp": "2026-03-27T14:23:00.000Z",
+  "data": {
+    "dependent": "bob/mobs",
+    "dependent_version": "2.0.0"
+  }
+}
+```
+
+## Verifying Signatures
+
+Every request includes an `X-Ink-Signature` header. Always verify it to confirm the request is from lectern.
+
+**Signature format:** `sha256=<hmac>` where HMAC is computed over the raw request body using your signing secret.
+
+### Node.js
+
+```js
+import { createHmac } from 'crypto'
+
+export function verifySignature(body, signature, secret) {
+  const expected = 'sha256=' + createHmac('sha256', secret)
+    .update(body, 'utf8')
+    .digest('hex')
+  return signature === expected
+}
+
+// In your Express handler:
+app.post('/webhook', (req, res) => {
+  const sig = req.headers['x-ink-signature']
+  const raw = req.rawBody // must capture the raw body!
+
+  if (!verifySignature(raw, sig, process.env.LECTERN_WEBHOOK_SECRET))) {
+    return res.status(401).send('Invalid signature')
+  }
+
+  const payload = JSON.parse(raw)
+  // handle payload...
+  res.status(200).send('OK')
+})
+```
+
+### Python (Flask)
+
+```python
+import hmac
+import hashlib
+
+def verify_signature(body: bytes, signature: str, secret: str) -> bool:
+    expected = 'sha256=' + hmac.new(
+        secret.encode(),
+        body,
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(signature, expected)
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    sig = request.headers.get('X-Ink-Signature')
+    if not verify_signature(request.data, sig, os.environ['LECTERN_WEBHOOK_SECRET']):
+        return 'Invalid signature', 401
+
+    payload = request.json
+    # handle payload...
+    return 'OK', 200
+```
+
+### Discord
+
+Discord handles signature verification automatically for incoming webhooks. Paste your Discord webhook URL as the endpoint — no code needed.
+
+### Slack
+
+Slack also handles incoming webhooks automatically. Paste your Slack incoming webhook URL as the endpoint — no code needed.
+
+## Testing
+
+Use the **Test** button in the webhook management UI to send a test payload to your endpoint. This is useful to verify connectivity and correct signature handling.
+
+## Retry Policy
+
+Failed deliveries (non-2xx responses) are retried up to 3 times with exponential backoff: 1 minute, 2 minutes, 4 minutes. After 3 failures, the subscription is marked as inactive.
+
+View delivery history in the webhook management UI to see response codes and error messages.

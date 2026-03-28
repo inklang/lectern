@@ -11,7 +11,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   output: 'server',
   site: 'https://lectern.inklang.org',
-  adapter: vercel(),
+  adapter: vercel({
+    includeFiles: ['src/fonts/'],
+  }),
   integrations: [
     starlight({
       title: 'Ink',
@@ -69,6 +71,12 @@ export default defineConfig({
             { label: 'Standard Library', slug: 'stdlib' },
             { label: 'Language Reference', slug: 'language-reference' },
             { label: 'Examples', slug: 'examples' },
+          ],
+        },
+        {
+          label: 'Publishing',
+          items: [
+            { label: 'Webhooks', slug: 'webhooks' },
           ],
         },
       ],
