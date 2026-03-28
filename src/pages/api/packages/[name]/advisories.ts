@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro'
 import { getPackageAdvisories, upsertAdvisory, getPackageOwner } from '../../../../lib/db.js'
 import { isOrgAdmin } from '../../../../lib/orgs.js'
-import { extractBearer, resolveToken } from '../../../../lib/tokens.js'
+import { resolveAuth } from '../../../../lib/tokens.js'
 import { supabase } from '../../../../lib/supabase.js'
 
 // GET /api/packages/[name]/advisories
@@ -29,14 +29,9 @@ export const PUT: APIRoute = async ({ params, request }) => {
   if (!name) return new Response('Bad request', { status: 400 })
 
   // Auth
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) {
-    return new Response(JSON.stringify({ error: 'Missing Authorization header' }), { status: 401 })
-  }
-
-  const userId = await resolveToken(raw)
+  const userId = await resolveAuth(request.headers.get('authorization'))
   if (!userId) {
-    return new Response(JSON.stringify({ error: 'Invalid or expired token' }), { status: 401 })
+    return new Response(JSON.stringify({ error: 'Missing or invalid Authorization header' }), { status: 401 })
   }
 
   // Get package ownership to check org admin status

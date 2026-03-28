@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro'
-import { extractBearer, resolveToken } from '../../../../../lib/tokens.js'
+import { resolveAuth } from '../../../../../lib/tokens.js'
 import { canUserPublish } from '../../../../../lib/authz.js'
 import { removePackageTag } from '../../../../../lib/db.js'
 
@@ -8,13 +8,9 @@ export const DELETE: APIRoute = async ({ params, request }) => {
   if (!name || !tag) return new Response('Bad request', { status: 400 })
 
   // Auth
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) {
-    return new Response(JSON.stringify({ error: 'Missing Authorization header' }), { status: 401 })
-  }
-  const userId = await resolveToken(raw)
+  const userId = await resolveAuth(request.headers.get('authorization'))
   if (!userId) {
-    return new Response(JSON.stringify({ error: 'Invalid or expired token' }), { status: 401 })
+    return new Response(JSON.stringify({ error: 'Missing or invalid Authorization header' }), { status: 401 })
   }
 
   // Owner check

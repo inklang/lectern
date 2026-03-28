@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro'
-import { extractBearer, resolveToken } from '../../../../lib/tokens.js'
+import { resolveAuth } from '../../../../lib/tokens.js'
 import { starPackage, unstarPackage, hasStarred, getStarCount, getPackageVersions, getPackageOwner } from '../../../../lib/db.js'
 import { emitWebhooks } from '../../../../lib/webhooks.js'
 import { emitNotification } from '../../../../lib/notifications.js'
@@ -17,14 +17,9 @@ export const PUT: APIRoute = async ({ params, request }) => {
   }
 
   // Auth
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) {
-    return new Response(JSON.stringify({ error: 'Login to star packages.' }), { status: 401 })
-  }
-
-  const userId = await resolveToken(raw)
+  const userId = await resolveAuth(request.headers.get('authorization'))
   if (!userId) {
-    return new Response(JSON.stringify({ error: 'Invalid or expired token.' }), { status: 401 })
+    return new Response(JSON.stringify({ error: 'Login to star packages.' }), { status: 401 })
   }
 
   try {
@@ -78,14 +73,9 @@ export const DELETE: APIRoute = async ({ params, request }) => {
   }
 
   // Auth
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) {
-    return new Response(JSON.stringify({ error: 'Login to star packages.' }), { status: 401 })
-  }
-
-  const userId = await resolveToken(raw)
+  const userId = await resolveAuth(request.headers.get('authorization'))
   if (!userId) {
-    return new Response(JSON.stringify({ error: 'Invalid or expired token.' }), { status: 401 })
+    return new Response(JSON.stringify({ error: 'Login to star packages.' }), { status: 401 })
   }
 
   // Check if user has starred
@@ -120,15 +110,7 @@ export const GET: APIRoute = async ({ params, request }) => {
   const { name } = params
   if (!name) return new Response('Bad request', { status: 400 })
 
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) {
-    return new Response(JSON.stringify({ starred: false }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
-  const userId = await resolveToken(raw)
+  const userId = await resolveAuth(request.headers.get('authorization'))
   if (!userId) {
     return new Response(JSON.stringify({ starred: false }), {
       status: 200,

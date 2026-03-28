@@ -20,13 +20,12 @@ vi.mock('../../../../lib/orgs.js', () => ({
 }))
 
 vi.mock('../../../../lib/tokens.js', () => ({
-  extractBearer: vi.fn(),
-  resolveToken: vi.fn(),
+  resolveAuth: vi.fn(),
 }))
 
 const { getPackageAdvisories, upsertAdvisory, getPackageOwner } = await import('../../../../lib/db.js')
 const { isOrgAdmin } = await import('../../../../lib/orgs.js')
-const { extractBearer, resolveToken } = await import('../../../../lib/tokens.js')
+const { resolveAuth } = await import('../../../../lib/tokens.js')
 
 describe('GET /api/packages/[name]/advisories', () => {
   beforeEach(() => {
@@ -84,8 +83,7 @@ describe('GET /api/packages/[name]/advisories', () => {
 describe('PUT /api/packages/[name]/advisories', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(extractBearer).mockReturnValue('mock-token')
-    vi.mocked(resolveToken).mockResolvedValue('user-123')
+    vi.mocked(resolveAuth).mockResolvedValue('user-123')
     vi.mocked(getPackageOwner).mockResolvedValue('user-123')
     vi.mocked(upsertAdvisory).mockResolvedValue(undefined)
   })
@@ -98,7 +96,7 @@ describe('PUT /api/packages/[name]/advisories', () => {
       params: { name: 'my-pkg' },
       request: new Request('http://localhost', {
         method: 'PUT',
-        headers: { 'content-type': 'application/json', 'authorization': 'Bearer mock-token' },
+        headers: { 'content-type': 'application/json', 'authorization': 'Ink-v1 keyId=test,ts=0,sig=test' },
         body: JSON.stringify({
           advisory_id: 'GHSA-5678',
           cve: 'CVE-2024-5678',
@@ -116,7 +114,7 @@ describe('PUT /api/packages/[name]/advisories', () => {
   })
 
   it('returns 401 when no auth header', async () => {
-    vi.mocked(extractBearer).mockReturnValue(null)
+    vi.mocked(resolveAuth).mockResolvedValue(null)
 
     const { PUT } = await import('./advisories.js')
     const response = await PUT({
@@ -137,7 +135,7 @@ describe('PUT /api/packages/[name]/advisories', () => {
       params: { name: 'my-pkg' },
       request: new Request('http://localhost', {
         method: 'PUT',
-        headers: { 'content-type': 'application/json', 'authorization': 'Bearer mock-token' },
+        headers: { 'content-type': 'application/json', 'authorization': 'Ink-v1 keyId=test,ts=0,sig=test' },
         body: JSON.stringify({
           advisory_id: 'GHSA-123',
           severity: 'invalid',

@@ -1,21 +1,13 @@
 import type { APIRoute } from 'astro'
-import { extractBearer, resolveToken } from '../../../lib/tokens.js'
+import { resolveAuth } from '../../../lib/tokens.js'
 import { createReview, getPackageReviews, getPackageVersions, getUserReview, getPackageRating } from '../../../lib/db.js'
 
 // POST /api/reviews - Create a review
 export const POST: APIRoute = async ({ request }) => {
   // Auth
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) {
-    return new Response(JSON.stringify({ error: 'Login required to submit reviews.' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
-  const userId = await resolveToken(raw)
+  const userId = await resolveAuth(request.headers.get('authorization'))
   if (!userId) {
-    return new Response(JSON.stringify({ error: 'Invalid or expired token.' }), {
+    return new Response(JSON.stringify({ error: 'Login required to submit reviews.' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
     })

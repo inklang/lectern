@@ -1173,3 +1173,342 @@ export async function getFeedEvents(
   const total = (count ?? 0) + starEvents.length
   return { events: allEvents.slice(0, limit), total }
 }
+
+// ─── Package Transfer ──────────────────────────────────────────────────────────
+
+export interface TransferRequest {
+  id: string
+  package_name: string
+  from_owner_id: string
+  from_owner_type: 'user' | 'org'
+  to_owner_id: string
+  to_owner_type: 'user' | 'org'
+  new_slug: string
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired'
+  created_at: string
+  expires_at: string
+  accepted_at: string | null
+  declined_at: string | null
+  cancelled_at: string | null
+}
+
+export interface TransferRequestWithOwners extends TransferRequest {
+  from_owner_username?: string
+  from_owner_avatar?: string | null
+  to_owner_username?: string
+  to_owner_avatar?: string | null
+  old_slug?: string
+}
+
+// Create a new transfer request
+export async function createTransferRequest(
+  packageName: string,
+  fromOwnerId: string,
+  fromOwnerType: 'user' | 'org',
+  toOwnerId: string,
+  toOwnerType: 'user' | 'org',
+  newSlug: string
+): Promise<TransferRequest> {
+  const expiresAt = new Date()
+  expiresAt.setDate(expiresAt.getDate() + 7)
+
+  const { data, error } = await supabase
+    .from('package_transfer_requests')
+    .insert({
+      package_name: packageName,
+      from_owner_id: fromOwnerId,
+      from_owner_type: fromOwnerType,
+      to_owner_id: toOwnerId,
+      to_owner_type: toOwnerType,
+      new_slug: newSlug,
+      status: 'pending',
+      expires_at: expiresAt.toISOString(),
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as TransferRequest
+}
+
+// Get a transfer request by ID
+export async function getTransferRequest(id: string): Promise<TransferRequestWithOwners | null> {
+  const { data, error } = await supabase
+    .from('package_transfer_requests')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') return null
+    throw error
+  }
+
+  const transfer = data as TransferRequestWithOwners
+
+  // Fetch owner usernames
+  if (transfer.from_owner_type === 'user') {
+    const { data: user } = await supabase
+      .from('users')
+      .select('user_name, avatar_url')
+      .eq('id', transfer.from_owner_id)
+      .single()
+    if (user) {
+      transfer.from_owner_username = user.user_name ?? undefined
+      transfer.from_owner_avatar = user.avatar_url ?? null
+    }
+  } else {
+    const { data: org } = await supabase
+      .from('orgs')
+      .select('name, avatar_url')
+      .eq('id', transfer.from_owner_id)
+      .single()
+    if (org) {
+      transfer.from_owner_username = org.name ?? undefined
+      transfer.from_owner_avatar = org.avatar_url ?? null
+    }
+  }
+
+  if (transfer.to_owner_type === 'user') {
+    const { data: user } = await supabase
+      .from('users')
+      .select('user_name, avatar_url')
+      .eq('id', transfer.to_owner_id)
+      .single()
+    if (user) {
+      transfer.to_owner_username = user.user_name ?? undefined
+      transfer.to_owner_avatar = user.avatar_url ?? null
+    }
+  } else {
+    const { data: org } = await supabase
+      .from('orgs')
+      .select('name, avatar_url')
+      .eq('id', transfer.to_owner_id)
+      .single()
+    if (org) {
+      transfer.to_owner_username = org.name ?? undefined
+      transfer.to_owner_avatar = org.avatar_url ?? null
+    }
+  }
+
+  // Get old slug from packages table
+  const { data: pkg } = await supabase
+    .from('packages')
+    .select('slug')
+    .eq('name', transfer.package_name)
+    .eq('owner_id', transfer.from_owner_id)
+    .single()
+  if (pkg) {
+    transfer.old_slug = pkg.slug
+  }
+
+  return transfer
+}
+
+// Get pending transfer for a package
+export async function getPendingTransfer(packageName: string): Promise<TransferRequest | null> {
+  const { data, error } = await supabase
+    .from('package_transfer_requests')
+    .select('*')
+    .eq('package_name', packageName)
+    .eq('status', 'pending')
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') return null
+    throw error
+  }
+  return data as TransferRequest
+}
+
+// Get transfers for a user (where they are initiator or recipient)
+export async function getTransfersForUser(userId: string): Promise<TransferRequest[]> {
+  const { data, error } = await supabase
+    .from('package_transfer_requests')
+    .select('*')
+    .or(`from_owner_id.eq.${userId},to_owner_id.eq.${userId}`)
+    .in('status', ['pending', 'accepted', 'declined', 'cancelled'])
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return (data as TransferRequest[]) ?? []
+}
+
+// Accept a transfer (atomic slug rename)
+export async function acceptTransfer(id: string): Promise<{ oldSlug: string; newSlug: string }> {
+  const transfer = await getTransferRequest(id)
+  if (!transfer) throw new Error('Transfer not found')
+  if (transfer.status !== 'pending') throw new Error('Transfer is not pending')
+  if (new Date(transfer.expires_at) < new Date()) throw new Error('Transfer has expired')
+
+  const oldSlug = transfer.old_slug ?? `${transfer.package_name}` // fallback
+  const newSlug = transfer.new_slug
+
+  // Get the current owner slug for the new owner
+  let newOwnerSlug: string
+  if (transfer.to_owner_type === 'user') {
+    const { data: user } = await supabase
+      .from('users')
+      .select('user_name')
+      .eq('id', transfer.to_owner_id)
+      .single()
+    newOwnerSlug = user?.user_name ?? transfer.to_owner_id
+  } else {
+    const { data: org } = await supabase
+      .from('orgs')
+      .select('slug')
+      .eq('id', transfer.to_owner_id)
+      .single()
+    newOwnerSlug = org?.slug ?? transfer.to_owner_id
+  }
+
+  // Atomic transaction: rename slug across all tables
+  // Use rpc function for the atomic transaction
+  const { error: rpcError } = await supabase.rpc('accept_package_transfer', {
+    p_id: id,
+    p_old_slug: oldSlug,
+    p_new_slug: newSlug,
+    p_new_owner_id: transfer.to_owner_id,
+    p_new_owner_type: transfer.to_owner_type,
+    p_new_owner_slug: newOwnerSlug,
+    p_package_name: transfer.package_name,
+  })
+
+  if (rpcError) {
+    // Fallback: manual transaction if RPC doesn't exist
+    // Update packages
+    const { error: pkgErr } = await supabase
+      .from('packages')
+      .update({
+        slug: newSlug,
+        owner_slug: newOwnerSlug,
+        owner_id: transfer.to_owner_id,
+        owner_type: transfer.to_owner_type,
+      })
+      .eq('name', transfer.package_name)
+      .eq('slug', oldSlug)
+
+    if (pkgErr) throw pkgErr
+
+    // Update package_versions
+    await supabase
+      .from('package_versions')
+      .update({ package_slug: newSlug })
+      .eq('package_slug', oldSlug)
+
+    // Update package_stars (stores full slug)
+    await supabase
+      .from('package_stars')
+      .update({ package_name: newSlug })
+      .eq('package_name', oldSlug)
+
+    // Update package_reviews (stores full slug)
+    await supabase
+      .from('package_reviews')
+      .update({ package_name: newSlug })
+      .eq('package_name', oldSlug)
+
+    // Update download_logs (stores full slug)
+    await supabase
+      .from('download_logs')
+      .update({ package_name: newSlug })
+      .eq('package_name', oldSlug)
+
+    // Update package_tags (stores short name)
+    const oldShortName = oldSlug.includes('/') ? oldSlug.split('/').pop()! : oldSlug
+    const newShortName = newSlug.includes('/') ? newSlug.split('/').pop()! : newSlug
+    await supabase
+      .from('package_tags')
+      .update({ package_name: newShortName })
+      .eq('package_name', oldShortName)
+
+    // Insert redirect
+    await supabase
+      .from('package_redirects')
+      .upsert({ old_slug: oldSlug, new_slug: newSlug }, { onConflict: 'old_slug' })
+
+    // Insert transfer history
+    await supabase
+      .from('package_transfer_history')
+      .insert({
+        package_name: transfer.package_name,
+        from_owner_id: transfer.from_owner_id,
+        to_owner_id: transfer.to_owner_id,
+        new_slug: newSlug,
+      })
+
+    // Cancel other pending transfers for this package
+    await supabase
+      .from('package_transfer_requests')
+      .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+      .eq('package_name', transfer.package_name)
+      .eq('status', 'pending')
+      .neq('id', id)
+  }
+
+  // Update transfer request status
+  await supabase
+    .from('package_transfer_requests')
+    .update({ status: 'accepted', accepted_at: new Date().toISOString() })
+    .eq('id', id)
+
+  return { oldSlug, newSlug }
+}
+
+// Decline a transfer
+export async function declineTransfer(id: string): Promise<void> {
+  const transfer = await getTransferRequest(id)
+  if (!transfer) throw new Error('Transfer not found')
+  if (transfer.status !== 'pending') throw new Error('Transfer is not pending')
+
+  const { error } = await supabase
+    .from('package_transfer_requests')
+    .update({ status: 'declined', declined_at: new Date().toISOString() })
+    .eq('id', id)
+
+  if (error) throw error
+}
+
+// Cancel a transfer (by initiator)
+export async function cancelTransfer(id: string): Promise<void> {
+  const transfer = await getTransferRequest(id)
+  if (!transfer) throw new Error('Transfer not found')
+  if (transfer.status !== 'pending') throw new Error('Transfer is not pending')
+
+  const { error } = await supabase
+    .from('package_transfer_requests')
+    .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+    .eq('id', id)
+
+  if (error) throw error
+}
+
+// Check if a package has been migrated (returns redirect target if exists)
+export async function getPackageRedirect(oldSlug: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('package_redirects')
+    .select('new_slug')
+    .eq('old_slug', oldSlug)
+    .single()
+
+  return data?.new_slug ?? null
+}
+
+// Get transfer history for a package
+export async function getPackageTransferHistory(packageName: string): Promise<Array<{
+  id: string
+  package_name: string
+  from_owner_id: string
+  to_owner_id: string
+  new_slug: string
+  transferred_at: string
+}>> {
+  const { data, error } = await supabase
+    .from('package_transfer_history')
+    .select('*')
+    .eq('package_name', packageName)
+    .order('transferred_at', { ascending: false })
+
+  if (error) throw error
+  return data ?? []
+}

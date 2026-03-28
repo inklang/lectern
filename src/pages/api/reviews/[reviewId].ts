@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro'
-import { extractBearer, resolveToken } from '../../../lib/tokens.js'
+import { resolveAuth } from '../../../lib/tokens.js'
 import { supabase } from '../../../lib/supabase.js'
 import { updateReview, deleteReview } from '../../../lib/db.js'
 
@@ -25,17 +25,9 @@ export const PUT: APIRoute = async ({ params, request }) => {
   }
 
   // Auth
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) {
-    return new Response(JSON.stringify({ error: 'Login required to update reviews.' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
-  const userId = await resolveToken(raw)
+  const userId = await resolveAuth(request.headers.get('authorization'))
   if (!userId) {
-    return new Response(JSON.stringify({ error: 'Invalid or expired token.' }), {
+    return new Response(JSON.stringify({ error: 'Login required to update reviews.' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
     })
@@ -102,17 +94,9 @@ export const DELETE: APIRoute = async ({ params, request }) => {
   }
 
   // Auth
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) {
-    return new Response(JSON.stringify({ error: 'Login required to delete reviews.' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
-  const userId = await resolveToken(raw)
+  const userId = await resolveAuth(request.headers.get('authorization'))
   if (!userId) {
-    return new Response(JSON.stringify({ error: 'Invalid or expired token.' }), {
+    return new Response(JSON.stringify({ error: 'Login required to delete reviews.' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
     })

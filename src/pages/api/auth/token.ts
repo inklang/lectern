@@ -1,18 +1,17 @@
 import type { APIRoute } from 'astro'
 import { createServerClient, parseCookieHeader } from '@supabase/ssr'
-import { extractBearer, issueToken, resolveToken, revokeToken } from '../../../lib/tokens.js'
+import { resolveAuth, revokeKey, registerPublicKey } from '../../../lib/tokens.js'
 
 export const GET: APIRoute = async ({ request }) => {
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) {
-    return new Response(JSON.stringify({ error: 'Missing or invalid Authorization header' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
-  }
-  const userId = await resolveToken(raw)
+  const userId = await resolveAuth(request.headers.get('authorization'))
   if (!userId) {
-    return new Response(JSON.stringify({ error: 'Invalid or expired token' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+    return new Response(JSON.stringify({ error: 'Invalid or expired key' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
   }
-  const { supabase } = await import('../../../lib/supabase.js')
-  const { data: profile } = await supabase.from('users').select('username').eq('id', userId).single()
+  const { supabaseAnon } = await import('../../../lib/supabase.js')
+  const { data: profile } = await supabaseAnon.from('users').select('username').eq('id', userId).single()
   return new Response(JSON.stringify({ valid: true, username: profile?.username ?? null }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
@@ -38,23 +37,25 @@ export const POST: APIRoute = async ({ request }) => {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
   }
 
-  const raw = await issueToken(session.user.id)
-  return new Response(JSON.stringify({ token: raw }), {
+  // Web session: accept a publicKey body and register it
+  let body: { publicKey?: string } = {}
+  try { body = await request.json() } catch {}
+
+  if (!body.publicKey) {
+    return new Response(JSON.stringify({ error: 'Missing publicKey' }), { status: 400 })
+  }
+
+  const keyId = await registerPublicKey(session.user.id, body.publicKey)
+  return new Response(JSON.stringify({ keyId }), {
     status: 201,
     headers: { 'Content-Type': 'application/json' },
   })
 }
 
 export const DELETE: APIRoute = async ({ request }) => {
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) {
-    return new Response(JSON.stringify({ error: 'Missing or invalid Authorization header' }), { status: 401 })
-  }
-
-  const ok = await revokeToken(raw)
+  const ok = await revokeKey(request.headers.get('authorization'))
   if (!ok) {
-    return new Response(JSON.stringify({ error: 'Token not found' }), { status: 401 })
+    return new Response(JSON.stringify({ error: 'Key not found or invalid signature' }), { status: 401 })
   }
-
   return new Response(null, { status: 204 })
 }

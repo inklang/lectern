@@ -11,8 +11,6 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
     import { createClient } from '@supabase/supabase-js'
 
     const root = document.getElementById('root')!
-    // Disable auto session detection - we handle the OAuth callback explicitly
-    // Use PKCE flow for better security
     const supabase = createClient(root.dataset.url!, root.dataset.key!, {
       auth: { detectSessionInUrl: false, flowType: 'pkce' }
     })
@@ -23,7 +21,7 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
     const callbackUrl = params.get('callback')
 
     if (code && callbackUrl) {
-      // Returning from OAuth — exchange code
+      // Returning from OAuth — exchange code for session
       status.textContent = 'Exchanging code…'
       try {
         const { data, error } = await supabase.auth.exchangeCodeForSession(code)
@@ -31,23 +29,13 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
           status.textContent = 'Auth failed: ' + (error?.message ?? 'no session')
           console.error('Auth exchange error:', error)
         } else {
-          // Ask server to issue a CLI token using this access token
-          status.textContent = 'Issuing token…'
-          const res = await fetch('/api/auth/cli-token', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${data.session.access_token}` }
-          })
-          if (!res.ok) {
-            const body = await res.text()
-            status.textContent = 'Token issuance failed: ' + res.status + ' - ' + body
-          } else {
-            const { token, username } = await res.json()
-            const dest = new URL(callbackUrl)
-            dest.searchParams.set('token', token)
-            dest.searchParams.set('username', username)
-            status.textContent = 'Done! You can close this tab.'
-            window.location.href = dest.toString()
-          }
+          // Pass access_token back to CLI — CLI will register its own public key
+          const username = data.session.user?.user_metadata?.['user_name'] ?? 'unknown'
+          const dest = new URL(callbackUrl)
+          dest.searchParams.set('access_token', data.session.access_token)
+          dest.searchParams.set('username', username)
+          status.textContent = 'Done! You can close this tab.'
+          window.location.href = dest.toString()
         }
       } catch (e) {
         status.textContent = 'Auth exchange threw: ' + (e instanceof Error ? e.message : String(e))

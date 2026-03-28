@@ -20,8 +20,7 @@ vi.mock('../../../../lib/storage.js', () => ({
 }))
 
 vi.mock('../../../../lib/tokens.js', () => ({
-  extractBearer: vi.fn().mockReturnValue('valid-token'),
-  resolveToken: vi.fn().mockResolvedValue('user-123'),
+  resolveAuth: vi.fn().mockResolvedValue('user-123'),
 }))
 
 vi.mock('../../../../lib/authz.js', () => ({

@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../../../../lib/tokens.js', () => ({
-  extractBearer: vi.fn(),
-  resolveToken: vi.fn(),
+  resolveAuth: vi.fn(),
 }))
 
 vi.mock('../../../../lib/authz.js', () => ({
@@ -13,15 +12,14 @@ vi.mock('../../../../lib/db.js', () => ({
   setPackageDeprecation: vi.fn(),
 }))
 
-const { extractBearer, resolveToken } = await import('../../../../lib/tokens.js')
+const { resolveAuth } = await import('../../../../lib/tokens.js')
 const { canUserDeprecate } = await import('../../../../lib/authz.js')
 const { setPackageDeprecation } = await import('../../../../lib/db.js')
 
 describe('PUT /api/packages/[name]/deprecate', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(extractBearer).mockReturnValue('mock-token')
-    vi.mocked(resolveToken).mockResolvedValue('user-123')
+    vi.mocked(resolveAuth).mockResolvedValue('user-123')
     vi.mocked(canUserDeprecate).mockResolvedValue(true)
     vi.mocked(setPackageDeprecation).mockResolvedValue(undefined)
   })
@@ -32,7 +30,7 @@ describe('PUT /api/packages/[name]/deprecate', () => {
       params: { name: 'my-pkg' },
       request: new Request('http://localhost', {
         method: 'PUT',
-        headers: { 'content-type': 'application/json', 'authorization': 'Bearer mock-token' },
+        headers: { 'content-type': 'application/json', 'authorization': 'Ink-v1 keyId=test,ts=0,sig=test' },
         body: JSON.stringify({ deprecated: true, message: 'Use successor-pkg instead' }),
       }),
     } as any)
@@ -47,7 +45,7 @@ describe('PUT /api/packages/[name]/deprecate', () => {
       params: { name: 'my-pkg' },
       request: new Request('http://localhost', {
         method: 'PUT',
-        headers: { 'content-type': 'application/json', 'authorization': 'Bearer mock-token' },
+        headers: { 'content-type': 'application/json', 'authorization': 'Ink-v1 keyId=test,ts=0,sig=test' },
         body: JSON.stringify({ deprecated: false }),
       }),
     } as any)
@@ -57,7 +55,7 @@ describe('PUT /api/packages/[name]/deprecate', () => {
   })
 
   it('returns 401 when no auth header', async () => {
-    vi.mocked(extractBearer).mockReturnValue(null)
+    vi.mocked(resolveAuth).mockResolvedValue(null)
 
     const { PUT } = await import('./deprecate.js')
     const response = await PUT({
@@ -80,7 +78,7 @@ describe('PUT /api/packages/[name]/deprecate', () => {
       params: { name: 'my-pkg' },
       request: new Request('http://localhost', {
         method: 'PUT',
-        headers: { 'content-type': 'application/json', 'authorization': 'Bearer mock-token' },
+        headers: { 'content-type': 'application/json', 'authorization': 'Ink-v1 keyId=test,ts=0,sig=test' },
         body: JSON.stringify({ deprecated: true }),
       }),
     } as any)
@@ -94,7 +92,7 @@ describe('PUT /api/packages/[name]/deprecate', () => {
       params: { name: 'my-pkg' },
       request: new Request('http://localhost', {
         method: 'PUT',
-        headers: { 'content-type': 'application/json', 'authorization': 'Bearer mock-token' },
+        headers: { 'content-type': 'application/json', 'authorization': 'Ink-v1 keyId=test,ts=0,sig=test' },
         body: JSON.stringify({ message: 'test' }),
       }),
     } as any)
