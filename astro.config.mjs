@@ -12,6 +12,7 @@ export default defineConfig({
   output: 'server',
   site: 'https://lectern.inklang.org',
   adapter: vercel({
+    webAnalytics: { enabled: true }
   }),
   integrations: [
     starlight({
