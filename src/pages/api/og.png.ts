@@ -2,23 +2,22 @@ import type { APIRoute } from 'astro'
 import { getPackageVersions, getPackageOwner } from '../../lib/db.js'
 import satori from 'satori'
 import { readFileSync } from 'fs'
+import path from 'path'
 
-// Try to load a font - these are common on Linux systems
+// Load bundled font from node_modules
 function loadFont(): ArrayBuffer | undefined {
   const fontPaths = [
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-    '/usr/share/fonts/dejavu/DejaVuSans.ttf',
-    '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
-    '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
-    '/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf',
+    path.join(process.cwd(), 'node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf'),
   ]
 
   for (const fontPath of fontPaths) {
     try {
       const buffer = readFileSync(fontPath)
-      return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
-    } catch {
+      // Return a copy of the buffer as ArrayBuffer
+      return new Uint8Array(buffer).buffer.slice(0)
+    } catch (e) {
       // Font not found, try next
+      console.error('Failed to load font:', fontPath, e)
     }
   }
   return undefined
@@ -130,7 +129,7 @@ export const GET: APIRoute = async ({ url }) => {
                           type: 'div',
                           props: {
                             style: {
-                              display: 'inline-flex',
+                              display: 'flex',
                               backgroundColor: '#27272a',
                               color: '#a1a1aa',
                               fontSize: '18px',
@@ -192,9 +191,18 @@ export const GET: APIRoute = async ({ url }) => {
       height: 630,
       fonts: fonts.length > 0 ? fonts : undefined,
     })
-  } catch {
-    // Fallback if satori fails
-    return new Response('Image generation failed', { status: 500 })
+  } catch (e) {
+    // Fallback if satori fails - try without fonts
+    console.error('Satori error:', e)
+    try {
+      svg = await satori(element, {
+        width: 1200,
+        height: 630,
+      })
+    } catch (e2) {
+      console.error('Satori fallback error:', e2)
+      return new Response(`Image generation failed: ${e instanceof Error ? e.message : String(e)}`, { status: 500 })
+    }
   }
 
   // Convert SVG to PNG using sharp
