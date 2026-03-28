@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro'
 import { getPackageVersions, getPackageOwner } from '../../lib/db.js'
 import satori from 'satori'
 import sharp from 'sharp'
+import { fetch as _fetch } from 'undici'
 
 // Use Inter from jsDelivr as TTF
 const fontUrl = 'https://cdn.jsdelivr.net/npm/inter@3.19.0/packages/inter/ttf/Inter-Regular.ttf'
@@ -29,10 +30,10 @@ export const GET: APIRoute = async ({ url }) => {
     const version = latest.version
     const author = owner?.name || owner?.username || 'Unknown'
 
-    // Fetch fonts
+    // Fetch fonts using undici
     const [fontRegular, fontBold] = await Promise.all([
-      fetch(fontUrl).then(r => r.arrayBuffer()),
-      fetch(fontBoldUrl).then(r => r.arrayBuffer()),
+      _fetch(fontUrl).then(r => r.arrayBuffer()),
+      _fetch(fontBoldUrl).then(r => r.arrayBuffer()),
     ])
 
     const svg = await satori(
