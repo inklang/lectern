@@ -62,72 +62,79 @@ const avatarColor = getAvatarColor(slug)
     <img class="banner-image" src={bannerUrl} alt={`${name} banner`} />
   )}
 
-  <div class="avatar-wrapper">
-    {avatarUrl
-      ? <img class="avatar-image" src={avatarUrl} alt={`${name} avatar`} />
-      : <div class="avatar-fallback" style={`background: ${avatarColor};`}>{name.charAt(0).toUpperCase()}</div>
-    }
-  </div>
-
-  <div class="profile-content">
-    <div class="profile-slug">@{slug}</div>
-    <h1 class="profile-name">{name}</h1>
-
-    {bio && <p class="profile-bio">{bio}</p>}
-
-    <div class="profile-links">
-      {website && (
-        <a href={website} target="_blank" rel="noopener noreferrer" class="profile-link" title="Website">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="2" y1="12" x2="22" y2="12"></line>
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-          </svg>
-          <span>{website.replace(/^https?:\/\//, '')}</span>
-        </a>
-      )}
-      {twitter && (
-        <a href={`https://x.com/${twitter.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" class="profile-link" title="Twitter/X">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-          </svg>
-          <span>@{twitter.replace(/^@/, '')}</span>
-        </a>
-      )}
-      {github && (
-        <a href={`https://github.com/${github.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" class="profile-link" title="GitHub">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-          </svg>
-          <span>{github.replace(/^@/, '')}</span>
-        </a>
-      )}
+  <div class="profile-top">
+    <div class="avatar-wrapper">
+      {avatarUrl
+        ? <img class="avatar-image" src={avatarUrl} alt={`${name} avatar`} />
+        : <div class="avatar-fallback" style={`background: ${avatarColor};`}>{name.charAt(0).toUpperCase()}</div>
+      }
     </div>
 
-    <ProfileStats
-      packages={packageCount}
-      followers={isUser ? followerCount : undefined}
-      following={isUser ? followingCount : undefined}
-      teams={!isUser ? teamsCount : undefined}
-      members={!isUser ? membersCount : undefined}
-    />
+    <div class="profile-content">
+      <div class="profile-main">
+        <div class="profile-identity">
+          <div class="profile-slug">@{slug}</div>
+          <h1 class="profile-name">{name}</h1>
+          {bio && <p class="profile-bio">{bio}</p>}
+        </div>
 
-    <div class="profile-actions">
-      {isOwner ? (
-        editHref && (
-          <a href={editHref} class="btn-edit">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-            </svg>
-            Edit profile
-          </a>
-        )
-      ) : (
-        <button class="btn-follow" data-type={type} data-target-id={slug} data-is-following={isFollowing ? 'true' : 'false'} data-logged-in={isLoggedIn ? 'true' : 'false'}>
-          {isFollowing ? 'Following' : 'Follow'}
-        </button>
-      )}
+        <div class="profile-actions">
+          {isOwner ? (
+            editHref && (
+              <a href={editHref} class="btn-edit">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+                Edit profile
+              </a>
+            )
+          ) : (
+            <button class="btn-follow" data-type={type} data-target-id={slug} data-is-following={isFollowing ? 'true' : 'false'} data-logged-in={isLoggedIn ? 'true' : 'false'}>
+              {isFollowing ? 'Following' : 'Follow'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div class="profile-bottom">
+        <ProfileStats
+          packages={packageCount}
+          followers={isUser ? followerCount : undefined}
+          following={isUser ? followingCount : undefined}
+          teams={!isUser ? teamsCount : undefined}
+          members={!isUser ? membersCount : undefined}
+        />
+
+        <div class="profile-links">
+          {website && (
+            <a href={website} target="_blank" rel="noopener noreferrer" class="profile-link" title="Website">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+              </svg>
+              <span>{website.replace(/^https?:\/\//, '')}</span>
+            </a>
+          )}
+          {twitter && (
+            <a href={`https://x.com/${twitter.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" class="profile-link" title="Twitter/X">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+              </svg>
+              <span>@{twitter.replace(/^@/, '')}</span>
+            </a>
+          )}
+          {github && (
+            <a href={`https://github.com/${github.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" class="profile-link" title="GitHub">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+              </svg>
+              <span>{github.replace(/^@/, '')}</span>
+            </a>
+          )}
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -150,66 +157,90 @@ const avatarColor = getAvatarColor(slug)
     background: var(--surface);
   }
 
+  .profile-top {
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+  }
+
   .avatar-wrapper {
-    position: absolute;
-    top: 140px;
-    left: 1.5rem;
+    flex-shrink: 0;
   }
 
   .avatar-image {
-    width: 80px;
-    height: 80px;
+    width: 96px;
+    height: 96px;
     border-radius: 50%;
-    border: 3px solid var(--bg);
     object-fit: cover;
     background: var(--surface);
+    border: 3px solid var(--border);
   }
 
   .avatar-fallback {
-    width: 80px;
-    height: 80px;
+    width: 96px;
+    height: 96px;
     border-radius: 50%;
-    border: 3px solid var(--bg);
     display: flex;
     align-items: center;
     justify-content: center;
     font-family: var(--font-mono);
-    font-size: 1.5rem;
+    font-size: 2rem;
     font-weight: 600;
     color: white;
+    border: 3px solid var(--border);
   }
 
   .profile-content {
-    padding-top: 50px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .profile-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .profile-identity {
+    min-width: 0;
   }
 
   .profile-slug {
     font-family: var(--font-mono);
     font-size: 0.875rem;
     color: var(--muted);
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
   }
 
   .profile-name {
     font-family: var(--font-mono);
-    font-size: 1.5rem;
-    font-weight: 600;
+    font-size: 1.75rem;
+    font-weight: 700;
     letter-spacing: -0.02em;
     margin-bottom: 0.5rem;
+    line-height: 1.2;
   }
 
   .profile-bio {
     font-size: 0.9375rem;
     color: var(--muted);
     max-width: 600px;
-    margin-bottom: 1rem;
+    line-height: 1.5;
+  }
+
+  .profile-bottom {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1.5rem;
   }
 
   .profile-links {
     display: flex;
     flex-wrap: wrap;
     gap: 1rem;
-    margin-bottom: 1.25rem;
   }
 
   .profile-link {
@@ -233,8 +264,7 @@ const avatarColor = getAvatarColor(slug)
   }
 
   .profile-actions {
-    display: flex;
-    gap: 0.75rem;
+    flex-shrink: 0;
   }
 
   .btn-edit {
@@ -290,20 +320,40 @@ const avatarColor = getAvatarColor(slug)
       height: 120px;
     }
 
-    .avatar-wrapper {
-      top: 80px;
-      left: 1rem;
+    .profile-top {
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .profile-main {
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .profile-identity {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .profile-bottom {
+      justify-content: center;
     }
 
     .avatar-image,
     .avatar-fallback {
-      width: 60px;
-      height: 60px;
-      font-size: 1.25rem;
+      width: 80px;
+      height: 80px;
+      font-size: 1.75rem;
     }
 
-    .profile-content {
-      padding-top: 40px;
+    .profile-name {
+      font-size: 1.5rem;
+    }
+
+    .profile-bio {
+      text-align: center;
     }
   }
 </style>

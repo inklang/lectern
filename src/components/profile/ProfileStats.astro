@@ -46,28 +46,25 @@ const { packages, followers, following, teams, members } = Astro.props
 <style>
   .profile-stats {
     display: flex;
-    gap: 2rem;
-    margin-bottom: 1.25rem;
+    gap: 1.5rem;
   }
 
   .stat {
     display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
+    align-items: baseline;
+    gap: 0.4rem;
   }
 
   .stat-value {
     font-family: var(--font-mono);
-    font-size: 1.125rem;
+    font-size: 1rem;
     font-weight: 600;
     color: var(--text);
   }
 
   .stat-label {
     font-family: var(--font-mono);
-    font-size: 0.775rem;
+    font-size: 0.75rem;
     color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
   }
 </style>
