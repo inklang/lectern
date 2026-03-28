@@ -7,6 +7,8 @@ import { extractDependencies } from '../../../../tar.js'
 import { deliverOrgWebhook, emitWebhooks } from '../../../../lib/webhooks.js'
 import { checkRateLimit, rateLimitHeaders, rateLimitResponse } from '../../../../lib/ratelimit.js'
 import { logAuditEvent } from '../../../../lib/audit.js'
+import { emitNotificationBatch } from '../../../../lib/notifications.js'
+import { getUserFollowers, getOrgFollowers } from '../../../../lib/follows.js'
 
 export const GET: APIRoute = async ({ params, request }) => {
   const { name, version } = params
@@ -169,6 +171,37 @@ export const PUT: APIRoute = async ({ params, request }) => {
     embedding: null,
     targets,
   })
+
+  // Notify followers of new version (fire and forget)
+  ;(async () => {
+    try {
+      if (ownerType === 'user') {
+        const followers = await getUserFollowers(actualOwnerId, 100, 0)
+        const notifications = followers
+          .filter(f => f.follower_id !== userId)
+          .map(f => ({
+            userId: f.follower_id,
+            type: 'new_version' as const,
+            payload: { actor: userId, package: slug, version },
+          }))
+        if (notifications.length > 0) {
+          await emitNotificationBatch(notifications)
+        }
+      } else {
+        const followers = await getOrgFollowers(actualOwnerId, 100, 0)
+        const notifications = followers
+          .filter(f => f.follower_id !== userId)
+          .map(f => ({
+            userId: f.follower_id,
+            type: 'new_version' as const,
+            payload: { actor: userId, package: slug, version, org_id: actualOwnerId },
+          }))
+        if (notifications.length > 0) {
+          await emitNotificationBatch(notifications)
+        }
+      }
+    } catch {}
+  })()
 
   // Add tags if provided (fire and forget)
   if (tags.length > 0) {

@@ -42,6 +42,15 @@ export const PUT: APIRoute = async ({ params, request }) => {
     timestamp: new Date().toISOString(),
   })
 
+  // Notify package owner
+  const ownerId = await getPackageOwner(name)
+  if (ownerId && ownerId !== userId) {
+    emitNotification(ownerId, 'package_starred', {
+      actor: userId,
+      package: name,
+    }).catch(() => {})
+  }
+
   // Get updated star count
   let starCount: number
   try {

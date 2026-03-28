@@ -1,0 +1,427 @@
+---
+import Base from '../layouts/Base.astro'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
+import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../lib/notifications.ts'
+
+const supabase = createServerClient(
+  import.meta.env.SUPABASE_URL ?? '',
+  import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? '',
+  {
+    cookies: {
+      getAll() {
+        return parseCookieHeader(Astro.request.headers.get('Cookie') ?? '')
+      },
+      setAll() {},
+    },
+  }
+)
+
+const { data: { session } } = await supabase.auth.getSession()
+
+if (!session) {
+  return Astro.redirect('/login?next=/notifications')
+}
+
+const userId = session.user.id
+
+// Pagination
+const page = Math.max(1, parseInt(Astro.url.searchParams.get('page') ?? '1', 10))
+const perPage = 20
+const offset = (page - 1) * perPage
+
+// Handle actions
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData()
+  const intent = formData.get('intent') as string
+
+  if (intent === 'mark-all-read') {
+    try {
+      await markAllNotificationsRead(userId)
+    } catch {}
+  } else if (intent === 'mark-read') {
+    const notificationId = formData.get('notificationId') as string
+    if (notificationId) {
+      try {
+        await markNotificationRead(notificationId)
+      } catch {}
+    }
+  }
+
+  return Astro.redirect('/notifications')
+}
+
+// Fetch notifications
+let notifications: Awaited<ReturnType<typeof getNotifications>> = []
+let totalCount = 0
+try {
+  notifications = await getNotifications(userId, perPage, offset, false)
+  // Fetch total for pagination (unread count would be cheaper but total is fine)
+  const { supabase: sb } = await import('../lib/supabase.js')
+  const { count } = await sb
+    .from('notifications')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+  totalCount = count ?? 0
+} catch {
+  notifications = []
+}
+
+const totalPages = Math.ceil(totalCount / perPage)
+
+// Fetch actor info for notifications (actor IDs from payload)
+const actorIds = [...new Set(notifications.map(n => n.payload.actor as string).filter(Boolean))]
+const actorMap: Record<string, { user_name?: string; avatar_url?: string }> = {}
+if (actorIds.length > 0) {
+  const { data: users } = await supabase
+    .from('auth.users')
+    .select('id, raw_user_meta_data')
+    .in('id', actorIds)
+  if (users) {
+    for (const u of users) {
+      actorMap[u.id] = {
+        user_name: u.raw_user_meta_data?.user_name,
+        avatar_url: u.raw_user_meta_data?.avatar_url,
+      }
+    }
+  }
+}
+
+function relativeTime(dateStr: string): string {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const seconds = Math.floor(diff / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+  if (days > 30) return date.toLocaleDateString()
+  if (days > 0) return `${days}d ago`
+  if (hours > 0) return `${hours}h ago`
+  if (minutes > 0) return `${minutes}m ago`
+  return 'just now'
+}
+
+function notificationHref(n: typeof notifications[0]): string {
+  const payload = n.payload as Record<string, unknown>
+  switch (n.type) {
+    case 'new_follower':
+      return `/u/${payload.actor}`
+    case 'new_org_follower':
+      return `/org/${payload.org_id}`
+    case 'package_starred':
+      return `/${payload.package}`
+    case 'new_version':
+      return `/${payload.package}`
+    case 'package_commented':
+      return `/${payload.package}#comments`
+    case 'comment_replied':
+      return `/${payload.package}#comments`
+    case 'package_deprecated':
+      return `/${payload.package}`
+    default:
+      return '/notifications'
+  }
+}
+
+function notificationText(n: typeof notifications[0]): { primary: string; secondary?: string } {
+  const payload = n.payload as Record<string, unknown>
+  const actorName = actorMap[payload.actor as string]?.user_name ?? 'Someone'
+  const packageName = payload.package as string
+
+  switch (n.type) {
+    case 'new_follower':
+      return { primary: `${actorName} followed you` }
+    case 'new_org_follower':
+      return { primary: `${actorName} started following your organization` }
+    case 'package_starred':
+      return { primary: `${actorName} starred`, secondary: packageName }
+    case 'new_version':
+      return {
+        primary: `New version ${payload.version} published`,
+        secondary: packageName,
+      }
+    case 'package_commented':
+      return { primary: `${actorName} commented on`, secondary: packageName }
+    case 'comment_replied':
+      return { primary: `${actorName} replied to your comment on`, secondary: packageName }
+    case 'package_deprecated':
+      return { primary: 'Package deprecated:', secondary: packageName }
+    default:
+      return { primary: 'Notification' }
+  }
+}
+
+const iconMap: Record<string, string> = {
+  new_follower: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+  new_org_follower: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  package_starred: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+  new_version: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>`,
+  package_commented: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+  comment_replied: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+  package_deprecated: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+}
+---
+
+<Base title="Notifications">
+  <div class="notifications-page">
+    <div class="notifications-header">
+      <h1>Notifications</h1>
+      {notifications.some(n => !n.read) && (
+        <form method="POST">
+          <input type="hidden" name="intent" value="mark-all-read" />
+          <button type="submit" class="btn-mark-all">Mark all read</button>
+        </form>
+      )}
+    </div>
+
+    {notifications.length === 0 ? (
+      <div class="notifications-empty">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="empty-icon">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        <p>No notifications yet</p>
+      </div>
+    ) : (
+      <div class="notifications-list">
+        {notifications.map(n => (
+          <div class:list={['notification-item', { unread: !n.read }]} data-id={n.id}>
+            <a href={notificationHref(n)} class="notification-link">
+              <span class="notification-icon" set:html={iconMap[n.type] ?? iconMap.package_starred} />
+              <div class="notification-content">
+                <p class="notification-text">
+                  {notificationText(n).primary}
+                  {notificationText(n).secondary && (
+                    <span class="notification-secondary"> {notificationText(n).secondary}</span>
+                  )}
+                </p>
+                <time class="notification-time" datetime={n.created_at}>{relativeTime(n.created_at)}</time>
+              </div>
+              {!n.read && (
+                <span class="unread-dot" aria-label="Unread" />
+              )}
+            </a>
+            {!n.read && (
+              <form method="POST" class="notification-mark-read">
+                <input type="hidden" name="intent" value="mark-read" />
+                <input type="hidden" name="notificationId" value={n.id} />
+                <button type="submit" class="btn-mark-read" title="Mark as read">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </button>
+              </form>
+            )}
+          </div>
+        ))}
+      </div>
+    )}
+
+    {totalPages > 1 && (
+      <div class="pagination">
+        {page > 1 && <a href={`/notifications?page=${page - 1}`} class="page-link">Previous</a>}
+        <span class="page-info">Page {page} of {totalPages}</span>
+        {page < totalPages && <a href={`/notifications?page=${page + 1}`} class="page-link">Next</a>}
+      </div>
+    )}
+  </div>
+</Base>
+
+<style>
+  .notifications-page {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+  }
+
+  .notifications-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    gap: 1rem;
+  }
+
+  h1 {
+    font-family: var(--font-mono);
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+
+  .btn-mark-all {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .btn-mark-all:hover {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+
+  .notifications-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 4rem 0;
+    color: var(--muted);
+  }
+
+  .empty-icon {
+    opacity: 0.3;
+  }
+
+  .notifications-list {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .notification-item {
+    position: relative;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+
+  .notification-item:last-child {
+    border-bottom: none;
+  }
+
+  .notification-item.unread {
+    background: rgba(139, 92, 246, 0.05);
+  }
+
+  .notification-link {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    padding: 0.875rem 1rem;
+    text-decoration: none;
+    color: var(--text);
+    transition: background 0.1s;
+  }
+
+  .notification-item:not(.unread) .notification-link {
+    padding-right: 2.5rem;
+  }
+
+  .notification-link:hover {
+    background: var(--surface);
+    opacity: 1;
+  }
+
+  .notification-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  .notification-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .notification-text {
+    font-size: 0.875rem;
+    line-height: 1.4;
+    color: var(--text);
+    margin: 0;
+  }
+
+  .notification-secondary {
+    color: var(--accent);
+    font-family: var(--font-mono);
+  }
+
+  .notification-time {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--muted-2);
+    display: block;
+    margin-top: 0.2rem;
+  }
+
+  .unread-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+    margin-top: 0.4rem;
+  }
+
+  .notification-mark-read {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .btn-mark-read {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .btn-mark-read:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 2rem;
+  }
+
+  .page-link {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    padding: 0.35rem 0.875rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    text-decoration: none;
+    transition: border-color 0.15s;
+  }
+
+  .page-link:hover {
+    border-color: var(--accent);
+    opacity: 1;
+  }
+
+  .page-info {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+</style>

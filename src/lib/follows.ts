@@ -101,3 +101,18 @@ export async function isFollowingOrg(followerId: string, orgId: string): Promise
     .single();
   return !!data;
 }
+
+export async function getOrgFollowers(
+  orgId: string,
+  limit = 100,
+  offset = 0
+): Promise<OrgFollow[]> {
+  const { data, error } = await supabase
+    .from('org_follows')
+    .select('*')
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (error) throw error;
+  return data as OrgFollow[];
+}
