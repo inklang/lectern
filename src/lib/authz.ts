@@ -151,3 +151,40 @@ export async function canUserDeprecate(userId: string, slug: string): Promise<bo
 
   return false
 }
+
+/**
+ * Checks if a user can manage (transfer) a package.
+ * - User-owned (owner_type = 'user'): allow iff userId === packages.owner_id
+ * - Org-owned (owner_type = 'org'): user must be org admin (owner or admin role)
+ * - Package doesn't exist: return false
+ */
+export async function canManage(userId: string, slug: string): Promise<boolean> {
+  const { data: pkg } = await supabase
+    .from('packages')
+    .select('owner_id, owner_type')
+    .eq('slug', slug)
+    .single()
+
+  if (!pkg) {
+    return false
+  }
+
+  if (pkg.owner_type === 'user') {
+    return pkg.owner_id === userId
+  }
+
+  if (pkg.owner_type === 'org') {
+    // For org-owned packages, only org admins can manage (transfer)
+    const { data: member } = await supabase
+      .from('org_members')
+      .select('role')
+      .eq('org_id', pkg.owner_id)
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (!member) return false
+    return member.role === 'owner' || member.role === 'admin'
+  }
+
+  return false
+}

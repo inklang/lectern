@@ -7,7 +7,10 @@ export type NotificationType =
   | 'package_commented'
   | 'new_version'
   | 'package_deprecated'
-  | 'comment_replied';
+  | 'comment_replied'
+  | 'transfer_requested'
+  | 'transfer_accepted'
+  | 'transfer_declined';
 
 export interface Notification {
   id: string;

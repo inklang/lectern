@@ -1,0 +1,606 @@
+---
+import Base from '../../../../layouts/Base.astro'
+import { canManage } from '../../../../lib/authz.ts'
+import { supabase as supabaseAdmin } from '../../../../lib/supabase.js'
+import { getPendingTransfer } from '../../../../lib/db.ts'
+
+const { user: ownerSlug, slug: packageName } = Astro.params
+const packageSlug = ownerSlug && packageName ? `${ownerSlug}/${packageName}` : null
+
+if (!packageSlug) return Astro.redirect('/packages')
+
+// Verify package exists
+const { data: pkgRow } = await supabaseAdmin
+  .from('packages')
+  .select('slug, owner_id, owner_type, owner_slug, name')
+  .ilike('slug', packageSlug)
+  .single()
+
+if (!pkgRow) return Astro.redirect('/packages')
+
+const { supabaseAnon } = await import('../../../../lib/supabase.js')
+const { data: sessionData } = await supabaseAnon.auth.getSession()
+if (!sessionData?.session) return Astro.redirect('/login')
+
+const currentUserId = sessionData.session.user.id
+
+// Check if user can manage (transfer) this package
+if (!(await canManage(currentUserId, pkgRow.slug))) {
+  return Astro.redirect(`/${ownerSlug}`)
+}
+
+// Get pending transfer if exists
+const pendingTransfer = await getPendingTransfer(pkgRow.name).catch(() => null)
+---
+
+<Base title={`${packageName} — Settings`}>
+  <div class="settings-wrap">
+    <a class="back-link" href={`/${ownerSlug}/${packageName}`}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      back to package
+    </a>
+
+    <h1>Package Settings</h1>
+
+    <div class="settings-section">
+      <h2>General</h2>
+      <div class="setting-row">
+        <span class="setting-label">Package Name</span>
+        <span class="setting-value mono">{pkgRow.name}</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Current URL</span>
+        <span class="setting-value mono">/{pkgRow.slug}</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Owner</span>
+        <span class="setting-value mono">{pkgRow.owner_slug}</span>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h2>Links</h2>
+      <div class="links-list">
+        <a href={`/${ownerSlug}/${packageName}/settings/webhooks`} class="settings-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Webhooks
+        </a>
+        <a href={`/${ownerSlug}/${packageName}/analytics`} class="settings-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          Analytics
+        </a>
+      </div>
+    </div>
+
+    {pendingTransfer && (
+      <div class="settings-section pending-transfer">
+        <h2>Pending Transfer</h2>
+        <p class="transfer-info">
+          A transfer to <strong>{pendingTransfer.new_slug}</strong> is pending.
+          <a href={`/transfers/${pendingTransfer.id}`}>View details</a>
+        </p>
+        <p class="transfer-actions">
+          <small>You can cancel this transfer from the <a href={`/transfers/${pendingTransfer.id}`}>transfer detail page</a>.</small>
+        </p>
+      </div>
+    )}
+
+    <div class="settings-section danger-zone">
+      <h2>Danger Zone</h2>
+
+      <div class="danger-item">
+        <div class="danger-info">
+          <span class="danger-label">Transfer Ownership</span>
+          <span class="danger-desc">Transfer this package to another user or organization. The URL will change.</span>
+        </div>
+        <button type="button" class="btn-transfer" id="transfer-btn">
+          Transfer Ownership
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Transfer Modal -->
+  <div class="modal-overlay" id="transfer-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Transfer Ownership</h3>
+        <button type="button" class="modal-close" id="modal-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="transfer-package">Transferring <strong>{pkgRow.slug}</strong></p>
+
+        <div class="form-group">
+          <label for="target-type">Transfer to</label>
+          <select id="target-type" class="form-input">
+            <option value="user">User</option>
+            <option value="org">Organization</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="target-input">Username or organization</label>
+          <input type="text" id="target-input" class="form-input" placeholder="Enter username or org slug" />
+        </div>
+
+        <div class="slug-preview" id="slug-preview">
+          <span class="preview-label">New URL:</span>
+          <span class="preview-value" id="preview-slug">—</span>
+        </div>
+
+        <div class="warning-box" id="validation-warning" style="display: none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span id="warning-text"></span>
+        </div>
+
+        <div class="warning-box permanent-warning">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          This will change the package URL. All existing URLs will redirect permanently.
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn-cancel" id="modal-cancel">Cancel</button>
+        <button type="button" class="btn-confirm" id="confirm-transfer" disabled>Confirm Transfer</button>
+      </div>
+    </div>
+  </div>
+</Base>
+
+<style>
+  .settings-wrap {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+  }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--muted);
+    text-decoration: none;
+    margin-bottom: 1.5rem;
+    transition: color 0.15s;
+  }
+
+  .back-link:hover {
+    color: var(--text);
+  }
+
+  h1 {
+    font-family: var(--font-mono);
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 2rem;
+  }
+
+  h2 {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .settings-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .setting-row:last-child {
+    border-bottom: none;
+  }
+
+  .setting-label {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+
+  .setting-value {
+    font-size: 0.875rem;
+  }
+
+  .setting-value.mono {
+    font-family: var(--font-mono);
+    color: var(--text);
+  }
+
+  .links-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .settings-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--text);
+    text-decoration: none;
+    transition: border-color 0.15s;
+  }
+
+  .settings-link:hover {
+    border-color: var(--accent);
+    opacity: 1;
+  }
+
+  .pending-transfer {
+    border-color: #f59e0b;
+    background: #fef3c7;
+  }
+
+  .pending-transfer h2 {
+    color: #92400e;
+  }
+
+  .transfer-info {
+    font-size: 0.875rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .transfer-info a {
+    color: #92400e;
+    text-decoration: underline;
+  }
+
+  .transfer-actions {
+    font-size: 0.8125rem;
+    color: #92400e;
+  }
+
+  .transfer-actions a {
+    color: #92400e;
+    text-decoration: underline;
+  }
+
+  .danger-zone {
+    border-color: #fca5a5;
+  }
+
+  .danger-zone h2 {
+    color: #dc2626;
+  }
+
+  .danger-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .danger-info {
+    flex: 1;
+  }
+
+  .danger-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+  }
+
+  .danger-desc {
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+
+  .btn-transfer {
+    padding: 0.5rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    background: transparent;
+    border: 1px solid #dc2626;
+    border-radius: 6px;
+    color: #dc2626;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .btn-transfer:hover {
+    background: #fee2e2;
+  }
+
+  /* Modal styles */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    display: none;
+  }
+
+  .modal-overlay.open {
+    display: flex;
+  }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .modal-header h3 {
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .modal-close:hover {
+    color: var(--text);
+  }
+
+  .modal-body {
+    padding: 1.25rem;
+  }
+
+  .transfer-package {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+  }
+
+  .form-group {
+    margin-bottom: 1rem;
+  }
+
+  .form-group label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+  }
+
+  .form-input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-sizing: border-box;
+  }
+
+  .form-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .slug-preview {
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 1rem;
+  }
+
+  .preview-label {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 0.25rem;
+  }
+
+  .preview-value {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--accent);
+  }
+
+  .warning-box {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    color: #92400e;
+    margin-bottom: 1rem;
+  }
+
+  .warning-box svg {
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+  }
+
+  .permanent-warning {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #991b1b;
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .btn-cancel {
+    padding: 0.5rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .btn-confirm {
+    padding: 0.5rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    background: #dc2626;
+    border: 1px solid #dc2626;
+    border-radius: 6px;
+    color: white;
+    cursor: pointer;
+  }
+
+  .btn-confirm:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-confirm:not(:disabled):hover {
+    opacity: 0.9;
+  }
+</style>
+
+<script define:vars={{ packageName, ownerSlug }}>
+  const modal = document.getElementById('transfer-modal')
+  const transferBtn = document.getElementById('transfer-btn')
+  const modalClose = document.getElementById('modal-close')
+  const modalCancel = document.getElementById('modal-cancel')
+  const targetType = document.getElementById('target-type')
+  const targetInput = document.getElementById('target-input')
+  const previewSlug = document.getElementById('preview-slug')
+  const validationWarning = document.getElementById('validation-warning')
+  const warningText = document.getElementById('warning-text')
+  const confirmBtn = document.getElementById('confirm-transfer')
+
+  function openModal() {
+    modal?.classList.add('open')
+    targetInput.value = ''
+    updatePreview()
+  }
+
+  function closeModal() {
+    modal?.classList.remove('open')
+  }
+
+  function updatePreview() {
+    const target = targetInput.value.trim()
+    if (!target) {
+      previewSlug.textContent = '—'
+      confirmBtn.disabled = true
+      return
+    }
+
+    const targetSlug = `${target}/${packageName}`
+    previewSlug.textContent = targetSlug
+
+    // Basic validation
+    if (target === ownerSlug) {
+      showWarning('Cannot transfer to the current owner')
+      confirmBtn.disabled = true
+    } else {
+      hideWarning()
+      confirmBtn.disabled = false
+    }
+  }
+
+  function showWarning(message: string) {
+    if (validationWarning) validationWarning.style.display = 'flex'
+    if (warningText) warningText.textContent = message
+  }
+
+  function hideWarning() {
+    if (validationWarning) validationWarning.style.display = 'none'
+  }
+
+  transferBtn?.addEventListener('click', openModal)
+  modalClose?.addEventListener('click', closeModal)
+  modalCancel?.addEventListener('click', closeModal)
+  targetInput?.addEventListener('input', updatePreview)
+  targetType?.addEventListener('change', updatePreview)
+
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal()
+  })
+
+  confirmBtn?.addEventListener('click', async () => {
+    const target = targetInput.value.trim()
+    if (!target) return
+
+    const targetTypeValue = targetType.value
+
+    // Build request body based on target type
+    const requestBody: Record<string, string> = { toOwnerType: targetTypeValue }
+    if (targetTypeValue === 'user') {
+      requestBody.toUsername = target
+    } else {
+      requestBody.toOrgSlug = target
+    }
+
+    try {
+      const response = await fetch(`/api/packages/${packageName}/transfer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      })
+
+      if (response.ok) {
+        window.location.reload()
+      } else {
+        const data = await response.json()
+        showWarning(data.error || 'An error occurred')
+      }
+    } catch {
+      showWarning('An error occurred')
+    }
+  })
+</script>

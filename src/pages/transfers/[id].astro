@@ -1,0 +1,495 @@
+---
+import Base from '../../layouts/Base.astro'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
+import { getTransferRequest, getPackageDependentsFast, getPackageTransferHistory } from '../../lib/db.ts'
+
+const { id } = Astro.params
+if (!id) return Astro.redirect('/notifications')
+
+const supabase = createServerClient(
+  import.meta.env.SUPABASE_URL ?? '',
+  import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? '',
+  {
+    cookies: {
+      getAll() {
+        return parseCookieHeader(Astro.request.headers.get('Cookie') ?? '')
+      },
+      setAll() {},
+    },
+  }
+)
+
+const { data: { session } } = await supabase.auth.getSession()
+if (!session) return Astro.redirect('/login?next=/transfers/' + id)
+
+const userId = session.user.id
+
+// Get transfer
+const transfer = await getTransferRequest(id)
+
+if (!transfer) {
+  return Astro.redirect('/notifications')
+}
+
+// Check if user has access
+if (transfer.from_owner_id !== userId && transfer.to_owner_id !== userId) {
+  return Astro.redirect('/notifications')
+}
+
+const isInitiator = transfer.from_owner_id === userId
+const isRecipient = transfer.to_owner_id === userId
+const isPending = transfer.status === 'pending'
+const isExpired = new Date(transfer.expires_at) < new Date()
+
+// Get dependents for warning
+const dependents = await getPackageDependentsFast(transfer.package_name).catch(() => [])
+
+// Get transfer history
+const history = await getPackageTransferHistory(transfer.package_name).catch(() => [])
+
+function statusColor(status: string): string {
+  switch (status) {
+    case 'pending': return '#f59e0b'
+    case 'accepted': return '#22c55e'
+    case 'declined': return '#ef4444'
+    case 'cancelled': return '#6b7280'
+    case 'expired': return '#9ca3af'
+    default: return '#6b7280'
+  }
+}
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+---
+
+<Base title={`Transfer ${transfer.package_name}`}>
+  <div class="transfer-page">
+    <a class="back-link" href="/notifications">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      back to notifications
+    </a>
+
+    <div class="transfer-header">
+      <h1>Transfer Request</h1>
+      <span class="status-badge" style={`background: ${statusColor(transfer.status)}20; color: ${statusColor(transfer.status)}; border-color: ${statusColor(transfer.status)}40`}>
+        {transfer.status}
+      </span>
+    </div>
+
+    <div class="transfer-card">
+      <div class="package-info">
+        <span class="label">Package</span>
+        <span class="value package-name">{transfer.package_name}</span>
+      </div>
+
+      <div class="slug-change">
+        <div class="slug old">
+          <span class="label">From</span>
+          <span class="value">{transfer.old_slug}</span>
+        </div>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="arrow"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        <div class="slug new">
+          <span class="label">To</span>
+          <span class="value">{transfer.new_slug}</span>
+        </div>
+      </div>
+
+      <div class="owners">
+        <div class="owner">
+          <span class="label">Initiator</span>
+          <div class="owner-info">
+            {transfer.from_owner_avatar ? (
+              <img src={transfer.from_owner_avatar} alt="" class="avatar" />
+            ) : (
+              <div class="avatar-placeholder">{transfer.from_owner_username?.charAt(0).toUpperCase()}</div>
+            )}
+            <span class="owner-name">{transfer.from_owner_username}</span>
+          </div>
+        </div>
+        <div class="owner">
+          <span class="label">Recipient</span>
+          <div class="owner-info">
+            {transfer.to_owner_avatar ? (
+              <img src={transfer.to_owner_avatar} alt="" class="avatar" />
+            ) : (
+              <div class="avatar-placeholder">{transfer.to_owner_username?.charAt(0).toUpperCase()}</div>
+            )}
+            <span class="owner-name">{transfer.to_owner_username}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="dates">
+        <div class="date">
+          <span class="label">Created</span>
+          <span class="value">{formatDate(transfer.created_at)}</span>
+        </div>
+        <div class="date">
+          <span class="label">Expires</span>
+          <span class="value" class:list={[isExpired && 'expired']}>{formatDate(transfer.expires_at)}</span>
+        </div>
+        {transfer.accepted_at && (
+          <div class="date">
+            <span class="label">Accepted</span>
+            <span class="value">{formatDate(transfer.accepted_at)}</span>
+          </div>
+        )}
+        {transfer.declined_at && (
+          <div class="date">
+            <span class="label">Declined</span>
+            <span class="value">{formatDate(transfer.declined_at)}</span>
+          </div>
+        )}
+        {transfer.cancelled_at && (
+          <div class="date">
+            <span class="label">Cancelled</span>
+            <span class="value">{formatDate(transfer.cancelled_at)}</span>
+          </div>
+        )}
+      </div>
+    </div>
+
+    {isPending && !isExpired && (
+      <div class="actions">
+        {isRecipient && (
+          <>
+            <form method="POST" action={`/api/transfers/${id}/accept`} class="action-form">
+              <button type="submit" class="btn btn-accept">Accept Transfer</button>
+            </form>
+            <form method="POST" action={`/api/transfers/${id}/decline`} class="action-form">
+              <button type="submit" class="btn btn-decline">Decline</button>
+            </form>
+          </>
+        )}
+        {isInitiator && (
+          <form method="POST" action={`/api/transfers/${id}/cancel`} class="action-form">
+            <button type="submit" class="btn btn-cancel">Cancel Transfer</button>
+          </form>
+        )}
+      </div>
+    )}
+
+    {dependents.length > 0 && transfer.status === 'accepted' && (
+      <div class="warning-banner">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div class="warning-text">
+          <strong>This package is a dependency of {dependents.length} other package(s)</strong> on lectern.ink.
+          Those packages may need to update their dependency reference to the new slug.
+          <br/><br/>
+          Old slug: <code>{transfer.old_slug}</code> → New slug: <code>{transfer.new_slug}</code>
+        </div>
+      </div>
+    )}
+
+    {history.length > 0 && (
+      <div class="history">
+        <h2>Transfer History</h2>
+        <div class="history-list">
+          {history.map(h => (
+            <div class="history-item">
+              <span class="history-date">{formatDate(h.transferred_at)}</span>
+              <span class="history-slug">{h.new_slug}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>
+</Base>
+
+<style>
+  .transfer-page {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+  }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--muted);
+    text-decoration: none;
+    margin-bottom: 1.5rem;
+    transition: color 0.15s;
+  }
+
+  .back-link:hover {
+    color: var(--text);
+  }
+
+  .transfer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+  }
+
+  h1 {
+    font-family: var(--font-mono);
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+
+  .status-badge {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    border: 1px solid;
+    text-transform: capitalize;
+  }
+
+  .transfer-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .package-info {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin-bottom: 0.25rem;
+  }
+
+  .value {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--text);
+  }
+
+  .package-name {
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+
+  .slug-change {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .slug {
+    flex: 1;
+  }
+
+  .slug.old .value {
+    color: var(--muted);
+  }
+
+  .slug.new .value {
+    color: var(--accent);
+  }
+
+  .arrow {
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  .owners {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .owner-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+  }
+
+  .avatar, .avatar-placeholder {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+  }
+
+  .avatar-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent);
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .owner-name {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--text);
+  }
+
+  .dates {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+  }
+
+  .date .value.expired {
+    color: #ef4444;
+  }
+
+  .actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .action-form {
+    flex: 1;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+
+  .btn:hover {
+    opacity: 0.85;
+  }
+
+  .btn-accept {
+    background: #22c55e;
+    border: 1px solid #22c55e;
+    color: white;
+  }
+
+  .btn-decline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  .btn-cancel {
+    background: transparent;
+    border: 1px solid #ef4444;
+    color: #ef4444;
+  }
+
+  .warning-banner {
+    display: flex;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    color: #92400e;
+  }
+
+  .warning-banner svg {
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+  }
+
+  .warning-text {
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  .warning-text code {
+    font-family: var(--font-mono);
+    background: rgba(0,0,0,0.1);
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+  }
+
+  .history {
+    margin-top: 2rem;
+  }
+
+  .history h2 {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 1rem;
+  }
+
+  .history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .history-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+  }
+
+  .history-date {
+    color: var(--muted);
+  }
+
+  .history-slug {
+    color: var(--text);
+  }
+</style>
+
+<script>
+  // Handle form submissions via fetch
+  document.querySelectorAll('.action-form').forEach(form => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault()
+      const form = e.target as HTMLFormElement
+      const action = form.action
+      const method = form.method
+
+      try {
+        const response = await fetch(action, { method })
+        if (response.ok) {
+          window.location.reload()
+        } else {
+          const data = await response.json()
+          alert(data.error || 'An error occurred')
+        }
+      } catch (err) {
+        alert('An error occurred')
+      }
+    })
+  })
+</script>

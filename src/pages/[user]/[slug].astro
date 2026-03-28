@@ -9,7 +9,7 @@ import HealthPanel from '../../components/HealthPanel.astro'
 import DeprecationBanner from '../../components/DeprecationBanner.astro'
 import VerifiedBadge from '../../components/VerifiedBadge.astro'
 import StarPicker from '../../components/StarPicker.astro'
-import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount, getPackageHealth, getDownloadTimeline, resolvePackageSlugs, getPackageReviewsWithUsers, getUserReview, getPackageRating, type ReviewWithUser } from '../../lib/db.js'
+import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount, getPackageHealth, getDownloadTimeline, resolvePackageSlugs, getPackageReviewsWithUsers, getUserReview, getPackageRating, getPackageRedirect, type ReviewWithUser } from '../../lib/db.js'
 import { canUserPublish } from '../../lib/authz.js'
 import DownloadSparkline from '../../components/DownloadSparkline.astro'
 import { renderMarkdown } from '../../lib/markdown.js'
@@ -36,6 +36,13 @@ if (!pkgRow) {
 // Use the exact slug from DB (case-corrected) for subsequent queries
 const dbSlug = pkgRow.slug
 const packageName = pkgRow.name // display name (bare package name, e.g., "test-package")
+
+// Check for package redirect (if this slug has been migrated)
+const redirectTarget = await getPackageRedirect(dbSlug).catch(() => null)
+if (redirectTarget) {
+  // Serve 301 redirect to new URL with header indicating migration
+  return Astro.redirect(redirectTarget, 301)
+}
 
 const versions = await getPackageVersions(dbSlug)
 
