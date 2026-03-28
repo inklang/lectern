@@ -1,6 +1,23 @@
 import type { APIRoute } from 'astro'
 import { createServerClient, parseCookieHeader } from '@supabase/ssr'
-import { extractBearer, issueToken, revokeToken } from '../../../lib/tokens.js'
+import { extractBearer, issueToken, resolveToken, revokeToken } from '../../../lib/tokens.js'
+
+export const GET: APIRoute = async ({ request }) => {
+  const raw = extractBearer(request.headers.get('authorization'))
+  if (!raw) {
+    return new Response(JSON.stringify({ error: 'Missing or invalid Authorization header' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+  }
+  const userId = await resolveToken(raw)
+  if (!userId) {
+    return new Response(JSON.stringify({ error: 'Invalid or expired token' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+  }
+  const { supabase } = await import('../../../lib/supabase.js')
+  const { data: profile } = await supabase.from('users').select('username').eq('id', userId).single()
+  return new Response(JSON.stringify({ valid: true, username: profile?.username ?? null }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
 
 export const POST: APIRoute = async ({ request }) => {
   const supabase = createServerClient(
