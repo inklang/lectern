@@ -1,0 +1,693 @@
+---
+import Base from '../../../../layouts/Base.astro'
+import { canUserPublish } from '../../../../lib/authz.js'
+import { supabase as supabaseAdmin } from '../../../../lib/supabase.js'
+import { listPackageWebhooks } from '../../../../lib/webhooks.js'
+
+const { user: ownerSlug, slug: packageName } = Astro.params
+const packageSlug = ownerSlug && packageName ? `${ownerSlug}/${packageName}` : null
+
+if (!packageSlug) return Astro.redirect('/packages')
+
+// Verify package exists
+const { data: pkgRow } = await supabaseAdmin
+  .from('packages')
+  .select('slug, owner_id, owner_type')
+  .ilike('slug', packageSlug)
+  .single()
+
+if (!pkgRow) return Astro.redirect('/packages')
+
+const { supabaseAnon } = await import('../../../../lib/supabase.js')
+const { data: sessionData } = await supabaseAnon.auth.getSession()
+if (!sessionData?.session) return Astro.redirect('/login')
+
+const currentUserId = sessionData.session.user.id
+
+// Check if user can publish (and thus manage webhooks)
+if (!(await canUserPublish(currentUserId, pkgRow.slug))) {
+  return Astro.redirect(`/${ownerSlug}`)
+}
+
+const supabaseUrl = import.meta.env.SUPABASE_URL ?? ''
+const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
+
+// Fetch webhooks for this package
+const webhooks = await listPackageWebhooks(currentUserId)
+const packageWebhooks = webhooks.filter(w => w.package_name === packageName)
+
+// Serialize webhooks for client-side use
+const initialWebhooks = JSON.stringify(packageWebhooks)
+---
+
+<Base title={`${packageName} — Webhooks`}>
+  <style>
+    .settings-wrap {
+      max-width: 860px;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      margin-bottom: 1.5rem;
+      transition: color 0.15s;
+    }
+
+    .back-link:hover {
+      color: var(--text);
+    }
+
+    .page-header {
+      margin-bottom: 2rem;
+    }
+
+    .page-header h1 {
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .page-header .package-slug {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.25rem;
+    }
+
+    .section {
+      margin-bottom: 2rem;
+    }
+
+    .section-title {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: var(--text);
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-label {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .form-input {
+      width: 100%;
+      max-width: 400px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.625rem 0.875rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text);
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .form-input:focus {
+      border-color: var(--accent);
+    }
+
+    .checkbox-group {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1.1rem;
+      border-radius: 7px;
+      font-size: 0.875rem;
+      font-family: var(--font-sans);
+      cursor: pointer;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 500;
+      transition: opacity 0.15s;
+    }
+
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--text);
+      border-color: var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--accent);
+    }
+
+    .btn-danger {
+      background: #dc2626;
+      border-color: #dc2626;
+    }
+
+    .btn-sm {
+      padding: 0.3rem 0.75rem;
+      font-size: 0.75rem;
+    }
+
+    .webhook-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .webhook-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+    }
+
+    .webhook-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 0.75rem;
+    }
+
+    .webhook-url {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text);
+      word-break: break-all;
+      flex: 1;
+    }
+
+    .webhook-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-left: 1rem;
+    }
+
+    .webhook-meta {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+    }
+
+    .webhook-badge {
+      display: inline-flex;
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .webhook-badge.active {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .webhook-badge.inactive {
+      background: rgba(161, 161, 170, 0.15);
+      color: var(--muted);
+      border: 1px solid rgba(161, 161, 170, 0.3);
+    }
+
+    .webhook-events {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+
+    .event-tag {
+      display: inline-flex;
+      padding: 0.15rem 0.5rem;
+      border-radius: 3px;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      background: rgba(139, 92, 246, 0.15);
+      color: #a78bfa;
+      border: 1px solid rgba(139, 92, 246, 0.3);
+    }
+
+    .delivery-status {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .delivery-status.success {
+      color: #4ade80;
+    }
+
+    .delivery-status.failure {
+      color: #f87171;
+    }
+
+    .empty {
+      text-align: center;
+      padding: 2rem 0;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+    }
+
+    .secret-note {
+      background: rgba(251, 191, 36, 0.1);
+      border: 1px solid rgba(251, 191, 36, 0.3);
+      border-radius: 7px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: #fbbf24;
+    }
+
+    .secret-note strong {
+      color: #fbbf24;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      max-width: 500px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal h2 {
+      font-family: var(--font-mono);
+      font-size: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1.25rem;
+    }
+  </style>
+
+  <div class="settings-wrap" id="webhooks-container"
+       data-owner-slug={ownerSlug}
+       data-package={packageName}
+       data-url={supabaseUrl}
+       data-key={supabaseKey}>
+    <a class="back-link" href={`/${ownerSlug}/${packageName}`}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      <span>{packageName}</span>
+    </a>
+
+    <div class="page-header">
+      <h1>webhooks</h1>
+      <div class="package-slug">{ownerSlug}/{packageName}</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Add Webhook</div>
+      <div id="add-form">
+        <div class="form-group">
+          <label class="form-label" for="webhook-url">Endpoint URL</label>
+          <input type="url" id="webhook-url" class="form-input" placeholder="https://your-server.com/webhook" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Events</label>
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" value="package.starred" class="event-checkbox" />
+              package.starred
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" value="package.published" class="event-checkbox" />
+              package.published
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" value="package.new_dependent" class="event-checkbox" />
+              package.new_dependent
+            </label>
+          </div>
+        </div>
+
+        <button id="add-webhook-btn" class="btn">Add Webhook</button>
+      </div>
+      <div id="add-secret" class="secret-note hidden">
+        <strong>Save your secret:</strong> <span id="new-secret"></span>
+        <p style="margin-top: 0.5rem; font-size: 0.75rem;">This will not be shown again.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Active Webhooks</div>
+      <div id="webhook-list" class="webhook-list">
+        <!-- Populated by JS -->
+      </div>
+      <div id="empty-message" class="empty" style="display: none;">No webhooks configured yet.</div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="edit-modal" class="modal-overlay hidden">
+      <div class="modal">
+        <h2>Edit Webhook</h2>
+        <input type="hidden" id="edit-id" />
+        <div class="form-group">
+          <label class="form-label" for="edit-url">Endpoint URL</label>
+          <input type="url" id="edit-url" class="form-input" placeholder="https://your-server.com/webhook" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Events</label>
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" value="package.starred" class="edit-event-checkbox" />
+              package.starred
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" value="package.published" class="edit-event-checkbox" />
+              package.published
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" value="package.new_dependent" class="edit-event-checkbox" />
+              package.new_dependent
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="edit-active" />
+            Active
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button id="save-edit-btn" class="btn">Save</button>
+          <button id="cancel-edit-btn" class="btn btn-secondary">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    import { createClient } from '@supabase/supabase-js'
+
+    const container = document.getElementById('webhooks-container')!
+    const ownerSlug = container.dataset.ownerSlug!
+    const packageName = container.dataset.package!
+    const supabaseUrl = container.dataset.url!
+    const supabaseKey = container.dataset.key!
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
+    let webhooks: any[] = []
+
+    async function getSession() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        window.location.href = '/login'
+        return null
+      }
+      return session
+    }
+
+    function renderWebhooks() {
+      const list = document.getElementById('webhook-list')!
+      const empty = document.getElementById('empty-message')!
+
+      if (webhooks.length === 0) {
+        list.innerHTML = ''
+        empty.style.display = 'block'
+        return
+      }
+
+      empty.style.display = 'none'
+      list.innerHTML = webhooks.map(w => `
+        <div class="webhook-card" data-id="${w.id}">
+          <div class="webhook-header">
+            <div class="webhook-url">${w.url}</div>
+            <div class="webhook-actions">
+              <button class="btn btn-secondary btn-sm test-btn" data-id="${w.id}">Test</button>
+              <button class="btn btn-secondary btn-sm edit-btn" data-id="${w.id}">Edit</button>
+              <button class="btn btn-danger btn-sm delete-btn" data-id="${w.id}">Delete</button>
+            </div>
+          </div>
+          <div class="webhook-meta">
+            <span class="webhook-badge ${w.active ? 'active' : 'inactive'}">${w.active ? 'Active' : 'Inactive'}</span>
+            <div class="webhook-events">
+              ${(w.events || []).map((ev: string) => `<span class="event-tag">${ev}</span>`).join('')}
+            </div>
+          </div>
+          <div class="delivery-status ${w.lastStatus === 'ok' ? 'success' : w.lastStatus === 'error' ? 'failure' : ''}">
+            ${w.lastAttempt ? `Last delivery: ${w.lastStatus === 'ok' ? 'Success' : 'Failed'} at ${new Date(w.lastAttempt).toLocaleString()}` : 'No deliveries yet'}
+          </div>
+        </div>
+      `).join('')
+
+      // Attach event listeners
+      list.querySelectorAll('.test-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const id = (e.target as HTMLElement).dataset.id!
+          await testWebhook(id)
+        })
+      })
+
+      list.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const id = (e.target as HTMLElement).dataset.id!
+          openEditModal(id)
+        })
+      })
+
+      list.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const id = (e.target as HTMLElement).dataset.id!
+          if (confirm('Delete this webhook?')) {
+            await deleteWebhook(id)
+          }
+        })
+      })
+    }
+
+    async function loadWebhooks() {
+      const session = await getSession()
+      if (!session) return
+
+      const res = await fetch(`/api/webhooks?package=${encodeURIComponent(packageName)}`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
+
+      if (!res.ok) {
+        console.error('Failed to load webhooks')
+        return
+      }
+
+      webhooks = await res.json()
+      renderWebhooks()
+    }
+
+    async function addWebhook() {
+      const session = await getSession()
+      if (!session) return
+
+      const url = (document.getElementById('webhook-url') as HTMLInputElement).value
+      const events = Array.from(document.querySelectorAll('.event-checkbox:checked')).map(el => (el as HTMLInputElement).value)
+
+      if (!url || !events.length) {
+        alert('URL and at least one event are required')
+        return
+      }
+
+      const btn = document.getElementById('add-webhook-btn') as HTMLButtonElement
+      btn.disabled = true
+      btn.textContent = 'Adding...'
+
+      try {
+        const res = await fetch('/api/webhooks', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ packageName, url, events }),
+        })
+
+        if (!res.ok) {
+          const err = await res.json()
+          alert(err.error || 'Failed to add webhook')
+          return
+        }
+
+        const { id, secret } = await res.json()
+
+        // Show secret
+        document.getElementById('new-secret')!.textContent = secret
+        document.getElementById('add-secret')!.classList.remove('hidden')
+
+        // Clear form
+        ;(document.getElementById('webhook-url') as HTMLInputElement).value = ''
+        document.querySelectorAll('.event-checkbox').forEach(el => (el as HTMLInputElement).checked = false)
+
+        // Reload webhooks
+        await loadWebhooks()
+      } finally {
+        btn.disabled = false
+        btn.textContent = 'Add Webhook'
+      }
+    }
+
+    async function deleteWebhook(id: string) {
+      const session = await getSession()
+      if (!session) return
+
+      const res = await fetch(`/api/webhooks/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
+
+      if (!res.ok) {
+        alert('Failed to delete webhook')
+        return
+      }
+
+      await loadWebhooks()
+    }
+
+    async function testWebhook(id: string) {
+      const session = await getSession()
+      if (!session) return
+
+      const btn = document.querySelector(`.test-btn[data-id="${id}"]`) as HTMLButtonElement
+      btn.disabled = true
+      btn.textContent = 'Testing...'
+
+      try {
+        const res = await fetch(`/api/webhooks/${id}/test`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        })
+
+        const result = await res.json()
+        if (result.ok) {
+          alert('Test webhook delivered successfully!')
+        } else {
+          alert(`Test webhook failed: ${result.error || 'Unknown error'} (status: ${result.status})`)
+        }
+      } finally {
+        btn.disabled = false
+        btn.textContent = 'Test'
+      }
+    }
+
+    function openEditModal(id: string) {
+      const webhook = webhooks.find(w => w.id === id)
+      if (!webhook) return
+
+      ;(document.getElementById('edit-id') as HTMLInputElement).value = id
+      ;(document.getElementById('edit-url') as HTMLInputElement).value = webhook.url
+      ;(document.getElementById('edit-active') as HTMLInputElement).checked = webhook.active
+
+      document.querySelectorAll('.edit-event-checkbox').forEach(el => {
+        (el as HTMLInputElement).checked = webhook.events.includes((el as HTMLInputElement).value)
+      })
+
+      document.getElementById('edit-modal')!.classList.remove('hidden')
+    }
+
+    function closeEditModal() {
+      document.getElementById('edit-modal')!.classList.add('hidden')
+    }
+
+    async function saveEdit() {
+      const session = await getSession()
+      if (!session) return
+
+      const id = (document.getElementById('edit-id') as HTMLInputElement).value
+      const url = (document.getElementById('edit-url') as HTMLInputElement).value
+      const active = (document.getElementById('edit-active') as HTMLInputElement).checked
+      const events = Array.from(document.querySelectorAll('.edit-event-checkbox:checked')).map(el => (el as HTMLInputElement).value)
+
+      if (!url || !events.length) {
+        alert('URL and at least one event are required')
+        return
+      }
+
+      const res = await fetch(`/api/webhooks/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ url, events, active }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json()
+        alert(err.error || 'Failed to update webhook')
+        return
+      }
+
+      closeEditModal()
+      await loadWebhooks()
+    }
+
+    // Event listeners
+    document.getElementById('add-webhook-btn')!.addEventListener('click', addWebhook)
+    document.getElementById('cancel-edit-btn')!.addEventListener('click', closeEditModal)
+    document.getElementById('save-edit-btn')!.addEventListener('click', saveEdit)
+    document.getElementById('edit-modal')!.addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeEditModal()
+    })
+
+    // Initial load
+    loadWebhooks()
+  </script>
+</Base>

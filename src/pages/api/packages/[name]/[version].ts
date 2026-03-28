@@ -4,7 +4,7 @@ import { canUserPublish } from '../../../../lib/authz.js'
 import { getPackageOwner, createPackage, insertVersion, versionExists } from '../../../../lib/db.js'
 import { uploadTarball } from '../../../../lib/storage.js'
 import { extractDependencies } from '../../../../tar.js'
-import { deliverWebhook } from '../../../../lib/webhooks.js'
+import { deliverOrgWebhook, emitWebhooks } from '../../../../lib/webhooks.js'
 import { checkRateLimit, rateLimitHeaders, rateLimitResponse } from '../../../../lib/ratelimit.js'
 import { logAuditEvent } from '../../../../lib/audit.js'
 
@@ -182,7 +182,7 @@ export const PUT: APIRoute = async ({ params, request }) => {
   generateAndStoreEmbedding(slug, version, description, readme).catch(() => {})
 
   // Fire webhook for package.published event (fire and forget)
-  deliverWebhook(ownerType === 'org' ? actualOwnerId : null, 'package.published', {
+  deliverOrgWebhook(ownerType === 'org' ? actualOwnerId : null, 'package.published', {
     package: name,
     version,
     description,
@@ -190,6 +190,17 @@ export const PUT: APIRoute = async ({ params, request }) => {
     owner_type: ownerType,
     owner_id: actualOwnerId,
   }).catch(() => {})
+
+  // Fire package-level webhooks (fire and forget)
+  emitWebhooks(name, 'package.published', {
+    package: name,
+    version,
+    description,
+    published_by: userId,
+    owner_type: ownerType,
+    owner_id: actualOwnerId,
+    timestamp: new Date().toISOString(),
+  })
 
   // Log audit event (fire and forget)
   logAuditEvent({

@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro'
 import { extractBearer, resolveToken } from '../../../../lib/tokens.js'
 import { starPackage, unstarPackage, hasStarred, getStarCount, getPackageVersions } from '../../../../lib/db.js'
+import { emitWebhooks } from '../../../../lib/webhooks.js'
 
 // PUT /api/packages/:name/star - Star a package
 // Auth: Bearer token
@@ -30,6 +31,15 @@ export const PUT: APIRoute = async ({ params, request }) => {
   } catch {
     return new Response(JSON.stringify({ error: 'Database error' }), { status: 500 })
   }
+
+  // Fire webhook for package.starred event (fire and forget)
+  // Extract short name from full slug (e.g., "owner/pkg" -> "pkg")
+  const shortName = name.includes('/') ? name.split('/').pop()! : name
+  emitWebhooks(shortName, 'package.starred', {
+    starer: userId,
+    package: name,
+    timestamp: new Date().toISOString(),
+  })
 
   // Get updated star count
   let starCount: number
