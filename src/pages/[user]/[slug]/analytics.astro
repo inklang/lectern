@@ -1,0 +1,470 @@
+---
+import Base from '../../../layouts/Base.astro'
+import DownloadSparkline from '../../../components/DownloadSparkline.astro'
+import { canUserPublish } from '../../../lib/authz.js'
+import { supabase as supabaseAdmin } from '../../../lib/supabase.js'
+import { getPackageStats, getDownloadTimeline, getPackageVersions, getPackageDependentsFast, getStarCount } from '../../../lib/db.js'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
+
+const { user: ownerSlug, slug: packageName } = Astro.params
+const packageSlug = ownerSlug && packageName ? `${ownerSlug}/${packageName}` : null
+
+if (!packageSlug) return Astro.redirect('/packages')
+
+// Verify package exists
+const { data: pkgRow } = await supabaseAdmin
+  .from('packages')
+  .select('slug, name')
+  .ilike('slug', packageSlug)
+  .single()
+
+if (!pkgRow) return Astro.redirect('/packages')
+
+const dbSlug = pkgRow.slug
+const pkgShortName = pkgRow.name
+
+// Check auth
+const supabase = createServerClient(
+  import.meta.env.SUPABASE_URL ?? '',
+  import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? '',
+  {
+    cookies: {
+      getAll() {
+        return parseCookieHeader(Astro.request.headers.get('Cookie') ?? '')
+      },
+      setAll() {},
+    },
+  }
+)
+const { data: { session } } = await supabase.auth.getSession()
+if (!session) return Astro.redirect('/login')
+
+const currentUserId = session.user.id
+
+// Owner-only check
+if (!(await canUserPublish(currentUserId, dbSlug))) {
+  return Astro.redirect(`/${ownerSlug}/${packageName}`)
+}
+
+// Fetch analytics data server-side for initial render
+const [stats, timeline30d, versions, starCount] = await Promise.all([
+  getPackageStats(dbSlug).catch(() => ({ total: 0, last7d: 0, last30d: 0 })),
+  getDownloadTimeline(pkgShortName, 30).catch(() => []),
+  getPackageVersions(dbSlug).catch(() => []),
+  getStarCount(dbSlug).catch(() => 0),
+])
+
+// Top versions by downloads
+const topVersions = [...versions]
+  .sort((a, b) => (b.download_count ?? 0) - (a.download_count ?? 0))
+  .slice(0, 5)
+
+// Top dependents
+const dependents = await getPackageDependentsFast(pkgShortName).catch(() => [])
+const depMap = new Map<string, { package_slug: string; versionCount: number }>()
+for (const d of dependents) {
+  const existing = depMap.get(d.package_slug)
+  if (existing) {
+    existing.versionCount++
+  } else {
+    depMap.set(d.package_slug, { package_slug: d.package_slug, versionCount: 1 })
+  }
+}
+const topDependents = [...depMap.values()]
+  .sort((a, b) => b.versionCount - a.versionCount)
+  .slice(0, 5)
+  .map(d => {
+    const shortName = d.package_slug.includes('/') ? d.package_slug.split('/').pop()! : d.package_slug
+    return { packageSlug: d.package_slug, packageName: shortName, versionCount: d.versionCount }
+  })
+
+// Trends
+const prev30d = stats.last30d > 0 ? stats.last30d : 0
+const prev7d = stats.last7d > 0 ? stats.last7d : 0
+// Approximate previous periods for trend calculation
+const downloadTrend7d = prev7d > 0 ? 0 : 0 // Not enough data for true trend without history
+const downloadTrend30d = prev30d > 0 ? 0 : 0
+
+// Star trend — we don't have historical star data server-side, pass 0 for now
+// Client will fetch from API for detailed timeline
+
+// Serialize for client-side use
+const accessToken = session.access_token ?? null
+---
+
+<Base title={`Analytics — ${packageSlug}`} description={`Analytics for ${packageSlug}`}>
+  <style>
+    .back {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      display: inline-block;
+      margin-bottom: 2rem;
+    }
+    .back:hover { color: var(--text); opacity: 1; }
+
+    .page-header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.75rem;
+      margin-bottom: 2rem;
+    }
+
+    .page-title {
+      font-family: var(--font-mono);
+      font-size: 1.5rem;
+      font-weight: 600;
+      letter-spacing: -0.04em;
+    }
+
+    .pkg-name { color: var(--accent); }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+    }
+
+    .stat-label {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-value {
+      font-family: var(--font-mono);
+      font-size: 1.75rem;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.03em;
+    }
+
+    .stat-trend {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      margin-top: 0.25rem;
+    }
+
+    .stat-trend.up { color: #22c55e; }
+    .stat-trend.down { color: #ef4444; }
+    .stat-trend.neutral { color: var(--muted); }
+
+    .stat-sub {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 0.25rem;
+    }
+
+    .section {
+      margin-bottom: 2.5rem;
+    }
+
+    .section-heading {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.875rem;
+    }
+
+    .sparkline-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+    }
+
+    .versions-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .versions-table th {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .versions-table td {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      padding: 0.65rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .versions-table tr:last-child td { border-bottom: none; }
+
+    .version-version { color: var(--accent); font-weight: 600; }
+    .version-dl { color: var(--muted); text-align: right; }
+    .version-date { color: var(--muted); text-align: right; }
+
+    .dependents-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .dep-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.6rem 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+    }
+
+    .dep-name {
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .dep-name:hover { color: var(--accent); opacity: 0.9; }
+
+    .dep-count {
+      color: var(--muted);
+      font-size: 0.75rem;
+    }
+
+    .release-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .release-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+    }
+
+    .release-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .release-version { color: var(--accent); font-weight: 600; }
+    .release-date { color: var(--muted); font-size: 0.75rem; }
+
+    .loading {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      padding: 1rem 0;
+    }
+
+    .api-error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid #ef4444;
+      border-radius: 8px;
+      padding: 0.875rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: #ef4444;
+      margin-bottom: 1.5rem;
+    }
+
+    .no-data {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      padding: 1rem 0;
+    }
+  </style>
+
+  <a class="back" href={`/${ownerSlug}/${packageName}`}>← {packageSlug}</a>
+
+  <div class="page-header">
+    <div class="page-title">Analytics for <span class="pkg-name">{packageName}</span></div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <p class="stat-label">Total Downloads</p>
+      <p class="stat-value" id="stat-total">{stats.total.toLocaleString()}</p>
+      <p class="stat-sub">all time</p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-label">Downloads (7d)</p>
+      <p class="stat-value" id="stat-7d">{stats.last7d.toLocaleString()}</p>
+      <p class="stat-trend neutral" id="trend-7d">this week</p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-label">Downloads (30d)</p>
+      <p class="stat-value" id="stat-30d">{stats.last30d.toLocaleString()}</p>
+      <p class="stat-trend neutral" id="trend-30d">this month</p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-label">Stars</p>
+      <p class="stat-value" id="stat-stars">{starCount.toLocaleString()}</p>
+      <p class="stat-trend neutral" id="trend-stars">total</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <p class="section-heading">downloads — last 30 days</p>
+    <div class="sparkline-card">
+      {timeline30d.length > 0 ? (
+        <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+          <DownloadSparkline data={timeline30d} />
+          <span style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted);">
+            {timeline30d.reduce((sum, d) => sum + d.count, 0).toLocaleString()} total · peak {Math.max(...timeline30d.map(d => d.count)).toLocaleString()}/day
+          </span>
+        </div>
+      ) : (
+        <p class="no-data">No download data available yet.</p>
+      )}
+    </div>
+  </div>
+
+  <div class="section">
+    <p class="section-heading">top versions by downloads</p>
+    {topVersions.length > 0 ? (
+      <table class="versions-table">
+        <thead>
+          <tr>
+            <th>version</th>
+            <th style="text-align: right;">downloads</th>
+            <th style="text-align: right;">published</th>
+          </tr>
+        </thead>
+        <tbody>
+          {topVersions.map(v => (
+            <tr>
+              <td class="version-version">v{v.version}</td>
+              <td class="version-dl">{(v.download_count ?? 0).toLocaleString()}</td>
+              <td class="version-date">{new Date(v.published_at).toLocaleDateString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    ) : (
+      <p class="no-data">No version data available.</p>
+    )}
+  </div>
+
+  <div class="section">
+    <p class="section-heading">top dependents</p>
+    {topDependents.length > 0 ? (
+      <div class="dependents-list">
+        {topDependents.map(d => (
+          <div class="dep-row">
+            <a class="dep-name" href={`/${d.packageSlug}`}>{d.packageName}</a>
+            <span class="dep-count">{d.versionCount} version{d.versionCount !== 1 ? 's' : ''}</span>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <p class="no-data">No packages depend on this one yet.</p>
+    )}
+  </div>
+
+  <div class="section">
+    <p class="section-heading">release timeline</p>
+    {versions.length > 0 ? (
+      <div class="release-timeline">
+        {versions.slice(0, 10).map(v => (
+          <div class="release-item">
+            <span class="release-dot"></span>
+            <span class="release-version">v{v.version}</span>
+            <span class="release-date">{new Date(v.published_at).toLocaleDateString()}</span>
+          </div>
+        ))}
+        {versions.length > 10 && (
+          <p class="no-data" style="padding: 0.5rem 0;">+ {versions.length - 10} more versions</p>
+        )}
+      </div>
+    ) : (
+      <p class="no-data">No release data available.</p>
+    )}
+  </div>
+
+  <script define:vars={{ packageSlug, accessToken }}>
+    // Fetch more detailed analytics from API (star timeline, trend calculations)
+    async function loadDetailedAnalytics() {
+      if (!accessToken) return
+
+      try {
+        const res = await fetch(`/api/packages/${encodeURIComponent(packageSlug)}/analytics`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        })
+
+        if (!res.ok) {
+          console.error('Failed to load analytics:', res.status)
+          return
+        }
+
+        const data = await res.json()
+
+        // Update star count and trend
+        const starsEl = document.getElementById('stat-stars')
+        if (starsEl && data.stars?.total !== undefined) {
+          starsEl.textContent = data.stars.total.toLocaleString()
+        }
+
+        // Update star trend (show growth from timeline)
+        const trendStarsEl = document.getElementById('trend-stars')
+        if (trendStarsEl && data.stars?.timeline?.length > 0) {
+          const timeline = data.stars.timeline
+          const recentWeeks = timeline.slice(-4)
+          if (recentWeeks.length >= 2) {
+            const firstCount = recentWeeks[0].count
+            const lastCount = recentWeeks[recentWeeks.length - 1].count
+            if (lastCount > firstCount) {
+              const growth = Math.round(((lastCount - firstCount) / firstCount) * 100)
+              trendStarsEl.textContent = `+${growth}% (4 weeks)`
+              trendStarsEl.className = 'stat-trend up'
+            }
+          }
+        }
+
+        // Update download trends
+        if (data.downloads) {
+          const trend7dEl = document.getElementById('trend-7d')
+          const trend30dEl = document.getElementById('trend-30d')
+
+          // We don't have previous period comparison data, so we just show the counts
+          // The trend calculation would require historical data beyond what we fetch
+          if (trend7dEl) {
+            trend7dEl.textContent = `≈ ${data.downloads.last7d.toLocaleString()} this week`
+          }
+          if (trend30dEl) {
+            trend30dEl.textContent = `≈ ${data.downloads.last30d.toLocaleString()} this month`
+          }
+        }
+      } catch (err) {
+        console.error('Analytics fetch error:', err)
+      }
+    }
+
+    loadDetailedAnalytics()
+  </script>
+</Base>
