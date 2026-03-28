@@ -958,7 +958,7 @@ const ogDescription = latest.description
 
   <Giscus term={packageName} />
 
-  <script define:vars={{ packageName, accessToken: session?.access_token ?? null }}>
+  <script define:vars={{ packageName, accessToken: session?.access_token ?? null, user, slug }}>
     document.querySelectorAll('.badge-copy').forEach(btn => {
       btn.addEventListener('click', async () => {
         const codeEl = btn.parentElement?.querySelector('code')
@@ -1031,7 +1031,7 @@ const ogDescription = latest.description
           return 0
         })
         const [v1, v2] = sorted
-        window.location.href = `/packages/${packageName}/diff?v1=${encodeURIComponent(v1)}&v2=${encodeURIComponent(v2)}`
+        window.location.href = `/${user}/${slug}/diff?v1=${encodeURIComponent(v1)}&v2=${encodeURIComponent(v2)}`
       }
     })
 
