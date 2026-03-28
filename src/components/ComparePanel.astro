@@ -15,11 +15,65 @@ export interface ComparePackage {
 
 interface Props {
   packages: ComparePackage[]
+  /** When true, renders as a full-page layout instead of a slide-in panel */
+  fullPage?: boolean
 }
 
-const { packages } = Astro.props
+const { packages, fullPage = false } = Astro.props
 ---
 
+{fullPage ? (
+  <div class="compare-full" id="compare-full">
+    <div class="compare-full-body">
+      {packages.map(pkg => (
+        <div class="pkg-col">
+          <div class="pkg-name">{pkg.name}</div>
+          <div class="pkg-version">v{pkg.version}</div>
+
+          <div class="field">
+            <span class="field-label">description</span>
+            <span class="field-value">{pkg.description ?? '—'}</span>
+          </div>
+
+          {pkg.tags.length > 0 && (
+            <div class="field">
+              <span class="field-label">tags</span>
+              <span class="field-value tags-row">
+                {pkg.tags.map(t => <span class="tag">{t}</span>)}
+              </span>
+            </div>
+          )}
+
+          <div class="field">
+            <span class="field-label">author</span>
+            <span class="field-value">{pkg.author ?? '—'}</span>
+          </div>
+
+          <div class="field">
+            <span class="field-label">deps</span>
+            <span class="field-value deps">
+              {Object.keys(pkg.dependencies).length > 0
+                ? Object.entries(pkg.dependencies).map(([k, v]) => (
+                    <span class="dep">{k} <span class="dep-ver">{v}</span></span>
+                  ))
+                : <span class="no-deps">none</span>}
+            </span>
+          </div>
+
+          <div class="field">
+            <span class="field-label">license</span>
+            <span class="field-value">{pkg.license ?? '—'}</span>
+          </div>
+
+          <div class="field">
+            <span class="field-label">downloads</span>
+            <span class="field-value">{pkg.download_count.toLocaleString()}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+) : (
 <div id="compare-panel" class="compare-panel" role="dialog" aria-modal="true" aria-label="Compare packages" hidden>
   <div class="panel-backdrop" id="panel-backdrop"></div>
   <div class="panel-content">
@@ -77,6 +131,7 @@ const { packages } = Astro.props
     </div>
   </div>
 </div>
+)}
 
 <style>
   .compare-panel {

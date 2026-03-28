@@ -1,7 +1,8 @@
 import type { APIRoute } from 'astro'
 import { extractBearer, resolveToken } from '../../../../lib/tokens.js'
-import { starPackage, unstarPackage, hasStarred, getStarCount, getPackageVersions } from '../../../../lib/db.js'
+import { starPackage, unstarPackage, hasStarred, getStarCount, getPackageVersions, getPackageOwner } from '../../../../lib/db.js'
 import { emitWebhooks } from '../../../../lib/webhooks.js'
+import { emitNotification } from '../../../../lib/notifications.js'
 
 // PUT /api/packages/:name/star - Star a package
 // Auth: Bearer token

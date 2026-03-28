@@ -81,6 +81,17 @@ function isActive(href: string) {
     ))}
   </div>
   <div class="nav-right">
+    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme" title="Toggle theme">
+      <!-- Sun icon (shown in dark mode, i.e. default) -->
+      <svg class="icon-sun" width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="8" r="3.5" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <!-- Moon icon (hidden in dark mode, shown in light mode) -->
+      <svg class="icon-moon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M13.5 9.5A6 6 0 0 1 6.5 2.5a6 6 0 1 0 7 7z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
     {session ? (
       <a href="/profile" class="nav-avatar" title={username ?? 'profile'}>
         {avatar
@@ -232,6 +243,19 @@ function isActive(href: string) {
     input.focus()
     input.select()
   }
+
+  // ── Theme toggle ───────────────────────────────────────────────────────────
+  const themeToggle = document.getElementById('theme-toggle')
+  themeToggle?.addEventListener('click', () => {
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light'
+    if (isLight) {
+      document.documentElement.removeAttribute('data-theme')
+      localStorage.setItem('theme', 'dark')
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light')
+      localStorage.setItem('theme', 'light')
+    }
+  })
 </script>
 
 <style>
@@ -318,6 +342,39 @@ function isActive(href: string) {
   .nav-login:hover {
     background: var(--surface);
     border-color: var(--accent);
+  }
+
+  .theme-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+
+  .theme-toggle:hover {
+    background: var(--surface);
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .icon-moon {
+    display: none;
+  }
+
+  [data-theme="light"] .icon-sun {
+    display: none;
+  }
+
+  [data-theme="light"] .icon-moon {
+    display: block;
   }
 
   .nav-avatar {

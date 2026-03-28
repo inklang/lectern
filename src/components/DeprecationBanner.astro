@@ -1,0 +1,47 @@
+---
+export interface Props {
+  message?: string | null
+  date?: string | null
+  deprecatedBy?: string | null
+}
+
+const { message, date, deprecatedBy } = Astro.props
+---
+
+<div class="deprecation-banner">
+  <span class="deprecation-icon">⚠️</span>
+  <strong>This package is deprecated.</strong>
+  {message && <span>{message}</span>}
+  {date && deprecatedBy && (
+    <span class="deprecation-date">Deprecated on {date} by @{deprecatedBy}</span>
+  )}
+</div>
+
+<style>
+  .deprecation-banner {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid #f59e0b;
+    border-radius: 8px;
+    padding: 0.875rem 1rem;
+    margin-bottom: 1.5rem;
+    font-family: system-ui, sans-serif;
+    font-size: 0.875rem;
+    color: var(--text);
+  }
+
+  .deprecation-icon {
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .deprecation-date {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-left: auto;
+  }
+</style>

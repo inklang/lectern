@@ -6,6 +6,7 @@ import Base from '../../layouts/Base.astro'
 import Giscus from '../../components/Giscus.astro'
 import HealthBadge from '../../components/HealthBadge.astro'
 import HealthPanel from '../../components/HealthPanel.astro'
+import DeprecationBanner from '../../components/DeprecationBanner.astro'
 import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount, getPackageHealth, getDownloadTimeline, resolvePackageSlugs } from '../../lib/db.js'
 import DownloadSparkline from '../../components/DownloadSparkline.astro'
 import { renderMarkdown } from '../../lib/markdown.js'
@@ -681,6 +682,14 @@ const ogDescription = latest.description
 
   <a class="back" href="/packages">← packages</a>
 
+  {deprecation?.deprecated && (
+    <DeprecationBanner
+      message={deprecation.deprecation_message}
+      date={deprecation.deprecated_at ? new Date(deprecation.deprecated_at).toLocaleDateString() : undefined}
+      deprecatedBy={deprecation.deprecated_by ?? undefined}
+    />
+  )}
+
   <div class="pkg-header">
     <div class="pkg-name">{packageSlug}</div>
     <div class="pkg-meta-row">
@@ -713,15 +722,6 @@ const ogDescription = latest.description
   </div>
 
   <HealthPanel health={health} />
-
-  {deprecation?.deprecated && (
-    <div class="deprecation-banner">
-      <p class="deprecation-title">Deprecated</p>
-      {deprecation.deprecation_message && (
-        <p class="deprecation-message">{deprecation.deprecation_message}</p>
-      )}
-    </div>
-  )}
 
   <div class="section">
     <p class="section-heading">install</p>

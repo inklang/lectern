@@ -44,6 +44,13 @@ const username = session?.user.user_metadata?.user_name ?? null
 <!doctype html>
 <html lang="en">
 <head>
+  <script>
+    // Prevent flash of wrong theme by running before paint
+    (function() {
+      const theme = localStorage.getItem('theme') || 'dark'
+      if (theme === 'light') document.documentElement.setAttribute('data-theme', 'light')
+    })()
+  </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content={description} />
@@ -84,6 +91,27 @@ const username = session?.user.user_metadata?.user_name ?? null
       --font-sans: ui-sans-serif, system-ui, -apple-system, sans-serif;
 
       /* Health status colors */
+      --health-excellent: #22c55e;
+      --health-excellent-bg: rgba(34, 197, 94, 0.15);
+      --health-good: #06b6d4;
+      --health-good-bg: rgba(6, 182, 212, 0.15);
+      --health-fair: #f59e0b;
+      --health-fair-bg: rgba(245, 158, 11, 0.15);
+      --health-poor: #ef4444;
+      --health-poor-bg: rgba(239, 68, 68, 0.15);
+      --health-unknown: #6b7280;
+      --health-unknown-bg: rgba(107, 114, 128, 0.15);
+    }
+
+    [data-theme="light"] {
+      --bg: #ffffff;
+      --surface: #f4f4f5;
+      --border: #e4e4e7;
+      --text: #18181b;
+      --muted: #71717a;
+      --muted-2: #a1a1aa;
+      --accent: #8b5cf6;
+      /* Health status colors — kept consistent */
       --health-excellent: #22c55e;
       --health-excellent-bg: rgba(34, 197, 94, 0.15);
       --health-good: #06b6d4;

@@ -1,6 +1,13 @@
 import type { APIRoute } from 'astro'
 import { getPackageVersions, getPackageOwner } from '../../lib/db.js'
-import sharp from 'sharp'
+import satori from 'satori'
+import { readFileSync } from 'fs'
+import { fileURLToPath } from 'url'
+import path from 'path'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const fontPath = path.resolve(__dirname, '../../fonts/DejaVuSans.ttf')
+const fontData = readFileSync(fontPath)
 
 export const GET: APIRoute = async ({ url }) => {
   const pkg = url.searchParams.get('pkg')
@@ -18,42 +25,174 @@ export const GET: APIRoute = async ({ url }) => {
   const latest = versions[0]
   const owner = await getPackageOwner(packageSlug)
 
-  const title = escapeXml(packageSlug)
-  const description = escapeXml(latest.description?.slice(0, 150) || `${packageSlug} — an Ink package`)
-  const version = escapeXml(latest.version)
-  const author = escapeXml(owner?.name || owner?.username || 'Unknown')
+  const title = packageSlug
+  const description = latest.description?.slice(0, 150) || `${packageSlug} — an Ink package`
+  const version = latest.version
+  const author = owner?.name || owner?.username || 'Unknown'
 
-  const svg = `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1200" height="630" fill="#09090b"/>
-  <rect x="40" y="40" width="1120" height="550" rx="16" fill="#18181b"/>
-  <rect x="80" y="160" width="80" height="80" rx="12" fill="#8b5cf6"/>
-  <text x="120" y="215" font-family="Arial, sans-serif" font-size="40" fill="white" text-anchor="middle" font-weight="bold">&#x2B21;</text>
-  <text x="200" y="210" font-family="Arial, sans-serif" font-size="42" fill="#fafafa" font-weight="bold">${title}</text>
-  <rect x="200" y="225" width="${version.length * 18 + 30}" height="32" rx="6" fill="#27272a"/>
-  <text x="215" y="248" font-family="Arial, sans-serif" font-size="16" fill="#a1a1aa">v${version}</text>
-  <text x="80" y="340" font-family="Arial, sans-serif" font-size="26" fill="#a1a1aa">${description}</text>
-  <text x="80" y="400" font-family="Arial, sans-serif" font-size="22" fill="#71717a">by ${author}</text>
-  <text x="80" y="520" font-family="Arial, sans-serif" font-size="18" fill="#52525b">lectern.inklang.org</text>
-  <rect x="0" y="620" width="1200" height="10" fill="#8b5cf6"/>
-</svg>`
+  const svg = await satori(
+    {
+      type: 'div',
+      props: {
+        style: {
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundColor: '#09090b',
+          padding: '40px',
+        },
+        children: [
+          {
+            type: 'div',
+            props: {
+              style: {
+                display: 'flex',
+                flexDirection: 'column',
+                backgroundColor: '#18181b',
+                borderRadius: '16px',
+                flex: '1',
+                padding: '40px',
+              },
+              children: [
+                {
+                  type: 'div',
+                  props: {
+                    style: {
+                      display: 'flex',
+                      alignItems: 'center',
+                      marginBottom: '30px',
+                    },
+                    children: [
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            width: '80px',
+                            height: '80px',
+                            backgroundColor: '#8b5cf6',
+                            borderRadius: '12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '40px',
+                            marginRight: '20px',
+                          },
+                          children: '⬡',
+                        },
+                      },
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            display: 'flex',
+                            flexDirection: 'column',
+                          },
+                          children: [
+                            {
+                              type: 'span',
+                              props: {
+                                style: {
+                                  fontSize: '42px',
+                                  fontWeight: 700,
+                                  color: '#fafafa',
+                                },
+                                children: title,
+                              },
+                            },
+                            {
+                              type: 'span',
+                              props: {
+                                style: {
+                                  display: 'inline-flex',
+                                  backgroundColor: '#27272a',
+                                  color: '#a1a1aa',
+                                  fontSize: '16px',
+                                  padding: '4px 12px',
+                                  borderRadius: '6px',
+                                  marginTop: '8px',
+                                },
+                                children: `v${version}`,
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
+                {
+                  type: 'span',
+                  props: {
+                    style: {
+                      fontSize: '26px',
+                      color: '#a1a1aa',
+                      marginBottom: '20px',
+                    },
+                    children: description,
+                  },
+                },
+                {
+                  type: 'span',
+                  props: {
+                    style: {
+                      fontSize: '22px',
+                      color: '#71717a',
+                    },
+                    children: `by ${author}`,
+                  },
+                },
+                {
+                  type: 'span',
+                  props: {
+                    style: {
+                      fontSize: '18px',
+                      color: '#52525b',
+                      marginTop: 'auto',
+                    },
+                    children: 'lectern.inklang.org',
+                  },
+                },
+              ],
+            },
+          },
+          {
+            type: 'div',
+            props: {
+              style: {
+                width: '100%',
+                height: '10px',
+                backgroundColor: '#8b5cf6',
+              },
+            },
+          },
+        ],
+      },
+    },
+    {
+      width: 1200,
+      height: 630,
+      fonts: [
+        {
+          name: 'DejaVu Sans',
+          data: fontData,
+          weight: 400,
+          style: 'normal',
+        },
+        {
+          name: 'DejaVu Sans',
+          data: fontData,
+          weight: 700,
+          style: 'normal',
+        },
+      ],
+    }
+  )
 
-  const pngBuffer = await sharp(Buffer.from(svg))
-    .png()
-    .toBuffer()
-
-  return new Response(pngBuffer, {
+  return new Response(svg, {
     headers: {
-      'Content-Type': 'image/png',
+      'Content-Type': 'image/svg+xml',
       'Cache-Control': 'public, max-age=3600',
     },
   })
-}
-
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;')
 }
