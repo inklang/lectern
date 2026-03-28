@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro'
 import { getPackageVersions, getPackageOwner } from '../../lib/db.js'
 import satori from 'satori'
+import sharp from 'sharp'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import path from 'path'
@@ -39,7 +40,7 @@ export const GET: APIRoute = async ({ url }) => {
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          backgroundColor: '#09090b',
+          backgroundColor: '#18181b',
           padding: '40px',
         },
         children: [
@@ -189,9 +190,12 @@ export const GET: APIRoute = async ({ url }) => {
     }
   )
 
-  return new Response(svg, {
+  // Convert SVG to PNG for Discord compatibility
+  const png = await sharp(Buffer.from(svg)).png().toBuffer()
+
+  return new Response(png, {
     headers: {
-      'Content-Type': 'image/svg+xml',
+      'Content-Type': 'image/png',
       'Cache-Control': 'public, max-age=3600',
     },
   })
