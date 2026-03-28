@@ -1,0 +1,21 @@
+---
+import { supabase } from '~/lib/supabase.js'
+
+const { username } = Astro.params
+
+if (!username) return Astro.redirect('/packages')
+
+// Check if this is a user (case-insensitive)
+const { data: user } = await supabase
+  .from('users')
+  .select('user_name')
+  .ilike('user_name', username)
+  .single()
+
+if (user) {
+  return Astro.redirect(`/u/${user.user_name}`, 301)
+}
+
+// User doesn't exist, redirect to packages
+return Astro.redirect('/packages', 301)
+---
