@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro'
-import { extractBearer, resolveToken } from '../../../../lib/tokens.js'
+import { resolveAuth } from '../../../../lib/tokens.js'
 import { canUserPublish } from '../../../../lib/authz.js'
 import { getPackageOwner, createPackage, insertVersion, versionExists } from '../../../../lib/db.js'
 import { uploadTarball } from '../../../../lib/storage.js'
@@ -14,9 +14,13 @@ export const GET: APIRoute = async ({ params, request }) => {
   const { name, version } = params
   if (!name || !version) return new Response('Bad request', { status: 400 })
 
+  // Extract Cloudflare country header and referrer
+  const country = request.headers.get('CF-IPCountry') ?? undefined
+  const referrer = request.headers.get('Referer') ?? undefined
+
   // Log download and increment counter (fire and forget, don't block redirect)
   const { logDownload } = await import('../../../../lib/db.js')
-  logDownload(name, version, request.headers.get('authorization') ?? null).catch(() => {})
+  logDownload(name, version, request.headers.get('authorization') ?? null, country, referrer).catch(() => {})
 
   // Redirect to Supabase Storage public URL via storage helper
   // For slug-based URLs, name IS the slug (owner/package format)
@@ -32,14 +36,9 @@ export const PUT: APIRoute = async ({ params, request }) => {
   if (!name || !version) return new Response('Bad request', { status: 400 })
 
   // Auth
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) {
-    return new Response(JSON.stringify({ error: 'Missing Authorization header. Run `quill login` first.' }), { status: 401 })
-  }
-
-  const userId = await resolveToken(raw)
+  const userId = await resolveAuth(request.headers.get('authorization'))
   if (!userId) {
-    return new Response(JSON.stringify({ error: 'Invalid or expired token. Run `quill login`.' }), { status: 401 })
+    return new Response(JSON.stringify({ error: 'Missing or invalid Authorization header. Run `quill login` first.' }), { status: 401 })
   }
 
   // Rate limit check: 30/min for authenticated publish

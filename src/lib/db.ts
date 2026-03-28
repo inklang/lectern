@@ -156,27 +156,166 @@ export async function getVersionDependencies(slug: string, version: string): Pro
 
 // Logs a download event and increments the version's download_count.
 // authHeader is optional; if provided and resolves to a user, logs the user_id.
+// country is an ISO 3166-1 alpha-2 code (e.g. "US") from CF-IPCountry header.
+// referrer is normalized from the Referer header (stripped of protocol, max 500 chars).
 export async function logDownload(
   name: string,
   version: string,
-  authHeader: string | null
+  authHeader: string | null,
+  country?: string,
+  referrer?: string,
 ): Promise<void> {
-  const { extractBearer, resolveToken } = await import('./tokens.js')
+  const { resolveAuth } = await import('./tokens.js')
   let userId: string | null = null
   if (authHeader) {
-    const token = extractBearer(authHeader)
-    if (token) userId = await resolveToken(token)
+    userId = await resolveAuth(authHeader)
   }
+
+  // Normalize referrer: strip protocol, default to "direct", truncate to 500 chars
+  const normalizedReferrer = referrer
+    ? referrer.replace(/^https?:\/\//, '').replace(/\/$/, '').slice(0, 500) || 'direct'
+    : 'direct'
 
   // Insert log entry
   await supabase.from('download_logs').insert({
     package_name: name,
     version,
     user_id: userId ?? undefined,
+    country: country ?? null,
+    referrer: normalizedReferrer,
   })
 
   // Atomically increment the counter on package_versions
   await supabase.rpc('increment_download_count', { pkg_name: name, ver: version })
+}
+
+// ─── Download Analytics ─────────────────────────────────────────────────────────
+
+export interface TimelineResult {
+  timeline: { date: string; count: number }[]
+  total: number
+  periodDownloads: number
+}
+
+export interface VersionsResult {
+  versions: { version: string; count: number; percentage: number }[]
+}
+
+export interface ReferrersResult {
+  referrers: { referrer: string; count: number }[]
+}
+
+export interface GeoResult {
+  geo: { country: string; count: number }[]
+}
+
+// Returns analytics data for a specific dimension and time range.
+// dimension: 'timeline' | 'versions' | 'referrers' | 'geo'
+// days: number or 'all' for no time limit
+export async function getDownloadAnalytics(
+  packageName: string,
+  dimension: 'timeline' | 'versions' | 'referrers' | 'geo',
+  days: number | 'all',
+): Promise<TimelineResult | VersionsResult | ReferrersResult | GeoResult> {
+  if (dimension === 'timeline') {
+    // Use the existing getDownloadTimeline but include total and period sums
+    const timeline = await getDownloadTimeline(packageName, days === 'all' ? 9999 : days)
+    const total = timeline.reduce((sum, d) => sum + d.count, 0)
+    const periodDownloads = days === 'all' ? total : timeline.reduce((sum, d) => sum + d.count, 0)
+    return { timeline, total, periodDownloads }
+  }
+
+  if (dimension === 'versions') {
+    let query = supabase
+      .from('download_logs')
+      .select('version')
+      .eq('package_name', packageName)
+
+    if (days !== 'all') {
+      const since = new Date()
+      since.setDate(since.getDate() - days)
+      query = query.gte('downloaded_at', since.toISOString())
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+
+    const counts: Record<string, number> = {}
+    for (const row of data ?? []) {
+      counts[row.version] = (counts[row.version] ?? 0) + 1
+    }
+
+    const total = Object.values(counts).reduce((s, c) => s + c, 0)
+    const versions = Object.entries(counts)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 20)
+      .map(([version, count]) => ({
+        version,
+        count,
+        percentage: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+      }))
+
+    return { versions }
+  }
+
+  if (dimension === 'referrers') {
+    let query = supabase
+      .from('download_logs')
+      .select('referrer')
+      .eq('package_name', packageName)
+      .not('referrer', 'is', null)
+
+    if (days !== 'all') {
+      const since = new Date()
+      since.setDate(since.getDate() - days)
+      query = query.gte('downloaded_at', since.toISOString())
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+
+    const counts: Record<string, number> = {}
+    for (const row of data ?? []) {
+      const ref = (row.referrer as string) || 'direct'
+      counts[ref] = (counts[ref] ?? 0) + 1
+    }
+
+    const referrers = Object.entries(counts)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 20)
+      .map(([referrer, count]) => ({ referrer, count }))
+
+    return { referrers }
+  }
+
+  // dimension === 'geo'
+  let query = supabase
+    .from('download_logs')
+    .select('country')
+    .eq('package_name', packageName)
+    .not('country', 'is', null)
+
+  if (days !== 'all') {
+    const since = new Date()
+    since.setDate(since.getDate() - days)
+    query = query.gte('downloaded_at', since.toISOString())
+  }
+
+  const { data, error } = await query
+  if (error) throw error
+
+  const counts: Record<string, number> = {}
+  for (const row of data ?? []) {
+    const country = (row.country as string) || 'XX'
+    counts[country] = (counts[country] ?? 0) + 1
+  }
+
+  const geo = Object.entries(counts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 20)
+    .map(([country, count]) => ({ country, count }))
+
+  return { geo }
 }
 
 // Returns download stats for a package: total (from version rows), last7d, last30d (from logs)

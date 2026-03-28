@@ -1,9 +1,10 @@
 import type { APIRoute } from 'astro'
-import { extractBearer, resolveToken } from '../../../../lib/tokens.js'
+import { resolveAuth } from '../../../../lib/tokens.js'
 import { canUserPublish } from '../../../../lib/authz.js'
 import {
   getPackageStats,
   getDownloadTimeline,
+  getDownloadAnalytics,
   getPackageDependentsFast,
   getPackageVersions,
   getStarCount,
@@ -12,19 +13,23 @@ import { supabase } from '../../../../lib/supabase.js'
 
 // GET /api/packages/[name]/analytics
 // Auth: Bearer token (package owner only)
+// Query params:
+//   dimension?: 'timeline' | 'versions' | 'referrers' | 'geo' (default: 'timeline')
+//   days?: '7' | '30' | '90' | 'all' (default: '30')
 export const GET: APIRoute = async ({ params, request }) => {
   const { name } = params
   if (!name) return new Response('Bad request', { status: 400 })
 
-  // Auth
-  const raw = extractBearer(request.headers.get('authorization'))
-  if (!raw) {
-    return new Response(JSON.stringify({ error: 'Missing Authorization header.' }), { status: 401 })
-  }
+  // Parse query params
+  const url = new URL(request.url)
+  const dimension = (url.searchParams.get('dimension') ?? 'timeline') as 'timeline' | 'versions' | 'referrers' | 'geo'
+  const daysParam = url.searchParams.get('days') ?? '30'
+  const days: number | 'all' = daysParam === 'all' ? 'all' : parseInt(daysParam, 10) || 30
 
-  const userId = await resolveToken(raw)
+  // Auth
+  const userId = await resolveAuth(request.headers.get('authorization'))
   if (!userId) {
-    return new Response(JSON.stringify({ error: 'Invalid or expired token.' }), { status: 401 })
+    return new Response(JSON.stringify({ error: 'Missing or invalid Authorization header.' }), { status: 401 })
   }
 
   // Permission check — only package owner can see analytics
@@ -45,7 +50,39 @@ export const GET: APIRoute = async ({ params, request }) => {
 
   const packageName = pkgRow.name // short name (bare package name)
 
-  // Run all data fetches in parallel
+  // When dimension/days are specified, return enhanced analytics
+  if (dimension !== 'timeline' || days !== 30) {
+    // Fetch analytics for the requested dimension and days
+    const analyticsData = await getDownloadAnalytics(packageName, dimension, days).catch(() => null)
+
+    // Also fetch stats for the summary footer
+    const [stats] = await Promise.all([
+      getPackageStats(name).catch(() => ({ total: 0, last7d: 0, last30d: 0 })),
+    ])
+
+    return new Response(JSON.stringify({
+      dimension,
+      days: daysParam,
+      packageName,
+      ...(analyticsData ?? {}),
+      summary: {
+        total: stats.total,
+        periodDownloads: dimension === 'timeline' && analyticsData
+          ? (analyticsData as { periodDownloads?: number }).periodDownloads ?? 0
+          : dimension !== 'timeline' && analyticsData
+          ? ('versions' in analyticsData ? (analyticsData as { versions: { count: number }[] }).versions.reduce((s, v) => s + v.count, 0)
+            : 'referrers' in analyticsData ? (analyticsData as { referrers: { count: number }[] }).referrers.reduce((s, r) => s + r.count, 0)
+            : 'geo' in analyticsData ? (analyticsData as { geo: { count: number }[] }).geo.reduce((s, g) => s + g.count, 0)
+            : 0)
+          : 0,
+      },
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // Run all data fetches in parallel (backward compatible response)
   const [stats, timeline30d, timeline7d, versions, starCount] = await Promise.all([
     getPackageStats(name).catch(() => ({ total: 0, last7d: 0, last30d: 0 })),
     getDownloadTimeline(packageName, 30).catch(() => []),

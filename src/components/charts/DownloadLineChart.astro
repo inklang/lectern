@@ -1,0 +1,158 @@
+---
+interface Props {
+  data: { date: string; count: number }[]
+  height?: number
+  color?: string
+}
+
+const { data, height = 200, color = 'var(--accent)' } = Astro.props
+
+const WIDTH = 600
+const PAD_LEFT = 48
+const PAD_RIGHT = 16
+const PAD_TOP = 16
+const PAD_BOTTOM = 40
+
+const chartWidth = WIDTH - PAD_LEFT - PAD_RIGHT
+const chartHeight = height - PAD_TOP - PAD_BOTTOM
+
+const n = data.length
+const maxCount = Math.max(1, ...data.map(d => d.count))
+
+// Build polyline points
+const points = data.map((d, i) => {
+  const x = PAD_LEFT + (i / Math.max(n - 1, 1)) * chartWidth
+  const y = PAD_TOP + (1 - d.count / maxCount) * chartHeight
+  return { x, y, ...d }
+})
+
+// Build SVG polyline string
+const polylinePoints = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+
+// Build area path (for gradient fill)
+const areaPath = [
+  `M${points[0]?.x.toFixed(1)},${(PAD_TOP + chartHeight).toFixed(1)}`,
+  ...points.map(p => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`),
+  `L${points[points.length - 1]?.x.toFixed(1)},${(PAD_TOP + chartHeight).toFixed(1)}`,
+  'Z',
+].join(' ')
+
+// Y-axis gridlines and labels (5 lines)
+const gridLines: { y: number; label: string }[] = []
+for (let i = 0; i <= 4; i++) {
+  const count = Math.round((maxCount / 4) * i)
+  const y = PAD_TOP + (1 - i / 4) * chartHeight
+  gridLines.push({ y, label: count >= 1000 ? `${(count / 1000).toFixed(1)}k` : String(count) })
+}
+
+// X-axis labels: show every Nth date to avoid crowding
+const labelEvery = Math.max(1, Math.floor(n / 6))
+const xLabels = points.filter((_, i) => i % labelEvery === 0 || i === n - 1)
+---
+
+<div class="chart-container" style={`height: ${height}px;`}>
+  <svg
+    viewBox={`0 0 ${WIDTH} ${height}`}
+    width="100%"
+    height={height}
+    aria-label="Download timeline chart"
+    role="img"
+  >
+    <defs>
+      <linearGradient id="line-gradient" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color={color} stop-opacity="0.3" />
+        <stop offset="100%" stop-color={color} stop-opacity="0.02" />
+      </linearGradient>
+    </defs>
+
+    {/* Grid lines */}
+    {gridLines.map(g => (
+      <line
+        x1={PAD_LEFT}
+        y1={g.y}
+        x2={PAD_LEFT + chartWidth}
+        y2={g.y}
+        stroke="var(--chart-grid, var(--border))"
+        stroke-width="1"
+        stroke-dasharray="4 4"
+      />
+    ))}
+
+    {/* Y-axis labels */}
+    {gridLines.map(g => (
+      <text
+        x={PAD_LEFT - 6}
+        y={g.y}
+        text-anchor="end"
+        dominant-baseline="middle"
+        font-family="var(--font-mono)"
+        font-size="10"
+        fill="var(--muted)"
+      >{g.label}</text>
+    ))}
+
+    {/* X-axis labels */}
+    {xLabels.map(p => (
+      <text
+        x={p.x}
+        y={PAD_TOP + chartHeight + 16}
+        text-anchor="middle"
+        font-family="var(--font-mono)"
+        font-size="9"
+        fill="var(--muted)"
+      >
+        {p.date.slice(5)}
+      </text>
+    ))}
+
+    {/* Area fill */}
+    <path d={areaPath} fill="url(#line-gradient)" />
+
+    {/* Line */}
+    <polyline
+      points={polylinePoints}
+      fill="none"
+      stroke={color}
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+
+    {/* Data point dots with tooltip */}
+    {points.map(p => (
+      <g class="data-point">
+        <circle
+          cx={p.x}
+          cy={p.y}
+          r="4"
+          fill="var(--surface)"
+          stroke={color}
+          stroke-width="2"
+        />
+        <title>{p.date}: {p.count.toLocaleString()} download{p.count !== 1 ? 's' : ''}</title>
+      </g>
+    ))}
+  </svg>
+</div>
+
+<style>
+  .chart-container {
+    width: 100%;
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 0.5rem 0;
+  }
+
+  svg {
+    display: block;
+    overflow: visible;
+  }
+
+  .data-point circle {
+    transition: r 0.15s ease;
+  }
+
+  .data-point:hover circle {
+    r: 6;
+  }
+</style>

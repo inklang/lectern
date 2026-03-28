@@ -1,0 +1,156 @@
+---
+interface Props {
+  data: { version?: string; referrer?: string; country?: string; count: number; percentage?: number }[]
+  type?: 'versions' | 'referrers' | 'geo'
+  height?: number
+  color?: string
+}
+
+const { data, type = 'referrers', height = 300, color = 'var(--accent)' } = Astro.props
+
+// Country code to flag emoji mapping (top download countries)
+const countryFlags: Record<string, string> = {
+  US: '🇺🇸', DE: '🇩🇪', GB: '🇬🇧', FR: '🇫🇷', CA: '🇨🇦',
+  AU: '🇦🇺', JP: '🇯🇵', NL: '🇳🇱', SE: '🇸🇪', CH: '🇨🇭',
+  BR: '🇧🇷', IN: '🇮🇳', KR: '🇰🇷', ES: '🇪🇸', IT: '🇮🇹',
+  PL: '🇵🇱', MX: '🇲🇽', RU: '🇷🇺', SG: '🇸🇬', NZ: '🇳🇿',
+  CN: '🇨🇳', TW: '🇹🇼', HK: '🇭🇰', IE: '🇮🇪', NO: '🇳🇴',
+  DK: '🇩🇰', FI: '🇫🇮', BE: '🇧🇪', AT: '🇦🇹', PT: '🇵🇹',
+  IL: '🇮🇱', TR: '🇹🇷', AR: '🇦🇷', CL: '🇨🇱', CO: '🇨🇴',
+  ID: '🇮🇩', TH: '🇹🇭', VN: '🇻🇳', MY: '🇲🇾', PH: '🇵🇭',
+  AE: '🇦🇪', SA: '🇸🇦', EG: '🇪🇬', NG: '🇳🇬', KE: '🇰🇪',
+  ZA: '🇿🇦', XX: '🌍', -- unknown
+}
+
+const ROW_HEIGHT = 32
+const LABEL_WIDTH = 160
+const COUNT_WIDTH = 60
+const BAR_MAX_WIDTH = 300
+const chartHeight = Math.min(data.length * ROW_HEIGHT + 16, height)
+
+const maxCount = Math.max(1, ...data.map(d => d.count))
+
+function getLabel(item: typeof data[0]): string {
+  if (type === 'geo' && item.country) {
+    const flag = countryFlags[item.country] ?? '🌍'
+    return `${flag} ${item.country}`
+  }
+  if (type === 'versions' && item.version) {
+    return `v${item.version}`
+  }
+  if (type === 'referrers' && item.referrer) {
+    return item.referrer.length > 24 ? item.referrer.slice(0, 21) + '...' : item.referrer
+  }
+  return 'unknown'
+}
+
+function getCountWidth(count: number): number {
+  return Math.max(4, (count / maxCount) * BAR_MAX_WIDTH)
+}
+---
+
+<div class="bar-chart" style={`min-height: ${chartHeight}px;`}>
+  <svg
+    viewBox={`0 0 ${LABEL_WIDTH + BAR_MAX_WIDTH + COUNT_WIDTH + 24} ${chartHeight}`}
+    width="100%"
+    height={chartHeight}
+    aria-label={`${type} bar chart`}
+    role="img"
+  >
+    {data.map((item, i) => {
+      const y = i * ROW_HEIGHT + 8
+      const barWidth = getCountWidth(item.count)
+      const label = getLabel(item)
+
+      return (
+        <g class="bar-row" style={`--delay: ${i * 30}ms`}>
+          {/* Label */}
+          <text
+            x={LABEL_WIDTH - 8}
+            y={y + 12}
+            text-anchor="end"
+            dominant-baseline="middle"
+            font-family="var(--font-mono)"
+            font-size="11"
+            fill="var(--text)"
+          >
+            {label}
+          </text>
+
+          {/* Bar background */}
+          <rect
+            x={LABEL_WIDTH}
+            y={y}
+            width={BAR_MAX_WIDTH}
+            height={ROW_HEIGHT - 6}
+            rx="4"
+            fill="var(--border)"
+            opacity="0.3"
+          />
+
+          {/* Bar fill */}
+          <rect
+            class="bar-fill"
+            x={LABEL_WIDTH}
+            y={y}
+            width={barWidth}
+            height={ROW_HEIGHT - 6}
+            rx="4"
+            fill={color}
+            opacity="0.8"
+          >
+            <animate
+              attributeName="width"
+              from="0"
+              to={barWidth}
+              dur="400ms"
+              begin={`${i * 30}ms`}
+              fill="freeze"
+              calcMode="spline"
+              keySplines="0.25 0.1 0.25 1"
+            />
+          </rect>
+
+          {/* Count label */}
+          <text
+            x={LABEL_WIDTH + BAR_MAX_WIDTH + 8}
+            y={y + 12}
+            dominant-baseline="middle"
+            font-family="var(--font-mono)"
+            font-size="10"
+            fill="var(--muted)"
+          >
+            {item.count.toLocaleString()}
+          </text>
+        </g>
+      )
+    })}
+  </svg>
+</div>
+
+<style>
+  .bar-chart {
+    width: 100%;
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    overflow: hidden;
+  }
+
+  svg {
+    display: block;
+    overflow: visible;
+  }
+
+  .bar-row {
+    opacity: 1;
+  }
+
+  .bar-fill {
+    transition: opacity 0.2s ease;
+  }
+
+  .bar-row:hover .bar-fill {
+    opacity: 1;
+  }
+</style>

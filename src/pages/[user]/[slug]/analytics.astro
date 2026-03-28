@@ -1,6 +1,8 @@
 ---
 import Base from '../../../layouts/Base.astro'
 import DownloadSparkline from '../../../components/DownloadSparkline.astro'
+import DownloadLineChart from '../../../components/charts/DownloadLineChart.astro'
+import DownloadBarChart from '../../../components/charts/DownloadBarChart.astro'
 import { canUserPublish } from '../../../lib/authz.js'
 import { supabase as supabaseAdmin } from '../../../lib/supabase.js'
 import { getPackageStats, getDownloadTimeline, getPackageVersions, getPackageDependentsFast, getStarCount } from '../../../lib/db.js'
@@ -59,37 +61,9 @@ const topVersions = [...versions]
   .sort((a, b) => (b.download_count ?? 0) - (a.download_count ?? 0))
   .slice(0, 5)
 
-// Top dependents
-const dependents = await getPackageDependentsFast(pkgShortName).catch(() => [])
-const depMap = new Map<string, { package_slug: string; versionCount: number }>()
-for (const d of dependents) {
-  const existing = depMap.get(d.package_slug)
-  if (existing) {
-    existing.versionCount++
-  } else {
-    depMap.set(d.package_slug, { package_slug: d.package_slug, versionCount: 1 })
-  }
-}
-const topDependents = [...depMap.values()]
-  .sort((a, b) => b.versionCount - a.versionCount)
-  .slice(0, 5)
-  .map(d => {
-    const shortName = d.package_slug.includes('/') ? d.package_slug.split('/').pop()! : d.package_slug
-    return { packageSlug: d.package_slug, packageName: shortName, versionCount: d.versionCount }
-  })
-
-// Trends
-const prev30d = stats.last30d > 0 ? stats.last30d : 0
-const prev7d = stats.last7d > 0 ? stats.last7d : 0
-// Approximate previous periods for trend calculation
-const downloadTrend7d = prev7d > 0 ? 0 : 0 // Not enough data for true trend without history
-const downloadTrend30d = prev30d > 0 ? 0 : 0
-
-// Star trend — we don't have historical star data server-side, pass 0 for now
-// Client will fetch from API for detailed timeline
-
 // Serialize for client-side use
 const accessToken = session.access_token ?? null
+const packageSlugJson = packageSlug
 ---
 
 <Base title={`Analytics — ${packageSlug}`} description={`Analytics for ${packageSlug}`}>
@@ -105,8 +79,12 @@ const accessToken = session.access_token ?? null
 
     .page-header {
       border-bottom: 1px solid var(--border);
-      padding-bottom: 1.75rem;
-      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
     }
 
     .page-title {
@@ -120,168 +98,214 @@ const accessToken = session.access_token ?? null
 
     .stats-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 1rem;
-      margin-bottom: 2rem;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
     }
 
     .stat-card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 1.25rem;
+      padding: 1rem;
     }
 
     .stat-label {
       font-family: var(--font-mono);
-      font-size: 0.7rem;
+      font-size: 0.65rem;
       font-weight: 500;
       letter-spacing: 0.1em;
       text-transform: uppercase;
       color: var(--muted);
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.35rem;
     }
 
     .stat-value {
       font-family: var(--font-mono);
-      font-size: 1.75rem;
+      font-size: 1.5rem;
       font-weight: 600;
       color: var(--text);
       letter-spacing: -0.03em;
     }
 
-    .stat-trend {
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      margin-top: 0.25rem;
-    }
-
-    .stat-trend.up { color: #22c55e; }
-    .stat-trend.down { color: #ef4444; }
-    .stat-trend.neutral { color: var(--muted); }
-
     .stat-sub {
       font-family: var(--font-mono);
-      font-size: 0.75rem;
-      color: var(--muted);
-      margin-top: 0.25rem;
-    }
-
-    .section {
-      margin-bottom: 2.5rem;
-    }
-
-    .section-heading {
-      font-family: var(--font-mono);
       font-size: 0.7rem;
-      font-weight: 500;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
       color: var(--muted);
-      margin-bottom: 0.875rem;
+      margin-top: 0.2rem;
     }
 
-    .sparkline-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1.25rem;
-    }
-
-    .versions-table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    .versions-table th {
-      font-family: var(--font-mono);
-      font-size: 0.7rem;
-      font-weight: 500;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: var(--muted);
-      text-align: left;
-      padding: 0.5rem 0.75rem;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .versions-table td {
-      font-family: var(--font-mono);
-      font-size: 0.875rem;
-      padding: 0.65rem 0.75rem;
-      border-bottom: 1px solid var(--border);
-      color: var(--text);
-    }
-
-    .versions-table tr:last-child td { border-bottom: none; }
-
-    .version-version { color: var(--accent); font-weight: 600; }
-    .version-dl { color: var(--muted); text-align: right; }
-    .version-date { color: var(--muted); text-align: right; }
-
-    .dependents-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .dep-row {
+    /* Controls row: time picker + export */
+    .controls {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 0.6rem 0.75rem;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .time-picker {
+      display: flex;
+      gap: 0.25rem;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 8px;
+      padding: 0.25rem;
+    }
+
+    .time-btn {
       font-family: var(--font-mono);
-      font-size: 0.875rem;
-    }
-
-    .dep-name {
-      color: var(--text);
-      text-decoration: none;
-    }
-
-    .dep-name:hover { color: var(--accent); opacity: 0.9; }
-
-    .dep-count {
-      color: var(--muted);
       font-size: 0.75rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
     }
 
-    .release-timeline {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
+    .time-btn:hover {
+      color: var(--text);
+      background: var(--border);
     }
 
-    .release-item {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      font-family: var(--font-mono);
-      font-size: 0.875rem;
-    }
-
-    .release-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
+    .time-btn.active {
       background: var(--accent);
-      flex-shrink: 0;
+      color: var(--bg);
+      font-weight: 600;
     }
 
-    .release-version { color: var(--accent); font-weight: 600; }
-    .release-date { color: var(--muted); font-size: 0.75rem; }
+    .export-btn {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      margin-left: auto;
+    }
 
-    .loading {
+    .export-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1.5rem;
+    }
+
+    .tab-btn {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      padding: 0.6rem 1.25rem;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: all 0.15s ease;
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+    }
+
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Tab panels */
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    /* Chart card */
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .chart-heading {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+
+    /* Summary footer */
+    .summary-footer {
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+      padding: 1rem 0;
+      border-top: 1px solid var(--border);
+      margin-top: 0.5rem;
+    }
+
+    .summary-item {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+    }
+
+    .summary-label {
+      color: var(--muted);
+      margin-right: 0.5rem;
+    }
+
+    .summary-value {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* Loading skeleton */
+    .skeleton {
+      background: linear-gradient(90deg, var(--border) 25%, var(--surface) 50%, var(--border) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 6px;
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .skeleton-chart {
+      height: 200px;
+      border-radius: 10px;
+    }
+
+    /* No data */
+    .no-data {
       font-family: var(--font-mono);
       font-size: 0.875rem;
       color: var(--muted);
-      padding: 1rem 0;
+      padding: 2rem 0;
+      text-align: center;
     }
 
-    .api-error {
+    .error-msg {
       background: rgba(239, 68, 68, 0.1);
       border: 1px solid #ef4444;
       border-radius: 8px;
@@ -289,14 +313,6 @@ const accessToken = session.access_token ?? null
       font-family: var(--font-mono);
       font-size: 0.875rem;
       color: #ef4444;
-      margin-bottom: 1.5rem;
-    }
-
-    .no-data {
-      font-family: var(--font-mono);
-      font-size: 0.875rem;
-      color: var(--muted);
-      padding: 1rem 0;
     }
   </style>
 
@@ -313,158 +329,406 @@ const accessToken = session.access_token ?? null
       <p class="stat-sub">all time</p>
     </div>
     <div class="stat-card">
-      <p class="stat-label">Downloads (7d)</p>
+      <p class="stat-label">Last 7 Days</p>
       <p class="stat-value" id="stat-7d">{stats.last7d.toLocaleString()}</p>
-      <p class="stat-trend neutral" id="trend-7d">this week</p>
     </div>
     <div class="stat-card">
-      <p class="stat-label">Downloads (30d)</p>
+      <p class="stat-label">Last 30 Days</p>
       <p class="stat-value" id="stat-30d">{stats.last30d.toLocaleString()}</p>
-      <p class="stat-trend neutral" id="trend-30d">this month</p>
     </div>
     <div class="stat-card">
       <p class="stat-label">Stars</p>
       <p class="stat-value" id="stat-stars">{starCount.toLocaleString()}</p>
-      <p class="stat-trend neutral" id="trend-stars">total</p>
+      <p class="stat-sub">total</p>
     </div>
   </div>
 
-  <div class="section">
-    <p class="section-heading">downloads — last 30 days</p>
-    <div class="sparkline-card">
-      {timeline30d.length > 0 ? (
-        <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
-          <DownloadSparkline data={timeline30d} />
-          <span style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted);">
-            {timeline30d.reduce((sum, d) => sum + d.count, 0).toLocaleString()} total · peak {Math.max(...timeline30d.map(d => d.count)).toLocaleString()}/day
-          </span>
-        </div>
-      ) : (
-        <p class="no-data">No download data available yet.</p>
-      )}
+  <!-- Controls: time range + export -->
+  <div class="controls">
+    <div class="time-picker">
+      <button class="time-btn" data-days="7">7d</button>
+      <button class="time-btn active" data-days="30">30d</button>
+      <button class="time-btn" data-days="90">90d</button>
+      <button class="time-btn" data-days="all">All</button>
     </div>
+    <button class="export-btn" id="export-csv">Export CSV</button>
   </div>
 
-  <div class="section">
-    <p class="section-heading">top versions by downloads</p>
-    {topVersions.length > 0 ? (
-      <table class="versions-table">
-        <thead>
-          <tr>
-            <th>version</th>
-            <th style="text-align: right;">downloads</th>
-            <th style="text-align: right;">published</th>
-          </tr>
-        </thead>
-        <tbody>
-          {topVersions.map(v => (
-            <tr>
-              <td class="version-version">v{v.version}</td>
-              <td class="version-dl">{(v.download_count ?? 0).toLocaleString()}</td>
-              <td class="version-date">{new Date(v.published_at).toLocaleDateString()}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    ) : (
-      <p class="no-data">No version data available.</p>
-    )}
+  <!-- Tab navigation -->
+  <div class="tabs" role="tablist">
+    <button class="tab-btn active" data-tab="timeline" role="tab" aria-selected="true">Timeline</button>
+    <button class="tab-btn" data-tab="versions" role="tab" aria-selected="false">Versions</button>
+    <button class="tab-btn" data-tab="referrers" role="tab" aria-selected="false">Referrers</button>
+    <button class="tab-btn" data-tab="geo" role="tab" aria-selected="false">Geo</button>
   </div>
 
-  <div class="section">
-    <p class="section-heading">top dependents</p>
-    {topDependents.length > 0 ? (
-      <div class="dependents-list">
-        {topDependents.map(d => (
-          <div class="dep-row">
-            <a class="dep-name" href={`/${d.packageSlug}`}>{d.packageName}</a>
-            <span class="dep-count">{d.versionCount} version{d.versionCount !== 1 ? 's' : ''}</span>
-          </div>
-        ))}
-      </div>
-    ) : (
-      <p class="no-data">No packages depend on this one yet.</p>
-    )}
-  </div>
-
-  <div class="section">
-    <p class="section-heading">release timeline</p>
-    {versions.length > 0 ? (
-      <div class="release-timeline">
-        {versions.slice(0, 10).map(v => (
-          <div class="release-item">
-            <span class="release-dot"></span>
-            <span class="release-version">v{v.version}</span>
-            <span class="release-date">{new Date(v.published_at).toLocaleDateString()}</span>
-          </div>
-        ))}
-        {versions.length > 10 && (
-          <p class="no-data" style="padding: 0.5rem 0;">+ {versions.length - 10} more versions</p>
+  <!-- Timeline tab -->
+  <div class="tab-panel active" id="panel-timeline" role="tabpanel">
+    <div class="chart-card">
+      <p class="chart-heading">downloads — timeline</p>
+      <div id="chart-timeline">
+        {timeline30d.length > 0 ? (
+          <DownloadLineChart data={timeline30d} />
+        ) : (
+          <p class="no-data">No download data available yet.</p>
         )}
       </div>
-    ) : (
-      <p class="no-data">No release data available.</p>
-    )}
+    </div>
+    <div class="summary-footer" id="summary-timeline">
+      <div class="summary-item">
+        <span class="summary-label">Total:</span>
+        <span class="summary-value" id="sum-total">{stats.total.toLocaleString()}</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Period:</span>
+        <span class="summary-value" id="sum-period">{timeline30d.reduce((s, d) => s + d.count, 0).toLocaleString()}</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Peak:</span>
+        <span class="summary-value" id="sum-peak">{Math.max(0, ...timeline30d.map(d => d.count)).toLocaleString()}</span>
+        <span class="summary-label" style="margin-left: 0.25rem">/day</span>
+      </div>
+    </div>
   </div>
 
-  <script define:vars={{ packageSlug, accessToken }}>
-    // Fetch more detailed analytics from API (star timeline, trend calculations)
-    async function loadDetailedAnalytics() {
-      if (!accessToken) return
+  <!-- Versions tab -->
+  <div class="tab-panel" id="panel-versions" role="tabpanel">
+    <div class="chart-card">
+      <p class="chart-heading">downloads — by version</p>
+      <div id="chart-versions">
+        <div class="skeleton skeleton-chart"></div>
+      </div>
+    </div>
+    <div class="summary-footer" id="summary-versions"></div>
+  </div>
+
+  <!-- Referrers tab -->
+  <div class="tab-panel" id="panel-referrers" role="tabpanel">
+    <div class="chart-card">
+      <p class="chart-heading">downloads — by referrer</p>
+      <div id="chart-referrers">
+        <div class="skeleton skeleton-chart"></div>
+      </div>
+    </div>
+    <div class="summary-footer" id="summary-referrers"></div>
+  </div>
+
+  <!-- Geo tab -->
+  <div class="tab-panel" id="panel-geo" role="tabpanel">
+    <div class="chart-card">
+      <p class="chart-heading">downloads — by country</p>
+      <div id="chart-geo">
+        <div class="skeleton skeleton-chart"></div>
+      </div>
+    </div>
+    <div class="summary-footer" id="summary-geo"></div>
+  </div>
+
+  <script define:vars={{ packageSlugJson, accessToken }}>
+    const packageSlug = packageSlugJson
+    let currentDays = 30
+    let currentTab = 'timeline'
+    let cachedData = {}
+
+    // ── Tab switching ──────────────────────────────────────────────────────────
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab
+        switchTab(tab)
+      })
+    })
+
+    function switchTab(tab) {
+      currentTab = tab
+
+      // Update tab buttons
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.tab === tab)
+        b.setAttribute('aria-selected', b.dataset.tab === tab ? 'true' : 'false')
+      })
+
+      // Update panels
+      document.querySelectorAll('.tab-panel').forEach(p => {
+        p.classList.toggle('active', p.id === `panel-${tab}`)
+      })
+
+      fetchData(tab, currentDays)
+    }
+
+    // ── Time range picker ───────────────────────────────────────────────────────
+    document.querySelectorAll('.time-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const days = btn.dataset.days
+        currentDays = days === 'all' ? 'all' : parseInt(days, 10)
+
+        document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'))
+        btn.classList.add('active')
+
+        fetchData(currentTab, currentDays)
+      })
+    })
+
+    // ── Fetch data ──────────────────────────────────────────────────────────────
+    async function fetchData(dimension, days) {
+      const cacheKey = `${dimension}-${days}`
+      if (cachedData[cacheKey]) {
+        renderChart(dimension, cachedData[cacheKey])
+        return
+      }
+
+      // Show skeleton
+      const chartEl = document.getElementById(`chart-${dimension}`)
+      if (chartEl) {
+        chartEl.innerHTML = '<div class="skeleton skeleton-chart"></div>'
+      }
 
       try {
-        const res = await fetch(`/api/packages/${encodeURIComponent(packageSlug)}/analytics`, {
+        const params = new URLSearchParams({ dimension, days: String(days) })
+        const res = await fetch(`/api/packages/${encodeURIComponent(packageSlug)}/analytics?${params}`, {
           headers: { 'Authorization': `Bearer ${accessToken}` }
         })
 
-        if (!res.ok) {
-          console.error('Failed to load analytics:', res.status)
-          return
-        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
         const data = await res.json()
-
-        // Update star count and trend
-        const starsEl = document.getElementById('stat-stars')
-        if (starsEl && data.stars?.total !== undefined) {
-          starsEl.textContent = data.stars.total.toLocaleString()
-        }
-
-        // Update star trend (show growth from timeline)
-        const trendStarsEl = document.getElementById('trend-stars')
-        if (trendStarsEl && data.stars?.timeline?.length > 0) {
-          const timeline = data.stars.timeline
-          const recentWeeks = timeline.slice(-4)
-          if (recentWeeks.length >= 2) {
-            const firstCount = recentWeeks[0].count
-            const lastCount = recentWeeks[recentWeeks.length - 1].count
-            if (lastCount > firstCount) {
-              const growth = Math.round(((lastCount - firstCount) / firstCount) * 100)
-              trendStarsEl.textContent = `+${growth}% (4 weeks)`
-              trendStarsEl.className = 'stat-trend up'
-            }
-          }
-        }
-
-        // Update download trends
-        if (data.downloads) {
-          const trend7dEl = document.getElementById('trend-7d')
-          const trend30dEl = document.getElementById('trend-30d')
-
-          // We don't have previous period comparison data, so we just show the counts
-          // The trend calculation would require historical data beyond what we fetch
-          if (trend7dEl) {
-            trend7dEl.textContent = `≈ ${data.downloads.last7d.toLocaleString()} this week`
-          }
-          if (trend30dEl) {
-            trend30dEl.textContent = `≈ ${data.downloads.last30d.toLocaleString()} this month`
-          }
-        }
+        cachedData[cacheKey] = data
+        renderChart(dimension, data)
       } catch (err) {
         console.error('Analytics fetch error:', err)
+        if (chartEl) {
+          chartEl.innerHTML = `<p class="error-msg">Failed to load data: ${err.message}</p>`
+        }
       }
     }
 
-    loadDetailedAnalytics()
+    // ── Render chart ────────────────────────────────────────────────────────────
+    function renderChart(dimension, data) {
+      const summaryEl = document.getElementById(`summary-${dimension}`)
+      const chartEl = document.getElementById(`chart-${dimension}`)
+      if (!chartEl) return
+
+      // Build summary
+      if (summaryEl) {
+        let periodCount = 0
+        if (dimension === 'timeline' && data.timeline) {
+          periodCount = data.timeline.reduce((s, d) => s + d.count, 0)
+          const peak = Math.max(0, ...data.timeline.map(d => d.count))
+          summaryEl.innerHTML = `
+            <div class="summary-item"><span class="summary-label">Total:</span><span class="summary-value">${(data.summary?.total ?? 0).toLocaleString()}</span></div>
+            <div class="summary-item"><span class="summary-label">Period:</span><span class="summary-value">${periodCount.toLocaleString()}</span></div>
+            <div class="summary-item"><span class="summary-label">Peak:</span><span class="summary-value">${peak.toLocaleString()}</span><span class="summary-label" style="margin-left:0.25rem">/day</span></div>
+          `
+        } else if (dimension === 'versions' && data.versions) {
+          periodCount = data.versions.reduce((s, v) => s + v.count, 0)
+          summaryEl.innerHTML = `
+            <div class="summary-item"><span class="summary-label">Versions:</span><span class="summary-value">${data.versions.length}</span></div>
+            <div class="summary-item"><span class="summary-label">Period downloads:</span><span class="summary-value">${periodCount.toLocaleString()}</span></div>
+          `
+        } else if (dimension === 'referrers' && data.referrers) {
+          periodCount = data.referrers.reduce((s, r) => s + r.count, 0)
+          summaryEl.innerHTML = `
+            <div class="summary-item"><span class="summary-label">Referrers:</span><span class="summary-value">${data.referrers.length}</span></div>
+            <div class="summary-item"><span class="summary-label">Period downloads:</span><span class="summary-value">${periodCount.toLocaleString()}</span></div>
+          `
+        } else if (dimension === 'geo' && data.geo) {
+          periodCount = data.geo.reduce((s, g) => s + g.count, 0)
+          summaryEl.innerHTML = `
+            <div class="summary-item"><span class="summary-label">Countries:</span><span class="summary-value">${data.geo.length}</span></div>
+            <div class="summary-item"><span class="summary-label">Period downloads:</span><span class="summary-value">${periodCount.toLocaleString()}</span></div>
+          `
+        }
+      }
+
+      // Render chart content — use inline SVG approach to avoid Astro island issues
+      if (dimension === 'timeline' && data.timeline) {
+        chartEl.innerHTML = ''
+        renderLineChart(chartEl, data.timeline)
+      } else if (dimension === 'versions' && data.versions) {
+        chartEl.innerHTML = ''
+        renderBarChart(chartEl, data.versions.map(v => ({ label: `v${v.version}`, count: v.count })), 'versions')
+      } else if (dimension === 'referrers' && data.referrers) {
+        chartEl.innerHTML = ''
+        renderBarChart(chartEl, data.referrers.map(r => ({ label: r.referrer, count: r.count })), 'referrers')
+      } else if (dimension === 'geo' && data.geo) {
+        chartEl.innerHTML = ''
+        renderGeoBarChart(chartEl, data.geo)
+      } else {
+        chartEl.innerHTML = '<p class="no-data">No data available for this period.</p>'
+      }
+    }
+
+    // ── Line Chart Renderer (inline SVG) ─────────────────────────────────────
+    function renderLineChart(container, timeline) {
+      const WIDTH = 600, HEIGHT = 200
+      const PAD_LEFT = 48, PAD_RIGHT = 16, PAD_TOP = 16, PAD_BOTTOM = 40
+      const chartWidth = WIDTH - PAD_LEFT - PAD_RIGHT
+      const chartHeight = HEIGHT - PAD_TOP - PAD_BOTTOM
+      const n = timeline.length
+      const maxCount = Math.max(1, ...timeline.map(d => d.count))
+
+      const points = timeline.map((d, i) => {
+        const x = PAD_LEFT + (i / Math.max(n - 1, 1)) * chartWidth
+        const y = PAD_TOP + (1 - d.count / maxCount) * chartHeight
+        return { x, y, date: d.date, count: d.count }
+      })
+
+      const polylinePoints = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+      const areaD = ['M', points[0]?.x.toFixed(1), (PAD_TOP + chartHeight).toFixed(1)].join(' ')
+        + ' ' + points.map(p => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+        + ' ' + `L${points[points.length - 1]?.x.toFixed(1)},${(PAD_TOP + chartHeight).toFixed(1)} Z`
+
+      const gridLines = []
+      for (let i = 0; i <= 4; i++) {
+        const count = Math.round((maxCount / 4) * i)
+        const y = PAD_TOP + (1 - i / 4) * chartHeight
+        gridLines.push({ y, label: count >= 1000 ? `${(count / 1000).toFixed(1)}k` : String(count) })
+      }
+
+      const labelEvery = Math.max(1, Math.floor(n / 6))
+      const xLabels = points.filter((_, i) => i % labelEvery === 0 || i === n - 1)
+
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      svg.setAttribute('viewBox', `0 0 ${WIDTH} ${HEIGHT}`)
+      svg.setAttribute('width', '100%')
+      svg.setAttribute('height', String(HEIGHT))
+      svg.style.display = 'block'
+      svg.style.background = 'var(--surface)'
+      svg.style.borderRadius = '10px'
+      svg.style.overflow = 'visible'
+
+      svg.innerHTML = `
+        <defs>
+          <linearGradient id="line-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.3"/>
+            <stop offset="100%" stop-color="var(--accent)" stop-opacity="0.02"/>
+          </linearGradient>
+        </defs>
+        ${gridLines.map(g => `
+          <line x1="${PAD_LEFT}" y1="${g.y}" x2="${PAD_LEFT + chartWidth}" y2="${g.y}" stroke="var(--border)" stroke-width="1" stroke-dasharray="4 4"/>
+          <text x="${PAD_LEFT - 6}" y="${g.y}" text-anchor="end" dominant-baseline="middle" font-family="var(--font-mono)" font-size="10" fill="var(--muted)">${g.label}</text>
+        `).join('')}
+        ${xLabels.map(p => `
+          <text x="${p.x}" y="${PAD_TOP + chartHeight + 16}" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--muted)">${p.date.slice(5)}</text>
+        `).join('')}
+        <path d="${areaD}" fill="url(#line-grad)"/>
+        <polyline points="${polylinePoints}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        ${points.map(p => `
+          <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="var(--surface)" stroke="var(--accent)" stroke-width="2">
+            <title>${p.date}: ${p.count.toLocaleString()} download${p.count !== 1 ? 's' : ''}</title>
+          </circle>
+        `).join('')}
+      `
+      container.appendChild(svg)
+    }
+
+    // ── Bar Chart Renderer (inline SVG) ───────────────────────────────────────
+    function renderBarChart(container, items, type) {
+      if (!items || items.length === 0) {
+        container.innerHTML = '<p class="no-data">No data available.</p>'
+        return
+      }
+
+      const ROW_HEIGHT = 32, LABEL_WIDTH = 160, BAR_MAX_WIDTH = 300
+      const COUNT_WIDTH = 60
+      const chartHeight = Math.min(items.length * ROW_HEIGHT + 16, 300)
+      const svgWidth = LABEL_WIDTH + BAR_MAX_WIDTH + COUNT_WIDTH + 24
+
+      const maxCount = Math.max(1, ...items.map(d => d.count))
+
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      svg.setAttribute('viewBox', `0 0 ${svgWidth} ${chartHeight}`)
+      svg.setAttribute('width', '100%')
+      svg.setAttribute('height', String(chartHeight))
+      svg.style.display = 'block'
+      svg.style.background = 'var(--surface)'
+      svg.style.borderRadius = '10px'
+      svg.style.overflow = 'visible'
+
+      const barRows = items.slice(0, 20).map((item, i) => {
+        const y = i * ROW_HEIGHT + 8
+        const barWidth = Math.max(4, (item.count / maxCount) * BAR_MAX_WIDTH)
+        const label = item.label && item.label.length > 24 ? item.label.slice(0, 21) + '...' : (item.label || 'unknown')
+        const flag = type === 'geo' && item.label ? (window.__COUNTRY_FLAGS__ && window.__COUNTRY_FLAGS__[item.label] ? window.__COUNTRY_FLAGS__[item.label] + ' ' : '') : ''
+
+        return `
+          <text x="${LABEL_WIDTH - 8}" y="${y + 12}" text-anchor="end" dominant-baseline="middle" font-family="var(--font-mono)" font-size="11" fill="var(--text)">${flag}${label}</text>
+          <rect x="${LABEL_WIDTH}" y="${y}" width="${BAR_MAX_WIDTH}" height="${ROW_HEIGHT - 6}" rx="4" fill="var(--border)" opacity="0.3"/>
+          <rect x="${LABEL_WIDTH}" y="${y}" width="${barWidth}" height="${ROW_HEIGHT - 6}" rx="4" fill="var(--accent)" opacity="0.8">
+            <animate attributeName="width" from="0" to="${barWidth}" dur="400ms" begin="${i * 30}ms" fill="freeze" calcMode="spline" keySplines="0.25 0.1 0.25 1"/>
+          </rect>
+          <text x="${LABEL_WIDTH + BAR_MAX_WIDTH + 8}" y="${y + 12}" dominant-baseline="middle" font-family="var(--font-mono)" font-size="10" fill="var(--muted)">${item.count.toLocaleString()}</text>
+        `
+      }).join('')
+
+      svg.innerHTML = barRows
+      container.appendChild(svg)
+    }
+
+    function renderGeoBarChart(container, geoData) {
+      if (!geoData || geoData.length === 0) {
+        container.innerHTML = '<p class="no-data">No data available.</p>'
+        return
+      }
+
+      const flags = {
+        US: '🇺🇸', DE: '🇩🇪', GB: '🇬🇧', FR: '🇫🇷', CA: '🇨🇦',
+        AU: '🇦🇺', JP: '🇯🇵', NL: '🇳🇱', SE: '🇸🇪', CH: '🇨🇭',
+        BR: '🇧🇷', IN: '🇮🇳', KR: '🇰🇷', ES: '🇪🇸', IT: '🇮🇹',
+        PL: '🇵🇱', MX: '🇲🇽', RU: '🇷🇺', SG: '🇸🇬', NZ: '🇳🇿',
+        CN: '🇨🇳', TW: '🇹🇼', HK: '🇭🇰', IE: '🇮🇪', NO: '🇳🇴',
+        DK: '🇩🇰', FI: '🇫🇮', BE: '🇧🇪', AT: '🇦🇹', PT: '🇵🇹',
+        IL: '🇮🇱', TR: '🇹🇷', AR: '🇦🇷', CL: '🇨🇱', CO: '🇨🇴',
+        ID: '🇮🇩', TH: '🇹🇭', VN: '🇻🇳', MY: '🇲🇾', PH: '🇵🇭',
+        AE: '🇦🇪', SA: '🇸🇦', EG: '🇪🇬', NG: '🇳🇬', KE: '🇰🇪',
+        ZA: '🇿🇦', XX: '🌍',
+      }
+
+      const items = geoData.map(g => ({
+        label: `${flags[g.country] ?? '🌍'} ${g.country}`,
+        count: g.count,
+      }))
+
+      renderBarChart(container, items, 'geo')
+    }
+
+    // ── CSV Export ──────────────────────────────────────────────────────────────
+    document.getElementById('export-csv').addEventListener('click', async () => {
+      const cacheKey = `${currentTab}-${currentDays}`
+      const data = cachedData[cacheKey]
+      if (!data) {
+        alert('No data to export. Please wait for the chart to load.')
+        return
+      }
+
+      let rows = []
+      const filename = `${packageSlug}-analytics-${currentTab}-${currentDays}`
+
+      if (currentTab === 'timeline' && data.timeline) {
+        rows = [['date', 'count'], ...data.timeline.map(d => [d.date, d.count])]
+      } else if (currentTab === 'versions' && data.versions) {
+        rows = [['version', 'count', 'percentage'], ...data.versions.map(v => [v.version, v.count, v.percentage])]
+      } else if (currentTab === 'referrers' && data.referrers) {
+        rows = [['referrer', 'count'], ...data.referrers.map(r => [r.referrer, r.count])]
+      } else if (currentTab === 'geo' && data.geo) {
+        rows = [['country', 'count'], ...data.geo.map(g => [g.country, g.count])]
+      }
+
+      if (rows.length === 0) {
+        alert('No data to export.')
+        return
+      }
+
+      const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n')
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${filename}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    })
+
+    // Initial load: fetch timeline data for default tab
+    fetchData('timeline', currentDays)
   </script>
 </Base>
