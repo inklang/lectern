@@ -9,6 +9,8 @@ export interface SearchResult {
   star_count: number
   download_count: number
   tags: string[]
+  deprecated: boolean
+  deprecation_message: string | null
 }
 
 interface RrfItem { name: string; package_slug?: string; [key: string]: unknown }
@@ -120,6 +122,21 @@ export async function hybridSearch(query: string, limit = 20): Promise<SearchRes
     tagsMap = tagsByPkg
   }
 
+  // Fetch deprecation status for each package
+  let deprecationMap = new Map<string, { deprecated: boolean; deprecation_message: string | null }>()
+  if (topNames.length > 0) {
+    const { data: deprecRows } = await supabase
+      .from('packages')
+      .select('name, deprecated, deprecation_message')
+      .in('name', topNames)
+    for (const row of deprecRows ?? []) {
+      deprecationMap.set(row.name, {
+        deprecated: row.deprecated ?? false,
+        deprecation_message: row.deprecation_message ?? null,
+      })
+    }
+  }
+
   return merged.slice(0, limit).map(r => ({
     name: r.name as string,
     package_slug: r.package_slug as string,
@@ -129,6 +146,8 @@ export async function hybridSearch(query: string, limit = 20): Promise<SearchRes
     star_count: starMap.get(r.name as string) ?? 0,
     download_count: dlMap.get(r.name as string) ?? 0,
     tags: tagsMap.get(r.name as string) ?? [],
+    deprecated: deprecationMap.get(r.name as string)?.deprecated ?? false,
+    deprecation_message: deprecationMap.get(r.name as string)?.deprecation_message ?? null,
   }))
 }
 

@@ -454,6 +454,30 @@ export async function getPackageDeprecation(name: string): Promise<PackageDeprec
   }
 }
 
+// Batch version: fetches deprecation info for multiple packages in one query
+export async function getDeprecationsForPackages(names: string[]): Promise<Record<string, PackageDeprecation | null>> {
+  if (names.length === 0) return {}
+
+  const { data, error } = await supabase
+    .from('packages')
+    .select('name, deprecated, deprecation_message, deprecated_at, deprecated_by')
+    .in('name', names)
+
+  if (error) throw error
+
+  const result: Record<string, PackageDeprecation | null> = {}
+  for (const name of names) result[name] = null
+  for (const row of data ?? []) {
+    result[row.name] = {
+      deprecated: row.deprecated ?? false,
+      deprecation_message: row.deprecation_message ?? null,
+      deprecated_at: row.deprecated_at ?? null,
+      deprecated_by: row.deprecated_by ?? null,
+    }
+  }
+  return result
+}
+
 // Sets the deprecation status of a package
 export async function setPackageDeprecation(
   name: string,

@@ -610,7 +610,7 @@ function buildPageUrl(p: number) {
 
     const url = new URL(location.href)
     let activeSort = url.searchParams.get('sort') ?? 'recent'
-    let cachedResults: Array<{ name: string; package_slug: string; version: string; description: string | null }> = []
+    let cachedResults: Array<{ name: string; package_slug: string; version: string; description: string | null; deprecated: boolean; deprecation_message: string | null }> = []
 
     function esc(s: string): string {
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -716,12 +716,16 @@ function buildPageUrl(p: number) {
           const name = esc(pkg.name)
           const desc = pkg.description ? esc(pkg.description) : ''
           const ver = esc(pkg.version)
+          const deprecatedLabel = pkg.deprecated
+            ? '<span class="pkg-deprecated"' + (pkg.deprecation_message ? ' title="' + esc(pkg.deprecation_message) + '"' : '') + '>deprecated</span>'
+            : ''
           return '<label class="pkg-checkbox-label">' +
             '<input type="checkbox" class="pkg-checkbox" value="' + name + '" />' +
           '</label>' +
           '<a class="pkg-card" href="/' + slug + '" style="flex:1;">' +
             '<div class="pkg-left">' +
               '<span class="pkg-name">' + name + '</span>' +
+              deprecatedLabel +
               (pkg.description ? '<span class="pkg-description">' + desc + '</span>' : '') +
             '</div>' +
             '<div class="pkg-right">' +

@@ -8,6 +8,7 @@ import HealthBadge from '../../components/HealthBadge.astro'
 import HealthPanel from '../../components/HealthPanel.astro'
 import DeprecationBanner from '../../components/DeprecationBanner.astro'
 import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount, getPackageHealth, getDownloadTimeline, resolvePackageSlugs } from '../../lib/db.js'
+import { canUserPublish } from '../../lib/authz.js'
 import DownloadSparkline from '../../components/DownloadSparkline.astro'
 import { renderMarkdown } from '../../lib/markdown.js'
 import { createServerClient, parseCookieHeader } from '@supabase/ssr'
@@ -91,6 +92,9 @@ if (userId && owner) {
     isOrgAdmin = member?.role === 'admin'
   }
 }
+
+// Check if user is package owner (for analytics link)
+const isOwner = userId ? await canUserPublish(userId, dbSlug) : false
 
 const packageUrl = `https://lectern.inklang.org/${packageSlug}`
 const ogDescription = latest.description
@@ -735,6 +739,11 @@ const ogDescription = latest.description
       <a class="compare-btn-header" href={`/packages/compare?a=${encodeURIComponent(dbSlug)}&b=`}>
         compare
       </a>
+      {isOwner && (
+        <a class="compare-btn-header" href={`/${user}/${slug}/analytics`}>
+          analytics
+        </a>
+      )}
     </div>
     {latest.description && <p class="pkg-description">{latest.description}</p>}
     {tags.length > 0 && (
