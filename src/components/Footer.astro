@@ -1,5 +1,13 @@
 ---
+import { getLocale, t, LOCALES, LOCALE_LABELS, LOCALE_FLAGS } from '../lib/i18n.ts'
+
+const locale = getLocale(Astro.request)
 const year = new Date().getFullYear()
+
+const resourcesLabel = await t(locale, 'footer.resources')
+const communityLabel = await t(locale, 'footer.community')
+const docsLabel = await t(locale, 'footer.documentation')
+const languageLabel = await t(locale, 'footer.language')
 ---
 
 <footer class="footer">
@@ -21,22 +29,68 @@ const year = new Date().getFullYear()
       </div>
     </div>
     <div class="footer-section">
-      <p class="footer-heading">Resources</p>
-      <a href="/docs">Documentation</a>
-      <a href="/packages">Packages</a>
-      <a href="/blog">Blog</a>
-      <a href="/forum">Forum</a>
+      <p class="footer-heading">{resourcesLabel}</p>
+      <a href="/docs">{docsLabel}</a>
+      <a href="/packages">{await t(locale, 'nav.packages')}</a>
+      <a href="/blog">{await t(locale, 'nav.blog')}</a>
+      <a href="/forum">{await t(locale, 'nav.forum')}</a>
     </div>
     <div class="footer-section">
-      <p class="footer-heading">Community</p>
+      <p class="footer-heading">{communityLabel}</p>
       <a href="https://github.com/inklang/ink" target="_blank" rel="noopener">GitHub</a>
       <a href="/activity">Activity</a>
+    </div>
+    <div class="footer-section">
+      <p class="footer-heading">{languageLabel}</p>
+      <form class="locale-switcher" id="locale-switcher">
+        <select name="lang" aria-label={languageLabel}>
+          {LOCALES.map(loc => (
+            <option value={loc} selected={loc === locale}>
+              {LOCALE_FLAGS[loc]} {LOCALE_LABELS[loc]}
+            </option>
+          ))}
+        </select>
+      </form>
     </div>
   </div>
   <div class="footer-bottom">
     <p>ink &copy; {year}</p>
   </div>
 </footer>
+
+<script>
+  const form = document.getElementById('locale-switcher')
+  const select = form?.querySelector('select')
+  select?.addEventListener('change', (e) => {
+    const lang = (e.target as HTMLSelectElement).value
+    const url = new URL(location.href)
+    url.searchParams.set('lang', lang)
+    document.cookie = `lectern_lang=${lang}; path=/; max-age=31536000`
+    location.href = url.toString()
+  })
+</script>
+
+<style>
+  .locale-switcher select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted-2);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    padding: 0.3rem 0.5rem;
+    cursor: pointer;
+    width: 100%;
+  }
+  .locale-switcher select:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .locale-switcher select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+</style>
 
 <style>
   .footer {

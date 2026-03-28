@@ -1,6 +1,9 @@
 ---
 import { createServerClient, parseCookieHeader } from '@supabase/ssr'
+import { getLocale, t } from '../lib/i18n.ts'
+import { getNotifications } from '../lib/notifications.js'
 
+const locale = getLocale(Astro.request)
 const supabase = createServerClient(
   import.meta.env.SUPABASE_URL ?? '',
   import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? '',
@@ -18,15 +21,33 @@ const { data: { session } } = await supabase.auth.getSession()
 const avatar = session?.user.user_metadata?.avatar_url ?? null
 const username = session?.user.user_metadata?.user_name ?? null
 
+let unreadCount = 0
+if (session) {
+  try {
+    const unread = await getNotifications(session.user.id, 20, 0, true)
+    unreadCount = unread.length
+  } catch {}
+}
+
 const { pathname } = Astro.url
 
 const navLinks = [
-  { href: '/', label: 'Home' },
-  { href: '/docs', label: 'Docs' },
-  { href: '/packages', label: 'Packages' },
-  { href: '/blog', label: 'Blog' },
-  { href: '/forum', label: 'Forum' },
+  { href: '/', labelKey: 'nav.home' },
+  { href: '/docs', labelKey: 'nav.docs' },
+  { href: '/packages', labelKey: 'nav.packages' },
+  { href: '/blog', labelKey: 'nav.blog' },
+  { href: '/forum', labelKey: 'nav.forum' },
 ]
+
+const labels = await Promise.all(
+  navLinks.map(async (link) => ({
+    href: link.href,
+    label: await t(locale, link.labelKey),
+  }))
+)
+
+const loginLabel = await t(locale, 'nav.login')
+const searchPlaceholder = await t(locale, 'search.placeholder')
 
 function isActive(href: string) {
   if (href === '/') return pathname === '/'
@@ -52,7 +73,7 @@ function isActive(href: string) {
       <input
         id="nav-search-input"
         type="search"
-        placeholder="Search packages…"
+        placeholder={searchPlaceholder}
         autocomplete="off"
         aria-label="Search packages"
         aria-autocomplete="list"
@@ -68,10 +89,10 @@ function isActive(href: string) {
         href="/feed"
         class:list={['nav-link', { active: isActive('/feed') }]}
       >
-        Feed
+        {await t(locale, 'nav.feed')}
       </a>
     )}
-    {navLinks.map(link => (
+    {labels.map(link => (
       <a
         href={link.href}
         class:list={['nav-link', { active: isActive(link.href) }]}
@@ -100,7 +121,7 @@ function isActive(href: string) {
         }
       </a>
     ) : (
-      <a href="/login" class="nav-login">login</a>
+      <a href="/login" class="nav-login">{loginLabel}</a>
     )}
   </div>
 </nav>
