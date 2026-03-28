@@ -24,58 +24,57 @@ const { packages } = Astro.props
   <div class="panel-backdrop" id="panel-backdrop"></div>
   <div class="panel-content">
     <div class="panel-header">
-      <span class="panel-title">compare packages</span>
+      <span class="panel-title">compare</span>
       <button class="panel-close" id="panel-close" aria-label="Close panel">×</button>
     </div>
-    <div class="panel-table-wrap">
-      <table class="compare-table">
-        <thead>
-          <tr>
-            <th class="compare-label"></th>
-            {packages.map(pkg => (
-              <th class="compare-pkg-name">
-                <a href={`/packages/${pkg.name}`}>{pkg.name}</a>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td class="compare-label">version</td>     {packages.map(pkg => <td>{pkg.version}</td>)}</tr>
-          <tr><td class="compare-label">description</td> {packages.map(pkg => <td>{pkg.description ?? '—'}</td>)}</tr>
-          <tr>
-            <td class="compare-label">tags</td>
-            {packages.map(pkg => (
-              <td>
-                {pkg.tags.length > 0
-                  ? pkg.tags.map(t => <span class="compare-tag">{t}</span>)
-                  : '—'}
-              </td>
-            ))}
-          </tr>
-          <tr><td class="compare-label">downloads</td>  {packages.map(pkg => <td>{pkg.download_count.toLocaleString()}</td>)}</tr>
-          <tr><td class="compare-label">popularity</td> {packages.map(pkg => <td>{pkg.popularity_score.toFixed(1)}</td>)}</tr>
-          <tr><td class="compare-label">author</td>     {packages.map(pkg => <td>{pkg.author ?? '—'}</td>)}</tr>
-          <tr><td class="compare-label">published</td>  {packages.map(pkg => <td>{new Date(pkg.published_at).toLocaleDateString()}</td>)}</tr>
-          <tr>
-            <td class="compare-label">deps</td>
-            {packages.map(pkg => (
-              <td>
-                {Object.keys(pkg.dependencies).length > 0
-                  ? Object.entries(pkg.dependencies).map(([k, v]) => `${k} ${v}`).join(', ')
-                  : 'none'}
-              </td>
-            ))}
-          </tr>
-          <tr><td class="compare-label">license</td>   {packages.map(pkg => <td>{pkg.license ?? '—'}</td>)}</tr>
-        </tbody>
-      </table>
+    <div class="panel-body">
+      {packages.map(pkg => (
+        <div class="pkg-col">
+          <div class="pkg-name">{pkg.name}</div>
+          <div class="pkg-version">v{pkg.version}</div>
+
+          <div class="field">
+            <span class="field-label">description</span>
+            <span class="field-value">{pkg.description ?? '—'}</span>
+          </div>
+
+          {pkg.tags.length > 0 && (
+            <div class="field">
+              <span class="field-label">tags</span>
+              <span class="field-value tags-row">
+                {pkg.tags.map(t => <span class="tag">{t}</span>)}
+              </span>
+            </div>
+          )}
+
+          <div class="field">
+            <span class="field-label">author</span>
+            <span class="field-value">{pkg.author ?? '—'}</span>
+          </div>
+
+          <div class="field">
+            <span class="field-label">deps</span>
+            <span class="field-value deps">
+              {Object.keys(pkg.dependencies).length > 0
+                ? Object.entries(pkg.dependencies).map(([k, v]) => (
+                    <span class="dep">{k} <span class="dep-ver">{v}</span></span>
+                  ))
+                : <span class="no-deps">none</span>}
+            </span>
+          </div>
+
+          <div class="field">
+            <span class="field-label">license</span>
+            <span class="field-value">{pkg.license ?? '—'}</span>
+          </div>
+
+          <div class="field">
+            <span class="field-label">downloads</span>
+            <span class="field-value">{pkg.download_count.toLocaleString()}</span>
+          </div>
+        </div>
+      ))}
     </div>
-    {packages.length === 2 && (
-      <div class="diff-hint">
-        <a href={`/packages/${packages[0].name}/diff`}>Diff versions of {packages[0].name} →</a>
-        <span style="color: var(--muted); font-size: 0.8rem; margin-left: 0.5rem">(single-package version diffs)</span>
-      </div>
-    )}
   </div>
 </div>
 
@@ -92,13 +91,13 @@ const { packages } = Astro.props
   .panel-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.6);
     cursor: pointer;
   }
 
   .panel-content {
     position: relative;
-    width: 360px;
+    width: 320px;
     max-width: 100vw;
     height: 100%;
     background: var(--bg);
@@ -119,14 +118,14 @@ const { packages } = Astro.props
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 1rem;
+    padding: 0.5rem 0.75rem;
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
 
   .panel-title {
     font-family: var(--font-mono);
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -135,7 +134,7 @@ const { packages } = Astro.props
 
   .panel-close {
     font-family: var(--font-mono);
-    font-size: 1.25rem;
+    font-size: 1rem;
     color: var(--muted);
     background: none;
     border: none;
@@ -146,60 +145,96 @@ const { packages } = Astro.props
   }
   .panel-close:hover { color: var(--text); }
 
-  .panel-table-wrap {
+  .panel-body {
     flex: 1;
-    overflow: auto;
-    padding: 1rem 0;
+    overflow-y: auto;
+    display: flex;
+    gap: 1px;
+    background: var(--border);
   }
 
-  .compare-table {
-    width: 100%;
-    border-collapse: collapse;
+  .pkg-col {
+    flex: 1;
+    background: var(--bg);
+    padding: 0.75rem;
+    overflow: hidden;
+  }
+
+  .pkg-name {
     font-family: var(--font-mono);
-    font-size: 0.75rem;
-  }
-
-  .compare-table th,
-  .compare-table td {
-    padding: 0.5rem 0.75rem;
-    text-align: left;
-    border-bottom: 1px solid var(--border);
-    vertical-align: top;
-  }
-
-  .compare-label {
-    color: var(--muted);
-    width: 80px;
-    flex-shrink: 0;
-  }
-
-  .compare-pkg-name {
+    font-size: 0.8rem;
     font-weight: 600;
     color: var(--accent);
+    word-break: break-all;
+    margin-bottom: 0.25rem;
   }
-  .compare-pkg-name a { color: inherit; text-decoration: none; }
-  .compare-pkg-name a:hover { text-decoration: underline; }
 
-  .compare-tag {
-    display: inline-block;
+  .pkg-version {
+    font-family: var(--font-mono);
     font-size: 0.7rem;
-    padding: 0.1rem 0.4rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
     color: var(--muted);
-    margin-right: 0.25rem;
-    margin-bottom: 0.2rem;
+    margin-bottom: 0.75rem;
   }
 
-  .diff-hint {
-    padding: 0.75rem 1rem;
-    border-top: 1px solid var(--border);
+  .field {
+    margin-bottom: 0.5rem;
+  }
+
+  .field-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text);
+    margin-bottom: 0.15rem;
+    opacity: 0.7;
+  }
+
+  .field-value {
     font-family: var(--font-mono);
     font-size: 0.75rem;
+    color: var(--muted);
+    word-break: break-word;
   }
-  .diff-hint a { color: var(--accent); text-decoration: none; }
-  .diff-hint a:hover { text-decoration: underline; }
+
+  .tags-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .tag {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.35rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--muted);
+  }
+
+  .deps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .dep {
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+
+  .dep-ver {
+    color: var(--text);
+    opacity: 0.6;
+  }
+
+  .no-deps {
+    font-size: 0.7rem;
+    color: var(--muted);
+    opacity: 0.5;
+  }
 
   @media (max-width: 600px) {
     .panel-content { width: 100vw; }
@@ -227,6 +262,5 @@ const { packages } = Astro.props
 
   ;(window as any).openComparePanel = openPanel
 
-  // Listen for compare:open event dispatched by compare bar
   window.addEventListener('compare:open', openPanel)
 </script>
