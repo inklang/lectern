@@ -265,6 +265,8 @@ const packagesForGrid = (packages ?? []).map((p: any) => {
       editHref={`/org/${org.slug}/settings`}
       followerCount={followerCount}
       packageCount={packages?.length ?? 0}
+      teamsCount={teams.length}
+      membersCount={memberCount}
       isFollowing={isFollowing}
       isLoggedIn={!!viewerId}
     />

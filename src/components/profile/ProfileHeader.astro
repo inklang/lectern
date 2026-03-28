@@ -1,4 +1,6 @@
 ---
+import ProfileStats from './ProfileStats.astro'
+
 interface Props {
   type: 'user' | 'org'
   name: string
@@ -14,6 +16,8 @@ interface Props {
   followerCount?: number
   followingCount?: number
   packageCount?: number
+  teamsCount?: number
+  membersCount?: number
   isFollowing?: boolean
   isLoggedIn?: boolean
 }
@@ -33,9 +37,13 @@ const {
   followerCount = 0,
   followingCount = 0,
   packageCount = 0,
+  teamsCount,
+  membersCount,
   isFollowing = false,
   isLoggedIn = false,
 } = Astro.props
+
+const isUser = type === 'user'
 
 function getAvatarColor(s: string): string {
   let hash = 0
@@ -47,8 +55,6 @@ function getAvatarColor(s: string): string {
 }
 
 const avatarColor = getAvatarColor(slug)
-const isUser = type === 'user'
-const currentUrl = Astro.url.pathname
 ---
 
 <div class={`profile-header ${bannerUrl && !isUser ? 'has-banner' : ''}`}>
@@ -98,24 +104,13 @@ const currentUrl = Astro.url.pathname
       )}
     </div>
 
-    <div class="profile-stats">
-      <div class="stat">
-        <span class="stat-value">{packageCount}</span>
-        <span class="stat-label">{packageCount === 1 ? 'package' : 'packages'}</span>
-      </div>
-      {isUser ? (
-        <>
-          <div class="stat">
-            <span class="stat-value">{followerCount}</span>
-            <span class="stat-label">{followerCount === 1 ? 'follower' : 'followers'}</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value">{followingCount}</span>
-            <span class="stat-label">following</span>
-          </div>
-        </>
-      ) : null}
-    </div>
+    <ProfileStats
+      packages={packageCount}
+      followers={isUser ? followerCount : undefined}
+      following={isUser ? followingCount : undefined}
+      teams={!isUser ? teamsCount : undefined}
+      members={!isUser ? membersCount : undefined}
+    />
 
     <div class="profile-actions">
       {isOwner ? (
@@ -235,33 +230,6 @@ const currentUrl = Astro.url.pathname
 
   .profile-link svg {
     flex-shrink: 0;
-  }
-
-  .profile-stats {
-    display: flex;
-    gap: 2rem;
-    margin-bottom: 1.25rem;
-  }
-
-  .stat {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-
-  .stat-value {
-    font-family: var(--font-mono);
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .stat-label {
-    font-family: var(--font-mono);
-    font-size: 0.775rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
   }
 
   .profile-actions {
