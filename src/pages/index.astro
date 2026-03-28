@@ -51,7 +51,14 @@ on event:player_death(player) {
 }`
 ---
 
-<Base title="Home" description="The Ink package registry — discover and publish grammar packages, scripts, and runtime extensions.">
+<Base
+  title="Home"
+  description="The Ink package registry — discover and publish grammar packages, scripts, and runtime extensions."
+  ogTitle="Ink Package Registry"
+  ogDescription="The Ink package registry — discover and publish grammar packages, scripts, and runtime extensions for PaperMC servers."
+  ogUrl="https://lectern.inklang.org/"
+  ogImage="https://lectern.inklang.org/api/home-og.png"
+>
   <style>
     /* Hero */
     .hero {
@@ -510,6 +517,7 @@ on event:player_death(player) {
             ))}
           </div>
       }
+      {trending.length > 0 && <a class="view-all" href="/trending">View all trending →</a>}
     </div>
 
     <div>

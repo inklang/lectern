@@ -1,0 +1,433 @@
+---
+import Base from '../layouts/Base.astro'
+import HealthBadge from '../components/HealthBadge.astro'
+import { getTrendingPackages, listPackagesByStars, listAllPackages, getHealthForPackages, type HealthStatus } from '../lib/db.js'
+
+const PAGE_SIZE = 20
+
+const windowParam = Astro.url.searchParams.get('window') ?? 'week'
+const page = Math.max(1, parseInt(Astro.url.searchParams.get('page') ?? '1'))
+
+const windowDays = windowParam === 'today' ? 1 : windowParam === 'month' ? 30 : 7
+
+const trendingAll = await getTrendingPackages(windowDays, 1000).catch(() => [])
+const totalCount = trendingAll.length
+const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+const clampedPage = Math.min(page, totalPages)
+const trending = trendingAll.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE)
+
+// Fetch health data for displayed packages
+const pkgNames = trending.map(p => p.package_name)
+let healthMap: Record<string, { score: number; status: HealthStatus } | null> = {}
+if (pkgNames.length > 0) {
+  const healthRecords = await getHealthForPackages(pkgNames).catch(() => {})
+  if (healthRecords) {
+    for (const [name, health] of Object.entries(healthRecords)) {
+      healthMap[name] = health
+        ? { score: health.health_score, status: health.health_status }
+        : null
+    }
+  }
+}
+
+// Fetch star counts for displayed packages
+const { getStarCounts } = await import('../lib/db.js')
+const starCounts = await getStarCounts(pkgNames).catch(() => {})
+
+// ── Sidebar data ─────────────────────────────────────────────────────────────
+// Top stars this week
+const topStars = await listPackagesByStars(10, 0).catch(() => [])
+
+// Recently updated (most recently published versions)
+const allPkgsMap = await listAllPackages().catch(() => {})
+const recentlyUpdated = Object.entries(allPkgsMap)
+  .flatMap(([name, versions]) =>
+    Object.values(versions).map(v => ({ name, ...v }))
+  )
+  .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
+  .slice(0, 8)
+
+// New packages this week (by package created_at)
+const oneWeekAgo = new Date()
+oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
+const newPackagesThisWeek = Object.entries(allPkgsMap)
+  .filter(([, versions]) => {
+    const latest = Object.values(versions).sort((a: any, b: any) =>
+      new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
+    )[0]
+    return latest && new Date(latest.published_at) >= oneWeekAgo
+  })
+  .slice(0, 8)
+  .map(([name, versions]) => {
+    const sorted = Object.values(versions).sort((a: any, b: any) =>
+      new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
+    )
+    return { name, ...sorted[0] }
+  })
+
+function buildPageUrl(p: number) {
+  const params = new URLSearchParams()
+  params.set('page', String(p))
+  if (windowParam !== 'week') params.set('window', windowParam)
+  return `/trending?${params.toString()}`
+}
+
+const windowLabel = windowParam === 'today' ? 'Today' : windowParam === 'month' ? 'This Month' : 'This Week'
+---
+
+<Base title="Trending Packages">
+  <style>
+    .page-header {
+      margin-bottom: 2rem;
+    }
+    .page-title {
+      font-family: var(--font-mono);
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.25rem;
+    }
+    .page-subtitle {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    /* Window tabs */
+    .window-tabs {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 2rem;
+    }
+    .window-tab {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      padding: 0.4rem 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      text-decoration: none;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .window-tab:hover {
+      color: var(--text);
+      border-color: var(--accent);
+      background: var(--surface);
+    }
+    .window-tab.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: rgba(139, 92, 246, 0.08);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 220px;
+      gap: 2.5rem;
+      align-items: start;
+    }
+
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    /* Package cards — same style as /packages */
+    .pkg-list { display: flex; flex-direction: column; }
+
+    .pkg-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.25rem;
+      margin-bottom: 0.5rem;
+      text-decoration: none;
+      color: var(--text);
+      gap: 1rem;
+      transition: border-color 0.15s;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      position: relative;
+    }
+    .pkg-card:hover { border-color: var(--accent); opacity: 1; }
+    .pkg-card :global(.health-badge) {
+      position: absolute;
+      bottom: 0.625rem;
+      right: 1.25rem;
+    }
+
+    .pkg-left { display: flex; flex-direction: column; gap: 0.2rem; flex: 1; min-width: 0; }
+    .pkg-name {
+      font-family: var(--font-mono);
+      font-size: 0.9375rem;
+      font-weight: 500;
+    }
+    .pkg-description { display: block; font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
+    .pkg-meta {
+      display: flex;
+      gap: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 0.3rem;
+    }
+    .pkg-stars { color: #f59e0b; }
+    .pkg-dl-trend {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .trend-badge {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      background: rgba(139, 92, 246, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+    }
+
+    .pkg-right {
+      text-align: right;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.2rem;
+    }
+    .pkg-ver {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+    }
+    .pkg-date {
+      font-family: var(--font-mono);
+      font-size: 0.775rem;
+      color: var(--muted);
+    }
+
+    .empty {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      padding: 3rem 0;
+      text-align: center;
+    }
+
+    /* Pagination */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25rem;
+      margin-top: 2.5rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+    }
+    .page-btn {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      text-decoration: none;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      min-width: 2rem;
+      text-align: center;
+    }
+    .page-btn:hover {
+      background: var(--surface);
+      color: var(--text);
+      opacity: 1;
+      border-color: var(--accent);
+    }
+    .page-btn.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .page-btn.disabled {
+      opacity: 0.25;
+      pointer-events: none;
+    }
+
+    /* Sidebar */
+    .sidebar-heading {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted-2);
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .sidebar-heading::before { content: '★'; color: #f59e0b; }
+
+    .sidebar-list { display: flex; flex-direction: column; gap: 0.4rem; }
+    .sidebar-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      text-decoration: none;
+      color: var(--text);
+      background: var(--surface);
+      transition: border-color 0.15s, background 0.15s;
+      gap: 0.5rem;
+    }
+    .sidebar-row:hover { border-color: var(--accent); background: rgba(139, 92, 246, 0.05); opacity: 1; }
+    .sidebar-name {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sidebar-meta {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .sidebar-section { margin-bottom: 1.75rem; }
+  </style>
+
+  <div class="page-header">
+    <h1 class="page-title">Trending packages</h1>
+    <p class="page-subtitle">Packages ranked by download traction in the selected time window.</p>
+  </div>
+
+  <!-- Window tabs -->
+  <div class="window-tabs">
+    <a
+      class={`window-tab${windowParam === 'today' ? ' active' : ''}`}
+      href="/trending?window=today"
+    >Today</a>
+    <a
+      class={`window-tab${windowParam === 'week' ? ' active' : ''}`}
+      href="/trending?window=week"
+    >This Week</a>
+    <a
+      class={`window-tab${windowParam === 'month' ? ' active' : ''}`}
+      href="/trending?window=month"
+    >This Month</a>
+  </div>
+
+  <div class="layout">
+    <!-- Main: package cards -->
+    <div>
+      <div class="pkg-list">
+        {trending.length === 0
+          ? <p class="empty">No download data available for this window yet.</p>
+          : <>
+              {trending.map((pkg, i) => (
+                <a class="pkg-card" href={`/${pkg.package_slug}`}>
+                  <div class="pkg-left">
+                    <span class="pkg-name">{pkg.package_name}</span>
+                    {pkg.description && <span class="pkg-description">{pkg.description}</span>}
+                    <div class="pkg-meta">
+                      <span class="pkg-stars">★ {(starCounts?.[pkg.package_name] ?? 0).toLocaleString()}</span>
+                      <span class="pkg-dl-trend">
+                        <span class="trend-badge">{pkg.download_count.toLocaleString()} dl</span>
+                        <span>in {windowLabel.toLowerCase()}</span>
+                      </span>
+                    </div>
+                  </div>
+                  <div class="pkg-right">
+                    <span class="pkg-ver">v{pkg.latest_version}</span>
+                  </div>
+                  {healthMap[pkg.package_name] && (
+                    <HealthBadge
+                      size="sm"
+                      score={healthMap[pkg.package_name]!.score}
+                      status={healthMap[pkg.package_name]!.status}
+                    />
+                  )}
+                </a>
+              ))}
+
+              {totalPages > 1 && (
+                <nav class="pagination" aria-label="Pagination">
+                  <a
+                    class={`page-btn${clampedPage === 1 ? ' disabled' : ''}`}
+                    href={buildPageUrl(clampedPage - 1)}
+                    aria-label="Previous page"
+                  >←</a>
+
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                    <a
+                      class={`page-btn${p === clampedPage ? ' active' : ''}`}
+                      href={buildPageUrl(p)}
+                    >{p}</a>
+                  ))}
+
+                  <a
+                    class={`page-btn${clampedPage === totalPages ? ' disabled' : ''}`}
+                    href={buildPageUrl(clampedPage + 1)}
+                    aria-label="Next page"
+                  >→</a>
+                </nav>
+              )}
+            </>
+        }
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside>
+      <!-- Top stars this week -->
+      {topStars.length > 0 && (
+        <div class="sidebar-section">
+          <p class="sidebar-heading">Top stars this week</p>
+          <div class="sidebar-list">
+            {topStars.map((pkg, i) => (
+              <a class="sidebar-row" href={`/${pkg.packageName}`}>
+                <span class="sidebar-meta">#{i + 1}</span>
+                <span class="sidebar-name">{pkg.packageName.split('/').pop()}</span>
+                <span class="sidebar-meta">★ {pkg.starCount}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <!-- Recently updated -->
+      {recentlyUpdated.length > 0 && (
+        <div class="sidebar-section">
+          <p class="sidebar-heading">Recently updated</p>
+          <div class="sidebar-list">
+            {recentlyUpdated.slice(0, 8).map(pkg => (
+              <a class="sidebar-row" href={`/${pkg.name}`}>
+                <span class="sidebar-name">{pkg.name}</span>
+                <span class="sidebar-meta">{new Date(pkg.published_at).toLocaleDateString()}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <!-- New packages this week -->
+      {newPackagesThisWeek.length > 0 && (
+        <div class="sidebar-section">
+          <p class="sidebar-heading">New this week</p>
+          <div class="sidebar-list">
+            {newPackagesThisWeek.map(pkg => (
+              <a class="sidebar-row" href={`/${pkg.name}`}>
+                <span class="sidebar-name">{pkg.name}</span>
+                <span class="sidebar-meta">v{pkg.version}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+    </aside>
+  </div>
+</Base>
