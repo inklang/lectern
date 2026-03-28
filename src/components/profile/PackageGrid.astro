@@ -1,0 +1,244 @@
+---
+interface Props {
+  packages: Array<{
+    name: string
+    slug: string
+    display_name?: string
+    description?: string
+    version?: string
+    star_count?: number
+    created_at: string
+  }>
+  showPinButton?: boolean
+  pinnedPackageNames?: Set<string>
+  starredPackageNames?: Set<string>
+  emptyMessage?: string
+}
+
+const {
+  packages,
+  showPinButton = false,
+  pinnedPackageNames = new Set(),
+  starredPackageNames = new Set(),
+  emptyMessage = 'No packages here yet.',
+} = Astro.props
+
+function relativeDate(dateStr: string): string {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+  if (days === 0) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 30) return `${days} days ago`
+  if (days < 365) return `${Math.floor(days / 30)} months ago`
+  return `${Math.floor(days / 365)} years ago`
+}
+---
+
+{packages.length === 0 ? (
+  <p class="empty">{emptyMessage}</p>
+) : (
+  <div class="pkg-grid">
+    {packages.map(pkg => {
+      const isPinned = pinnedPackageNames.has(pkg.slug)
+      const isStarred = starredPackageNames.has(pkg.slug)
+      return (
+        <div class="pkg-card" data-package={pkg.slug}>
+          <a class="pkg-link" href={`/packages/${encodeURIComponent(pkg.slug)}`}>
+            <div class="pkg-left">
+              <div class="pkg-name-row">
+                <span class="pkg-name">{pkg.display_name ?? pkg.name}</span>
+                {isStarred && (
+                  <svg class="star-icon" width="14" height="14" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" stroke-width="1.5">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                  </svg>
+                )}
+              </div>
+              {pkg.description && <span class="pkg-description">{pkg.description}</span>}
+            </div>
+            <div class="pkg-right">
+              {pkg.version && <span class="pkg-ver">v{pkg.version}</span>}
+              {pkg.star_count !== undefined && pkg.star_count > 0 && (
+                <span class="pkg-stars">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                  </svg>
+                  {pkg.star_count}
+                </span>
+              )}
+              <span class="pkg-date">{relativeDate(pkg.created_at)}</span>
+            </div>
+          </a>
+          {showPinButton && (
+            <button
+              class={`pin-btn ${isPinned ? 'pinned' : ''}`}
+              data-package={pkg.slug}
+              data-pinned={isPinned ? 'true' : 'false'}
+              title={isPinned ? 'Unpin from profile' : 'Pin to profile'}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill={isPinned ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="17" x2="12" y2="22"></line>
+                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path>
+              </svg>
+            </button>
+          )}
+        </div>
+      )
+    })}
+  </div>
+)}
+
+<style>
+  .empty {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--muted);
+    padding: 2rem 0;
+    text-align: center;
+  }
+
+  .pkg-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .pkg-card {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    transition: border-color 0.15s;
+  }
+
+  .pkg-card:hover {
+    border-color: var(--accent);
+  }
+
+  .pkg-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    text-decoration: none;
+    color: var(--text);
+    gap: 1rem;
+  }
+
+  .pkg-left {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+
+  .pkg-name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .pkg-name {
+    font-family: var(--font-mono);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .star-icon {
+    flex-shrink: 0;
+  }
+
+  .pkg-description {
+    font-size: 0.8rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 400px;
+  }
+
+  .pkg-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.2rem;
+    flex-shrink: 0;
+  }
+
+  .pkg-ver {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--text);
+  }
+
+  .pkg-stars {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.775rem;
+    color: var(--muted);
+  }
+
+  .pkg-date {
+    font-family: var(--font-mono);
+    font-size: 0.775rem;
+    color: var(--muted);
+  }
+
+  .pin-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    padding: 0.35rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .pin-btn:hover {
+    color: var(--accent);
+    background: var(--bg);
+  }
+
+  .pin-btn.pinned {
+    color: var(--accent);
+  }
+</style>
+
+<script>
+  document.querySelectorAll('.pin-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+
+      const el = btn as HTMLButtonElement
+      const packageName = el.dataset.package as string
+      const isPinned = el.dataset.pinned === 'true'
+      const method = isPinned ? 'DELETE' : 'POST'
+
+      try {
+        const res = await fetch('/api/pins', {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ packageName }),
+        })
+
+        if (res.ok) {
+          el.dataset.pinned = String(!isPinned)
+          const svg = el.querySelector('svg')
+          if (svg) {
+            svg.setAttribute('fill', !isPinned ? 'currentColor' : 'none')
+          }
+        }
+      } catch {
+        // silently fail
+      }
+    })
+  })
+</script>

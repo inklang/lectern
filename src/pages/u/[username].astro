@@ -1,0 +1,391 @@
+---
+import Base from '~/layouts/Base.astro'
+import ProfileHeader from '~/components/profile/ProfileHeader.astro'
+import PackageGrid from '~/components/profile/PackageGrid.astro'
+import { getUserProfile, getUserPinnedPackages, getUserStarredPackages, getUserFollowerCount, getUserFollowingCount } from '~/lib/users.js'
+import { getUserByUsername } from '~/lib/orgs.js'
+import { isFollowingUser } from '~/lib/follows.js'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
+
+const { username } = Astro.params
+if (!username) return Astro.redirect('/packages')
+
+const userProfile = await getUserProfile(username)
+if (!userProfile) return Astro.redirect('/packages')
+
+const { supabase: sbAdmin } = await import('~/lib/supabase.js')
+
+// Fetch packages owned by this user
+const { data: packages } = await sbAdmin
+  .from('packages')
+  .select('*, package_versions(*)')
+  .eq('owner_id', userProfile.id)
+  .eq('owner_type', 'user')
+  .order('created_at', { ascending: false })
+
+// Fetch pinned packages
+const pinnedData = await getUserPinnedPackages(userProfile.id)
+const pinnedPackageNames = new Set(pinnedData.map(p => p.packageName))
+
+// Resolve pinned package details
+let pinnedPackages: any[] = []
+if (pinnedData.length > 0) {
+  const { data: pinnedPkgs } = await sbAdmin
+    .from('packages')
+    .select('*, package_versions(*)')
+    .in('name', pinnedData.map(p => p.packageName))
+  pinnedPackages = pinnedPkgs ?? []
+}
+
+// Fetch starred packages
+const starredData = await getUserStarredPackages(userProfile.id)
+
+// Resolve starred package details
+let starredPackages: any[] = []
+if (starredData.length > 0) {
+  const { data: starredPkgs } = await sbAdmin
+    .from('packages')
+    .select('*, package_versions(*)')
+    .in('name', starredData.map(s => s.packageName))
+  starredPackages = starredPkgs ?? []
+}
+
+// Fetch follower/following counts
+const followerCount = await getUserFollowerCount(userProfile.id)
+const followingCount = await getUserFollowingCount(userProfile.id)
+
+// Check if viewer is following
+const supabase = createServerClient(
+  import.meta.env.SUPABASE_URL ?? '',
+  import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? '',
+  {
+    cookies: {
+      getAll() { return parseCookieHeader(Astro.request.headers.get('Cookie') ?? '') },
+      setAll() {},
+    },
+  }
+)
+
+const { data: { session } } = await supabase.auth.getSession()
+const viewerId = session?.user.id
+const isOwner = viewerId === userProfile.id
+
+let isFollowing = false
+if (viewerId && !isOwner) {
+  isFollowing = await isFollowingUser(viewerId, userProfile.id)
+}
+
+const pageTitle = userProfile.user_name
+const pageDescription = `${userProfile.user_name} on Lectern`
+
+// Prepare packages for grid
+const packagesForGrid = (packages ?? []).map((p: any) => {
+  const latestVersion = p.package_versions?.[0]
+  return {
+    name: p.name,
+    slug: p.name,
+    display_name: p.display_name,
+    description: p.description,
+    version: latestVersion?.version,
+    star_count: p.star_count,
+    created_at: p.created_at,
+  }
+})
+
+const pinnedPackagesForGrid = pinnedPackages.map((p: any) => {
+  const latestVersion = p.package_versions?.[0]
+  return {
+    name: p.name,
+    slug: p.name,
+    display_name: p.display_name,
+    description: p.description,
+    version: latestVersion?.version,
+    star_count: p.star_count,
+    created_at: p.created_at,
+  }
+})
+
+const starredPackagesForGrid = starredPackages.map((p: any) => {
+  const latestVersion = p.package_versions?.[0]
+  return {
+    name: p.name,
+    slug: p.name,
+    display_name: p.display_name,
+    description: p.description,
+    version: latestVersion?.version,
+    star_count: p.star_count,
+    created_at: p.created_at,
+  }
+})
+---
+
+<Base title={pageTitle} description={pageDescription}>
+  <style>
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      margin-bottom: 1.5rem;
+      transition: color 0.15s;
+    }
+    .back-link:hover {
+      color: var(--text);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1.5rem;
+    }
+
+    .tab {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      padding: 0.6rem 1.25rem;
+      color: var(--muted);
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+      cursor: pointer;
+      background: none;
+      border-top: none;
+      border-left: none;
+      border-right: none;
+    }
+
+    .tab:hover {
+      color: var(--text);
+    }
+
+    .tab.active {
+      color: var(--text);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .follower-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .follower-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color 0.15s;
+    }
+
+    .follower-item:hover {
+      border-color: var(--accent);
+      opacity: 1;
+    }
+
+    .follower-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--surface);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: white;
+      flex-shrink: 0;
+    }
+
+    .follower-name {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .load-more {
+      display: block;
+      width: 100%;
+      padding: 0.75rem;
+      margin-top: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .load-more:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+  </style>
+
+  <a class="back-link" href="/packages">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    packages
+  </a>
+
+  <ProfileHeader
+    type="user"
+    name={userProfile.user_name}
+    slug={userProfile.user_name}
+    avatarUrl={userProfile.avatar_url}
+    bio={userProfile.bio}
+    website={userProfile.website}
+    twitter={userProfile.twitter}
+    github={userProfile.github}
+    isOwner={isOwner}
+    editHref={`/u/${userProfile.user_name}/settings`}
+    followerCount={followerCount}
+    followingCount={followingCount}
+    packageCount={packages?.length ?? 0}
+    isFollowing={isFollowing}
+    isLoggedIn={!!viewerId}
+  />
+
+  <div class="tabs">
+    <button class="tab active" data-tab="packages">Packages</button>
+    <button class="tab" data-tab="pinned">Pinned</button>
+    <button class="tab" data-tab="starred">Starred</button>
+    <button class="tab" data-tab="followers">Followers</button>
+    <button class="tab" data-tab="following">Following</button>
+  </div>
+
+  <div id="tab-packages" class="tab-content active">
+    <PackageGrid packages={packagesForGrid} showPinButton={isOwner} pinnedPackageNames={pinnedPackageNames} emptyMessage="No packages published yet." />
+  </div>
+
+  <div id="tab-pinned" class="tab-content">
+    <PackageGrid packages={pinnedPackagesForGrid} showPinButton={isOwner} pinnedPackageNames={pinnedPackageNames} emptyMessage="No pinned packages." />
+  </div>
+
+  <div id="tab-starred" class="tab-content">
+    <PackageGrid packages={starredPackagesForGrid} showPinButton={false} emptyMessage="No starred packages." />
+  </div>
+
+  <div id="tab-followers" class="tab-content">
+    <div class="follower-list" id="followers-list" hx-get={`/api/profile/${username}/followers`} hx-trigger="intersect once">
+      <p class="empty" style="padding: 2rem 0; text-align: center; font-family: var(--font-mono); font-size: 0.875rem; color: var(--muted);">Loading followers...</p>
+    </div>
+  </div>
+
+  <div id="tab-following" class="tab-content">
+    <div class="follower-list" id="following-list" hx-get={`/api/profile/${username}/following`} hx-trigger="intersect once">
+      <p class="empty" style="padding: 2rem 0; text-align: center; font-family: var(--font-mono); font-size: 0.875rem; color: var(--muted);">Loading following...</p>
+    </div>
+  </div>
+
+  <script>
+    const tabs = document.querySelectorAll('.tab')
+    const tabContents = document.querySelectorAll('.tab-content')
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const target = tab.getAttribute('data-tab')!
+
+        tabs.forEach(t => t.classList.remove('active'))
+        tab.classList.add('active')
+
+        tabContents.forEach(tc => {
+          tc.classList.remove('active')
+          if (tc.id === `tab-${target}`) {
+            tc.classList.add('active')
+          }
+        })
+
+        // Load followers/following when tab is clicked
+        if (target === 'followers') {
+          const list = document.getElementById('followers-list')
+          if (list && list.dataset.loaded !== 'true') {
+            loadFollowers()
+          }
+        }
+        if (target === 'following') {
+          const list = document.getElementById('following-list')
+          if (list && list.dataset.loaded !== 'true') {
+            loadFollowing()
+          }
+        }
+      })
+    })
+
+    async function loadFollowers() {
+      const list = document.getElementById('followers-list')
+      if (!list) return
+      list.dataset.loaded = 'true'
+
+      const username = window.location.pathname.split('/')[2]
+      try {
+        const res = await fetch(`/api/profile/${username}/followers`)
+        if (res.ok) {
+          const data = await res.json()
+          renderFollowerList(list, data.followers, 'followers')
+        }
+      } catch {
+        list.innerHTML = '<p class="empty">Failed to load followers.</p>'
+      }
+    }
+
+    async function loadFollowing() {
+      const list = document.getElementById('following-list')
+      if (!list) return
+      list.dataset.loaded = 'true'
+
+      const username = window.location.pathname.split('/')[2]
+      try {
+        const res = await fetch(`/api/profile/${username}/following`)
+        if (res.ok) {
+          const data = await res.json()
+          renderFollowerList(list, data.following, 'following')
+        }
+      } catch {
+        list.innerHTML = '<p class="empty">Failed to load following.</p>'
+      }
+    }
+
+    function renderFollowerList(container: HTMLElement, users: Array<{ userId: string; userName: string }>, type: string) {
+      if (!users || users.length === 0) {
+        container.innerHTML = `<p class="empty">No ${type} yet.</p>`
+        return
+      }
+
+      function getAvatarColor(s: string): string {
+        let hash = 0
+        for (let i = 0; i < s.length; i++) {
+          hash = s.charCodeAt(i) + ((hash << 5) - hash)
+        }
+        const hue = hash % 360
+        return `hsl(${hue}, 50%, 40%)`
+      }
+
+      container.innerHTML = users.map(user => `
+        <a class="follower-item" href="/u/${user.userName}">
+          <div class="follower-avatar" style="background: ${getAvatarColor(user.userName)}">${user.userName.charAt(0).toUpperCase()}</div>
+          <span class="follower-name">@${user.userName}</span>
+        </a>
+      `).join('')
+    }
+  </script>
+</Base>

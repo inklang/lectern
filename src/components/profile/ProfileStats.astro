@@ -1,0 +1,72 @@
+---
+interface Props {
+  packages?: number
+  followers?: number
+  following?: number
+  teams?: number
+  members?: number
+}
+
+const { packages, followers, following, teams, members } = Astro.props
+---
+
+<div class="profile-stats">
+  {packages !== undefined && (
+    <div class="stat">
+      <span class="stat-value">{packages}</span>
+      <span class="stat-label">{packages === 1 ? 'package' : 'packages'}</span>
+    </div>
+  )}
+  {followers !== undefined && (
+    <div class="stat">
+      <span class="stat-value">{followers}</span>
+      <span class="stat-label">{followers === 1 ? 'follower' : 'followers'}</span>
+    </div>
+  )}
+  {following !== undefined && (
+    <div class="stat">
+      <span class="stat-value">{following}</span>
+      <span class="stat-label">following</span>
+    </div>
+  )}
+  {teams !== undefined && (
+    <div class="stat">
+      <span class="stat-value">{teams}</span>
+      <span class="stat-label">{teams === 1 ? 'team' : 'teams'}</span>
+    </div>
+  )}
+  {members !== undefined && (
+    <div class="stat">
+      <span class="stat-value">{members}</span>
+      <span class="stat-label">{members === 1 ? 'member' : 'members'}</span>
+    </div>
+  )}
+</div>
+
+<style>
+  .profile-stats {
+    display: flex;
+    gap: 2rem;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .stat-value {
+    font-family: var(--font-mono);
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 0.775rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+</style>

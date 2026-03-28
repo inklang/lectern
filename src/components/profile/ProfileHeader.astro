@@ -1,0 +1,376 @@
+---
+interface Props {
+  type: 'user' | 'org'
+  name: string
+  slug: string
+  avatarUrl?: string | null
+  bannerUrl?: string | null
+  bio?: string | null
+  website?: string | null
+  twitter?: string | null
+  github?: string | null
+  isOwner?: boolean
+  editHref?: string
+  followerCount?: number
+  followingCount?: number
+  packageCount?: number
+  isFollowing?: boolean
+  isLoggedIn?: boolean
+}
+
+const {
+  type,
+  name,
+  slug,
+  avatarUrl,
+  bannerUrl,
+  bio,
+  website,
+  twitter,
+  github,
+  isOwner = false,
+  editHref,
+  followerCount = 0,
+  followingCount = 0,
+  packageCount = 0,
+  isFollowing = false,
+  isLoggedIn = false,
+} = Astro.props
+
+function getAvatarColor(s: string): string {
+  let hash = 0
+  for (let i = 0; i < s.length; i++) {
+    hash = s.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const hue = hash % 360
+  return `hsl(${hue}, 50%, 40%)`
+}
+
+const avatarColor = getAvatarColor(slug)
+const isUser = type === 'user'
+const currentUrl = Astro.url.pathname
+---
+
+<div class={`profile-header ${bannerUrl && !isUser ? 'has-banner' : ''}`}>
+  {bannerUrl && !isUser && (
+    <img class="banner-image" src={bannerUrl} alt={`${name} banner`} />
+  )}
+
+  <div class="avatar-wrapper">
+    {avatarUrl
+      ? <img class="avatar-image" src={avatarUrl} alt={`${name} avatar`} />
+      : <div class="avatar-fallback" style={`background: ${avatarColor};`}>{name.charAt(0).toUpperCase()}</div>
+    }
+  </div>
+
+  <div class="profile-content">
+    <div class="profile-slug">@{slug}</div>
+    <h1 class="profile-name">{name}</h1>
+
+    {bio && <p class="profile-bio">{bio}</p>}
+
+    <div class="profile-links">
+      {website && (
+        <a href={website} target="_blank" rel="noopener noreferrer" class="profile-link" title="Website">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+          <span>{website.replace(/^https?:\/\//, '')}</span>
+        </a>
+      )}
+      {twitter && (
+        <a href={`https://x.com/${twitter.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" class="profile-link" title="Twitter/X">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          </svg>
+          <span>@{twitter.replace(/^@/, '')}</span>
+        </a>
+      )}
+      {github && (
+        <a href={`https://github.com/${github.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" class="profile-link" title="GitHub">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+          </svg>
+          <span>{github.replace(/^@/, '')}</span>
+        </a>
+      )}
+    </div>
+
+    <div class="profile-stats">
+      <div class="stat">
+        <span class="stat-value">{packageCount}</span>
+        <span class="stat-label">{packageCount === 1 ? 'package' : 'packages'}</span>
+      </div>
+      {isUser ? (
+        <>
+          <div class="stat">
+            <span class="stat-value">{followerCount}</span>
+            <span class="stat-label">{followerCount === 1 ? 'follower' : 'followers'}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">{followingCount}</span>
+            <span class="stat-label">following</span>
+          </div>
+        </>
+      ) : null}
+    </div>
+
+    <div class="profile-actions">
+      {isOwner ? (
+        editHref && (
+          <a href={editHref} class="btn-edit">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+            Edit profile
+          </a>
+        )
+      ) : (
+        <button class="btn-follow" data-type={type} data-target-id={slug} data-is-following={isFollowing ? 'true' : 'false'} data-logged-in={isLoggedIn ? 'true' : 'false'}>
+          {isFollowing ? 'Following' : 'Follow'}
+        </button>
+      )}
+    </div>
+  </div>
+</div>
+
+<style>
+  .profile-header {
+    margin-bottom: 2.5rem;
+    position: relative;
+  }
+
+  .profile-header.has-banner {
+    padding-top: 0;
+  }
+
+  .banner-image {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    border-radius: 10px;
+    background: var(--surface);
+  }
+
+  .avatar-wrapper {
+    position: absolute;
+    top: 140px;
+    left: 1.5rem;
+  }
+
+  .avatar-image {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 3px solid var(--bg);
+    object-fit: cover;
+    background: var(--surface);
+  }
+
+  .avatar-fallback {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 3px solid var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: white;
+  }
+
+  .profile-content {
+    padding-top: 50px;
+  }
+
+  .profile-slug {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--muted);
+    margin-bottom: 0.5rem;
+  }
+
+  .profile-name {
+    font-family: var(--font-mono);
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.5rem;
+  }
+
+  .profile-bio {
+    font-size: 0.9375rem;
+    color: var(--muted);
+    max-width: 600px;
+    margin-bottom: 1rem;
+  }
+
+  .profile-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .profile-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--muted);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+
+  .profile-link:hover {
+    color: var(--text);
+    opacity: 1;
+  }
+
+  .profile-link svg {
+    flex-shrink: 0;
+  }
+
+  .profile-stats {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .stat-value {
+    font-family: var(--font-mono);
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 0.775rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .profile-actions {
+    display: flex;
+    gap: 0.75rem;
+  }
+
+  .btn-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    text-decoration: none;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .btn-edit:hover {
+    border-color: var(--accent);
+    background: var(--bg);
+    opacity: 1;
+  }
+
+  .btn-follow {
+    padding: 0.5rem 1.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: white;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+
+  .btn-follow:hover {
+    opacity: 0.85;
+  }
+
+  .btn-follow[data-is-following="true"] {
+    background: transparent;
+    color: var(--text);
+    border-color: var(--border);
+  }
+
+  .btn-follow[data-is-following="true"]:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  @media (max-width: 640px) {
+    .banner-image {
+      height: 120px;
+    }
+
+    .avatar-wrapper {
+      top: 80px;
+      left: 1rem;
+    }
+
+    .avatar-image,
+    .avatar-fallback {
+      width: 60px;
+      height: 60px;
+      font-size: 1.25rem;
+    }
+
+    .profile-content {
+      padding-top: 40px;
+    }
+  }
+</style>
+
+<script>
+  document.querySelectorAll('.btn-follow').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const el = btn as HTMLButtonElement
+      const type = el.dataset.type as 'user' | 'org'
+      const targetId = el.dataset.targetId as string
+      const isFollowing = el.dataset.isFollowing === 'true'
+      const method = isFollowing ? 'DELETE' : 'POST'
+
+      const currentUrl = window.location.pathname
+      const isLoggedIn = el.dataset.loggedIn === 'true'
+
+      if (!isLoggedIn) {
+        window.location.href = `/login?next=${encodeURIComponent(currentUrl)}`
+        return
+      }
+
+      try {
+        const res = await fetch('/api/follow', {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, targetId }),
+        })
+
+        if (res.ok) {
+          el.dataset.isFollowing = String(!isFollowing)
+          el.textContent = !isFollowing ? 'Following' : 'Follow'
+        }
+      } catch {
+        // silently fail
+      }
+    })
+  })
+</script>

@@ -1,0 +1,244 @@
+---
+import Base from '~/layouts/Base.astro'
+import { getUserProfile, updateUserProfile } from '~/lib/users.js'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
+
+const { username } = Astro.params
+if (!username) return Astro.redirect('/packages')
+
+const supabase = createServerClient(
+  import.meta.env.SUPABASE_URL ?? '',
+  import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? '',
+  {
+    cookies: {
+      getAll() { return parseCookieHeader(Astro.request.headers.get('Cookie') ?? '') },
+      setAll() {},
+    },
+  }
+)
+
+const { data: { session } } = await supabase.auth.getSession()
+if (!session) return Astro.redirect('/login')
+
+const userId = session.user.id
+const userProfile = await getUserProfile(username)
+
+if (!userProfile || userProfile.id !== userId) {
+  return Astro.redirect(`/u/${username}`)
+}
+
+let error = ''
+let success = ''
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData()
+  const bio = formData.get('bio') as string | null
+  const website = formData.get('website') as string | null
+  const twitter = formData.get('twitter') as string | null
+  const github = formData.get('github') as string | null
+
+  // Clean up inputs
+  const cleanTwitter = twitter?.replace(/^@/, '').trim() || undefined
+  const cleanGithub = github?.replace(/^@/, '').trim() || undefined
+  const cleanWebsite = website?.trim() || undefined
+  const cleanBio = bio?.trim() || undefined
+
+  // Validate website URL if provided
+  if (cleanWebsite && !cleanWebsite.match(/^https?:\/\//)) {
+    error = 'Website must start with http:// or https://'
+  } else {
+    try {
+      await updateUserProfile(userId, {
+        bio: cleanBio,
+        website: cleanWebsite,
+        twitter: cleanTwitter,
+        github: cleanGithub,
+      })
+      success = 'Profile updated successfully.'
+    } catch (e) {
+      error = 'Failed to update profile. Please try again.'
+    }
+  }
+}
+
+const pageTitle = `Edit ${username} profile`
+---
+
+<Base title={pageTitle}>
+  <style>
+    .settings-container {
+      max-width: 600px;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      margin-bottom: 1.5rem;
+      transition: color 0.15s;
+    }
+
+    .back-link:hover {
+      color: var(--text);
+    }
+
+    h1 {
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 2rem;
+    }
+
+    .form-section {
+      margin-bottom: 2rem;
+    }
+
+    .form-label {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+    }
+
+    .form-input,
+    .form-textarea {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      transition: border-color 0.15s;
+      box-sizing: border-box;
+    }
+
+    .form-input:focus,
+    .form-textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .form-input::placeholder,
+    .form-textarea::placeholder {
+      color: var(--muted-2);
+    }
+
+    .form-textarea {
+      min-height: 120px;
+      resize: vertical;
+    }
+
+    .form-hint {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted-2);
+      margin-top: 0.35rem;
+    }
+
+    .form-error {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: #ef4444;
+      margin-bottom: 1rem;
+    }
+
+    .form-success {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: #22c55e;
+      margin-bottom: 1rem;
+    }
+
+    .btn-save {
+      padding: 0.75rem 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: white;
+      background: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .btn-save:hover {
+      opacity: 0.85;
+    }
+  </style>
+
+  <div class="settings-container">
+    <a class="back-link" href={`/u/${username}`}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      back to profile
+    </a>
+
+    <h1>Edit Profile</h1>
+
+    {error && <p class="form-error">{error}</p>}
+    {success && <p class="form-success">{success}</p>}
+
+    <form method="POST">
+      <div class="form-section">
+        <label class="form-label" for="bio">Bio</label>
+        <textarea
+          class="form-textarea"
+          id="bio"
+          name="bio"
+          maxlength="300"
+          placeholder="Tell others about yourself..."
+        >{userProfile.bio ?? ''}</textarea>
+        <p class="form-hint">Maximum 300 characters</p>
+      </div>
+
+      <div class="form-section">
+        <label class="form-label" for="website">Website</label>
+        <input
+          type="url"
+          class="form-input"
+          id="website"
+          name="website"
+          placeholder="https://yourwebsite.com"
+          value={userProfile.website ?? ''}
+        />
+      </div>
+
+      <div class="form-section">
+        <label class="form-label" for="twitter">Twitter/X</label>
+        <input
+          type="text"
+          class="form-input"
+          id="twitter"
+          name="twitter"
+          placeholder="username (with or without @)"
+          value={userProfile.twitter ? `@${userProfile.twitter}` : ''}
+        />
+      </div>
+
+      <div class="form-section">
+        <label class="form-label" for="github">GitHub</label>
+        <input
+          type="text"
+          class="form-input"
+          id="github"
+          name="github"
+          placeholder="username (with or without @)"
+          value={userProfile.github ? `@${userProfile.github}` : ''}
+        />
+      </div>
+
+      <button type="submit" class="btn-save">Save Changes</button>
+    </form>
+  </div>
+</Base>

@@ -1,6 +1,11 @@
 ---
 import Base from '~/layouts/Base.astro'
-import { getOrgBySlug, getUserByUsername } from '~/lib/orgs.js'
+import ProfileHeader from '~/components/profile/ProfileHeader.astro'
+import PackageGrid from '~/components/profile/PackageGrid.astro'
+import { getOrgBySlug, getUserByUsername, isOrgAdmin } from '~/lib/orgs.js'
+import { getOrgFollowerCount } from '~/lib/users.js'
+import { isFollowingOrg } from '~/lib/follows.js'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 
 const { slug } = Astro.params
 const org = await getOrgBySlug(slug!)
@@ -23,6 +28,7 @@ const { data: packages } = await supabase
 let teams: any[] = []
 let memberCount = 0
 let teamMemberCounts: Record<string, number> = {}
+let followerCount = 0
 
 if (org) {
   const { data: t } = await supabase
@@ -50,6 +56,9 @@ if (org) {
       }
     }
   }
+
+  // Fetch org follower count
+  followerCount = await getOrgFollowerCount(org.id)
 }
 
 const isUser = !!user
@@ -57,61 +66,185 @@ const isOrg = !!org
 const pageTitle = isOrg ? org.name : user!.user_name
 const pageDescription = isOrg ? (org.description ?? `${org.name} on Lectern`) : `${user!.user_name} on Lectern`
 
-// Generate avatar fallback color from slug
-function getAvatarColor(slug: string): string {
-  let hash = 0
-  for (let i = 0; i < slug.length; i++) {
-    hash = slug.charCodeAt(i) + ((hash << 5) - hash)
+// Check if viewer is org admin
+const supabaseClient = createServerClient(
+  import.meta.env.SUPABASE_URL ?? '',
+  import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? '',
+  {
+    cookies: {
+      getAll() { return parseCookieHeader(Astro.request.headers.get('Cookie') ?? '') },
+      setAll() {},
+    },
   }
-  const hue = hash % 360
-  return `hsl(${hue}, 50%, 40%)`
+)
+
+const { data: { session } } = await supabaseClient.auth.getSession()
+const viewerId = session?.user.id
+
+let isOwner = false
+let isFollowing = false
+
+if (org && viewerId) {
+  isOwner = await isOrgAdmin(org.id, viewerId)
+  isFollowing = await isFollowingOrg(viewerId, org.id)
 }
+
+// If visiting a user, redirect to /u/[username]
+if (isUser) {
+  return Astro.redirect(`/u/${user!.user_name}`)
+}
+
+// Prepare packages for grid
+const packagesForGrid = (packages ?? []).map((p: any) => {
+  const latestVersion = p.package_versions?.[0]
+  return {
+    name: p.name,
+    slug: p.name,
+    display_name: p.display_name,
+    description: p.description,
+    version: latestVersion?.version,
+    star_count: p.star_count,
+    created_at: p.created_at,
+  }
+})
 ---
 
 <Base title={pageTitle} description={pageDescription}>
   <style>
-    .org-header, .user-header { margin-bottom: 2.5rem; position: relative; }
-    .org-header-with-banner { margin-bottom: 2.5rem; }
-    .banner-image { width: 100%; height: 200px; object-fit: cover; border-radius: 10px; background: var(--surface); }
-    .avatar-wrapper { position: absolute; top: 140px; left: 1.5rem; }
-    .avatar-image { width: 80px; height: 80px; border-radius: 50%; border: 3px solid var(--bg); object-fit: cover; background: var(--surface); }
-    .avatar-fallback { width: 80px; height: 80px; border-radius: 50%; border: 3px solid var(--bg); display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 1.5rem; font-weight: 600; color: white; }
-    .org-content { padding-top: 50px; }
-    .org-slug, .user-slug { font-family: var(--font-mono); font-size: 0.875rem; color: var(--muted); margin-bottom: 0.5rem; }
-    .org-name, .user-name { font-family: var(--font-mono); font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
-    .org-description { font-size: 0.9375rem; color: var(--muted); max-width: 600px; }
-    .org-stats, .user-stats { display: flex; gap: 2rem; margin-top: 1.25rem; }
-    .stat { display: flex; flex-direction: column; gap: 0.15rem; }
-    .stat-value { font-family: var(--font-mono); font-size: 1.125rem; font-weight: 600; color: var(--text); }
-    .stat-label { font-family: var(--font-mono); font-size: 0.775rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-    .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; }
-    .tab { font-family: var(--font-mono); font-size: 0.875rem; padding: 0.6rem 1.25rem; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.15s, border-color 0.15s; cursor: pointer; background: none; border-top: none; border-left: none; border-right: none; }
-    .tab:hover { color: var(--text); }
-    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
-    .pkg-list { display: flex; flex-direction: column; }
-    .pkg-card { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; margin-bottom: 0.5rem; text-decoration: none; color: var(--text); gap: 1rem; transition: border-color 0.15s; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
-    .pkg-card:hover { border-color: var(--accent); opacity: 1; }
-    .pkg-left { display: flex; flex-direction: column; gap: 0.25rem; }
-    .pkg-name { font-family: var(--font-mono); font-size: 0.9375rem; font-weight: 500; }
-    .pkg-description { font-size: 0.8rem; color: var(--muted); }
-    .pkg-right { text-align: right; flex-shrink: 0; }
-    .pkg-ver { font-family: var(--font-mono); font-size: 0.875rem; color: var(--text); }
-    .pkg-date { font-family: var(--font-mono); font-size: 0.775rem; color: var(--muted); margin-top: 0.2rem; }
-    .team-list { display: flex; flex-direction: column; }
-    .team-card { display: flex; align-items: center; justify-content: space-between; padding: 0.875rem 1.25rem; margin-bottom: 0.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
-    .team-name { font-family: var(--font-mono); font-size: 0.9375rem; font-weight: 500; }
-    .team-members { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); }
-    .empty { font-family: var(--font-mono); font-size: 0.875rem; color: var(--muted); padding: 2rem 0; text-align: center; }
-    .back-link { display: inline-flex; align-items: center; gap: 0.4rem; font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); text-decoration: none; margin-bottom: 1.5rem; transition: color 0.15s; }
-    .back-link:hover { color: var(--text); }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      margin-bottom: 1.5rem;
+      transition: color 0.15s;
+    }
+    .back-link:hover {
+      color: var(--text);
+    }
 
-    @media (max-width: 640px) {
-      .banner-image { height: 120px; }
-      .avatar-wrapper { top: 80px; left: 1rem; }
-      .avatar-image, .avatar-fallback { width: 60px; height: 60px; font-size: 1.25rem; }
-      .org-content { padding-top: 40px; }
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1.5rem;
+    }
+
+    .tab {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      padding: 0.6rem 1.25rem;
+      color: var(--muted);
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+      cursor: pointer;
+      background: none;
+      border-top: none;
+      border-left: none;
+      border-right: none;
+    }
+
+    .tab:hover {
+      color: var(--text);
+    }
+
+    .tab.active {
+      color: var(--text);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .team-list {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .team-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.875rem 1.25rem;
+      margin-bottom: 0.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .team-name {
+      font-family: var(--font-mono);
+      font-size: 0.9375rem;
+      font-weight: 500;
+    }
+
+    .team-members {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .follower-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .follower-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color 0.15s;
+    }
+
+    .follower-item:hover {
+      border-color: var(--accent);
+      opacity: 1;
+    }
+
+    .follower-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--surface);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: white;
+      flex-shrink: 0;
+    }
+
+    .follower-name {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .empty {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--muted);
+      padding: 2rem 0;
+      text-align: center;
     }
   </style>
 
@@ -121,81 +254,34 @@ function getAvatarColor(slug: string): string {
   </a>
 
   {isOrg && (
-    <div class={org.banner_url || org.avatar_url ? 'org-header-with-banner' : 'org-header'}>
-      {org.banner_url && <img class="banner-image" src={org.banner_url} alt={`${org.name} banner`} />}
-      <div class="avatar-wrapper">
-        {org.avatar_url
-          ? <img class="avatar-image" src={org.avatar_url} alt={`${org.name} avatar`} />
-          : <div class="avatar-fallback" style={`background: ${getAvatarColor(org.slug)};`}>{org.name.charAt(0).toUpperCase()}</div>
-        }
-      </div>
-      <div class="org-content">
-        <div class="org-slug">@{org.slug}</div>
-        <h1 class="org-name">{org.name}</h1>
-        {org.description && <p class="org-description">{org.description}</p>}
-        <div class="org-stats">
-          <div class="stat">
-            <span class="stat-value">{memberCount}</span>
-            <span class="stat-label">members</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value">{(packages ?? []).length}</span>
-            <span class="stat-label">packages</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value">{teams.length}</span>
-            <span class="stat-label">teams</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  )}
-
-  {isUser && (
-    <div class="user-header">
-      <div class="user-slug">@{user.user_name}</div>
-      <h1 class="user-name">{user.user_name}</h1>
-      <div class="user-stats">
-        <div class="stat">
-          <span class="stat-value">{(packages ?? []).length}</span>
-          <span class="stat-label">packages</span>
-        </div>
-      </div>
-    </div>
+    <ProfileHeader
+      type="org"
+      name={org.name}
+      slug={org.slug}
+      avatarUrl={org.avatar_url}
+      bannerUrl={org.banner_url}
+      bio={org.description}
+      isOwner={isOwner}
+      editHref={`/org/${org.slug}/settings`}
+      followerCount={followerCount}
+      packageCount={packages?.length ?? 0}
+      isFollowing={isFollowing}
+      isLoggedIn={!!viewerId}
+    />
   )}
 
   {isOrg && (
     <div class="tabs">
       <button class="tab active" data-tab="packages">Packages</button>
       <button class="tab" data-tab="teams">Teams</button>
+      <button class="tab" data-tab="followers">Followers</button>
     </div>
   )}
 
   {isOrg ? (
     <>
       <div id="tab-packages" class="tab-content active">
-        {(packages ?? []).length === 0
-          ? <p class="empty">No packages published yet.</p>
-          : (
-            <div class="pkg-list">
-              {(packages ?? []).map(pkg => {
-                const latestVersion = pkg.package_versions?.[0]
-                return (
-                  <a class="pkg-card" href={`/packages/${encodeURIComponent(pkg.slug)}`}>
-                    <div class="pkg-left">
-                      <span class="pkg-name">{pkg.display_name ?? pkg.name}</span>
-                      {pkg.description && <span class="pkg-description">{pkg.description}</span>}
-                    </div>
-                    <div class="pkg-right">
-                      {latestVersion && <div class="pkg-ver">v{latestVersion.version}</div>}
-                      <div class="pkg-date">{new Date(pkg.created_at).toLocaleDateString()}</div>
-                    </div>
-                  </a>
-                )
-              })}
-            </div>
-          )
-        }
+        <PackageGrid packages={packagesForGrid} emptyMessage="No packages published yet." />
       </div>
 
       <div id="tab-teams" class="tab-content">
@@ -213,29 +299,14 @@ function getAvatarColor(slug: string): string {
           )
         }
       </div>
+
+      <div id="tab-followers" class="tab-content">
+        <div class="follower-list" id="org-followers-list" data-loaded="false">
+          <p class="empty">Click to load followers...</p>
+        </div>
+      </div>
     </>
-  ) : (
-    <div class="pkg-list">
-      {(packages ?? []).length === 0
-        ? <p class="empty">No packages published yet.</p>
-        : (packages ?? []).map(pkg => {
-          const latestVersion = pkg.package_versions?.[0]
-          return (
-            <a class="pkg-card" href={`/packages/${encodeURIComponent(pkg.slug)}`}>
-              <div class="pkg-left">
-                <span class="pkg-name">{pkg.display_name ?? pkg.name}</span>
-                {pkg.description && <span class="pkg-description">{pkg.description}</span>}
-              </div>
-              <div class="pkg-right">
-                {latestVersion && <div class="pkg-ver">v{latestVersion.version}</div>}
-                <div class="pkg-date">{new Date(pkg.created_at).toLocaleDateString()}</div>
-              </div>
-            </a>
-          )
-        })
-      }
-    </div>
-  )}
+  ) : null}
 
   {isOrg && (
     <script>
@@ -255,8 +326,55 @@ function getAvatarColor(slug: string): string {
               tc.classList.add('active')
             }
           })
+
+          if (target === 'followers') {
+            const list = document.getElementById('org-followers-list')
+            if (list && list.dataset.loaded !== 'true') {
+              loadFollowers()
+            }
+          }
         })
       })
+
+      async function loadFollowers() {
+        const list = document.getElementById('org-followers-list')
+        if (!list) return
+        list.dataset.loaded = 'true'
+
+        const slug = window.location.pathname.split('/').pop()
+        try {
+          const res = await fetch(`/api/orgs/${slug}/followers`)
+          if (res.ok) {
+            const data = await res.json()
+            renderFollowerList(list, data.followers)
+          }
+        } catch {
+          list.innerHTML = '<p class="empty">Failed to load followers.</p>'
+        }
+      }
+
+      function renderFollowerList(container, users) {
+        if (!users || users.length === 0) {
+          container.innerHTML = '<p class="empty">No followers yet.</p>'
+          return
+        }
+
+        function getAvatarColor(s) {
+          let hash = 0
+          for (let i = 0; i < s.length; i++) {
+            hash = s.charCodeAt(i) + ((hash << 5) - hash)
+          }
+          const hue = hash % 360
+          return `hsl(${hue}, 50%, 40%)`
+        }
+
+        container.innerHTML = users.map(user => `
+          <a class="follower-item" href="/u/${user.userName}">
+            <div class="follower-avatar" style="background: ${getAvatarColor(user.userName)}">${user.userName.charAt(0).toUpperCase()}</div>
+            <span class="follower-name">@${user.userName}</span>
+          </a>
+        `).join('')
+      }
     </script>
   )}
 </Base>
