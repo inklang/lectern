@@ -1,5 +1,5 @@
 import { defineMiddleware } from 'astro:middleware'
-import { getUserByUsername } from '~/lib/orgs.js'
+import { supabase } from '~/lib/supabase.js'
 
 // Paths that should NOT be treated as usernames
 const RESERVED_PATHS = new Set([
@@ -29,12 +29,16 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return next()
   }
 
-  // Check if this is a user
-  const user = await getUserByUsername(segment)
+  // Check if this is a user (case-insensitive query)
+  const { data: user } = await supabase
+    .from('users')
+    .select('user_name')
+    .ilike('user_name', segment)
+    .single()
 
   if (user) {
-    // User exists, redirect to their profile
-    return context.redirect(`/u/${segment}`, 301)
+    // User exists, redirect to their profile using the correct casing from DB
+    return context.redirect(`/u/${user.user_name}`, 301)
   }
 
   // Not a user, let the rest of the routing handle it
