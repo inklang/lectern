@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url'
 import path from 'path'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const fontPath = path.resolve(__dirname, '../../fonts/DejaVuSans.ttf')
+const fontPath = path.resolve(__dirname, './fonts/DejaVuSans.ttf')
 const fontData = readFileSync(fontPath)
 
 export const GET: APIRoute = async ({ url }) => {
