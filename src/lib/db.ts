@@ -752,6 +752,154 @@ export async function computePackageHealth(packageName: string): Promise<void> {
   if (error) throw error;
 }
 
+// ─── Package Reviews ─────────────────────────────────────────────────────────
+
+export interface Review {
+  id: string
+  user_id: string
+  package_name: string
+  rating: number
+  body: string | null
+  created_at: string
+  updated_at: string
+  username?: string
+  avatar_url?: string | null
+}
+
+export interface ReviewWithUser extends Review {
+  username: string
+  avatar_url: string | null
+}
+
+// Create a new review for a package
+export async function createReview(
+  userId: string,
+  packageName: string,
+  rating: number,
+  body?: string
+): Promise<Review> {
+  const { data, error } = await supabase
+    .from('package_reviews')
+    .insert({
+      user_id: userId,
+      package_name: packageName,
+      rating,
+      body: body || null,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as Review
+}
+
+// Update an existing review
+export async function updateReview(
+  userId: string,
+  packageName: string,
+  rating: number,
+  body?: string
+): Promise<Review> {
+  const { data, error } = await supabase
+    .from('package_reviews')
+    .update({
+      rating,
+      body: body || null,
+    })
+    .eq('user_id', userId)
+    .eq('package_name', packageName)
+    .select()
+    .single()
+  if (error) throw error
+  return data as Review
+}
+
+// Delete a review
+export async function deleteReview(userId: string, packageName: string): Promise<void> {
+  const { error } = await supabase
+    .from('package_reviews')
+    .delete()
+    .eq('user_id', userId)
+    .eq('package_name', packageName)
+  if (error) throw error
+}
+
+// Get reviews for a package (paginated)
+export async function getPackageReviews(
+  packageName: string,
+  limit = 20,
+  offset = 0
+): Promise<Review[]> {
+  const { data, error } = await supabase
+    .from('package_reviews')
+    .select('*')
+    .eq('package_name', packageName)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+  if (error) throw error
+  return (data as Review[]) ?? []
+}
+
+// Get a specific user's review for a package
+export async function getUserReview(
+  userId: string,
+  packageName: string
+): Promise<Review | null> {
+  const { data, error } = await supabase
+    .from('package_reviews')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('package_name', packageName)
+    .single()
+  if (error) {
+    if (error.code === 'PGRST116') return null // Not found
+    throw error
+  }
+  return data as Review
+}
+
+// Get package rating summary
+export async function getPackageRating(
+  packageName: string
+): Promise<{ avg: number; count: number }> {
+  const { data, error } = await supabase
+    .from('packages')
+    .select('avg_rating, review_count')
+    .eq('slug', packageName)
+    .single()
+  if (error) throw error
+  return {
+    avg: parseFloat(data.avg_rating) || 0,
+    count: data.review_count || 0,
+  }
+}
+
+// Get reviews for a package with user info (for display)
+export async function getPackageReviewsWithUsers(
+  packageName: string,
+  limit = 20,
+  offset = 0
+): Promise<ReviewWithUser[]> {
+  const reviews = await getPackageReviews(packageName, limit, offset)
+  if (reviews.length === 0) return []
+
+  // Fetch user info for all reviewers
+  const userIds = [...new Set(reviews.map(r => r.user_id))]
+  const { data: users } = await supabase
+    .from('users')
+    .select('id, user_name, avatar_url')
+    .in('id', userIds)
+
+  const userMap = new Map(
+    (users ?? []).map(u => [u.id, { username: u.user_name ?? 'unknown', avatar_url: u.avatar_url }])
+  )
+
+  return reviews.map(r => ({
+    ...r,
+    username: userMap.get(r.user_id)?.username ?? 'unknown',
+    avatar_url: userMap.get(r.user_id)?.avatar_url ?? null,
+  }))
+}
+
 // ─── Feed ──────────────────────────────────────────────────────────────────────
 
 export interface FeedEvent {
