@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro'
-import { extractBearer, resolveToken } from '../../lib/tokens.js'
-import { supabase } from '../../lib/supabase.js'
-import { updateReview, deleteReview } from '../../lib/db.js'
+import { extractBearer, resolveToken } from '../../../lib/tokens.js'
+import { supabase } from '../../../lib/supabase.js'
+import { updateReview, deleteReview } from '../../../lib/db.js'
 
 // Helper to get review by ID
 async function getReviewById(reviewId: string) {

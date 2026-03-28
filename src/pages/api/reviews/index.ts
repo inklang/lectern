@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro'
-import { extractBearer, resolveToken } from '../../lib/tokens.js'
-import { createReview, getPackageReviews, getPackageVersions, getUserReview, getPackageRating } from '../../lib/db.js'
+import { extractBearer, resolveToken } from '../../../lib/tokens.js'
+import { createReview, getPackageReviews, getPackageVersions, getUserReview, getPackageRating } from '../../../lib/db.js'
 
 // POST /api/reviews - Create a review
 export const POST: APIRoute = async ({ request }) => {
