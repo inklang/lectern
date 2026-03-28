@@ -2,12 +2,15 @@ import type { APIRoute } from 'astro'
 import { getPackageVersions, getPackageOwner } from '../../lib/db.js'
 import satori from 'satori'
 import { readFileSync } from 'fs'
+import { fileURLToPath } from 'url'
 import path from 'path'
 
-// Load bundled font from node_modules
+// Load bundled font from src directory (gets bundled with serverless function)
 function loadFont(): ArrayBuffer | undefined {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url))
   const fontPaths = [
-    path.join(process.cwd(), 'node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf'),
+    path.join(__dirname, '../../fonts/DejaVuSans.ttf'),
+    path.join(process.cwd(), 'src/fonts/DejaVuSans.ttf'),
   ]
 
   for (const fontPath of fontPaths) {
