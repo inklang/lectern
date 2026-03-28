@@ -1,0 +1,54 @@
+---
+interface Props {
+  data: { date: string; count: number }[]
+  color?: string
+}
+
+const { data, color = 'var(--accent)' } = Astro.props
+
+const WIDTH = 80
+const HEIGHT = 24
+const PAD = 2
+
+// Compute SVG path from data points
+function buildPath(points: { x: number; y: number }[], close = false): string {
+  if (points.length === 0) return ''
+  const parts = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(2)},${p.y.toFixed(2)}`)
+  if (close) {
+    const last = points[points.length - 1]
+    const first = points[0]
+    parts.push(`L${last.x.toFixed(2)},${HEIGHT}`, `L${first.x.toFixed(2)},${HEIGHT}`, 'Z')
+  }
+  return parts.join(' ')
+}
+
+const linePoints: { x: number; y: number }[] = []
+const n = data.length
+const maxCount = Math.max(1, ...data.map(d => d.count))
+
+for (let i = 0; i < n; i++) {
+  const x = PAD + (i / Math.max(n - 1, 1)) * (WIDTH - PAD * 2)
+  const y = PAD + (1 - data[i].count / maxCount) * (HEIGHT - PAD * 2)
+  linePoints.push({ x, y })
+}
+
+const linePath = buildPath(linePoints)
+const areaPath = buildPath(linePoints, true)
+const flatY = HEIGHT - PAD
+---
+
+{linePath && (
+  <svg
+    width={WIDTH}
+    height={HEIGHT}
+    viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+    fill="none"
+    aria-hidden="true"
+    style="display: inline-block; vertical-align: middle; flex-shrink: 0;"
+  >
+    {/* Filled area below the line */}
+    <path d={areaPath} fill={color} fill-opacity="0.15" />
+    {/* Trend line */}
+    <path d={linePath} stroke={color} stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+  </svg>
+)}

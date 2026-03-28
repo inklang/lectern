@@ -2,7 +2,8 @@
 import Base from '../../layouts/Base.astro'
 import ComparePanel from '../../components/ComparePanel.astro'
 import HealthBadge from '../../components/HealthBadge.astro'
-import { listAllPackages, listTags, getPackagesByTag, getPopularPackages, listPackagesByStars, getStarCounts, getHealthForPackages, type HealthStatus } from '../../lib/db.js'
+import { listAllPackages, listTags, getPackagesByTag, getPopularPackages, listPackagesByStars, getStarCounts, getHealthForPackages, getDownloadTimelines, type HealthStatus } from '../../lib/db.js'
+import DownloadSparkline from '../../components/DownloadSparkline.astro'
 
 const PAGE_SIZE = 20
 
@@ -109,6 +110,13 @@ if (displayPackages.length > 0) {
         : null
     }
   }
+}
+
+// Fetch download timelines for displayed packages
+let timelineMap: Record<string, { date: string; count: number }[]> = {}
+if (displayPackages.length > 0) {
+  const pkgNames = displayPackages.map((p: any) => p.name)
+  timelineMap = await getDownloadTimelines(pkgNames).catch(() => {})
 }
 
 const allTags = await listTags().catch(() => [])
@@ -222,6 +230,9 @@ function buildPageUrl(p: number) {
       font-size: 0.75rem;
       color: var(--muted);
       margin-top: 0.2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
     }
 
     .empty {
@@ -502,7 +513,10 @@ function buildPageUrl(p: number) {
                     <div class="pkg-ver">v{pkg.latest.version}</div>
                     <div class="pkg-date">{new Date(pkg.latest.published_at).toLocaleDateString()}</div>
                     {sort === 'popular' && pkg.downloadCount > 0 && (
-                      <div class="pkg-dl">{pkg.downloadCount.toLocaleString()} dl</div>
+                      <div class="pkg-dl">
+                        <span>{pkg.downloadCount.toLocaleString()} dl</span>
+                        {timelineMap[pkg.name] && <DownloadSparkline data={timelineMap[pkg.name]} />}
+                      </div>
                     )}
                   </div>
                   {healthMap[pkg.name] && <HealthBadge size="sm" score={healthMap[pkg.name]!.score} status={healthMap[pkg.name]!.status} />}
