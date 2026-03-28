@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
-const url = process.env['SUPABASE_URL']
-const secretKey = process.env['SUPABASE_SECRET_KEY']
-const publishableKey = process.env['SUPABASE_PUBLISHABLE_KEY']
+const url = import.meta.env['SUPABASE_URL'] ?? process.env['SUPABASE_URL']
+const secretKey = import.meta.env['SUPABASE_SECRET_KEY'] ?? process.env['SUPABASE_SECRET_KEY']
+const publishableKey = import.meta.env['SUPABASE_PUBLISHABLE_KEY'] ?? process.env['SUPABASE_PUBLISHABLE_KEY']
 
 if (!url || !secretKey || !publishableKey) {
   throw new Error('Missing SUPABASE_URL, SUPABASE_SECRET_KEY, or SUPABASE_PUBLISHABLE_KEY')
