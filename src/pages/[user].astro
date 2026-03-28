@@ -1,0 +1,38 @@
+---
+// User/Org profile page at /[user]
+// Redirects to the user's package list or shows a profile page
+import { supabase as supabaseAdmin } from '../lib/supabase.js'
+
+const { user } = Astro.params
+
+if (!user) {
+  return Astro.redirect('/packages')
+}
+
+// Check if this is an org or a user
+const { data: org } = await supabaseAdmin
+  .from('orgs')
+  .select('slug, name, avatar_url')
+  .ilike('slug', user)
+  .single()
+
+if (org) {
+  // Show org profile - for now, redirect to packages with org filter
+  return Astro.redirect(`/packages?org=${org.slug}`)
+}
+
+// Check if it's a user
+const { data: userProfile } = await supabaseAdmin
+  .from('profiles')
+  .select('id, username')
+  .ilike('username', user)
+  .single()
+
+if (userProfile) {
+  // Show user profile - for now, redirect to their packages
+  return Astro.redirect(`/packages?owner=${userProfile.username}`)
+}
+
+// Not found - redirect to packages
+return Astro.redirect('/packages')
+---
