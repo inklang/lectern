@@ -3,11 +3,14 @@ import { getPackageVersions, getPackageOwner } from '../../lib/db.js'
 import satori from 'satori'
 import sharp from 'sharp'
 
-// Use Inter font from Google Fonts (via @fontsource or bundled)
-const fontUrl = 'https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff2'
+// Use Inter font from jsDelivr CDN - direct binary link
+const fontUrl = 'https://cdn.jsdelivr.net/npm/@fontsource/inter@5.0.8/files/inter-latin-400-normal.woff2'
 
 async function getFontData(): Promise<ArrayBuffer> {
   const response = await fetch(fontUrl)
+  if (!response.ok) {
+    throw new Error(`Failed to fetch font: ${response.status}`)
+  }
   return response.arrayBuffer()
 }
 
