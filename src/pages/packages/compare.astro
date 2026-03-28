@@ -1,0 +1,426 @@
+---
+import Base from '../../layouts/Base.astro'
+import ComparePanel, { type ComparePackage } from '../../components/ComparePanel.astro'
+import { getPackageVersions, getPackageStats, getPackageTags, getStarCount, getPackageHealth, resolvePackageSlugs } from '../../lib/db.js'
+
+const aSlug = Astro.url.searchParams.get('a') ?? null
+const bSlug = Astro.url.searchParams.get('b') ?? null
+
+// Build a ComparePackage from a package slug
+async function buildComparePackage(slug: string): Promise<ComparePackage | null> {
+  const versions = await getPackageVersions(slug)
+  if (!versions || versions.length === 0) return null
+
+  const latest = versions[0]
+  const stats = await getPackageStats(slug).catch(() => ({ total: 0, last7d: 0, last30d: 0 }))
+  const tags = await getPackageTags(slug).catch(() => [])
+  const starCount = await getStarCount(slug).catch(() => 0)
+  const health = await getPackageHealth(slug).catch(() => null)
+
+  return {
+    name: slug,
+    version: latest.version,
+    description: latest.description,
+    tags,
+    download_count: stats.total,
+    popularity_score: health?.popularity_score ?? 0,
+    author: latest.author,
+    published_at: latest.published_at,
+    dependencies: latest.dependencies ?? {},
+    license: latest.license,
+  }
+}
+
+let aPkg: ComparePackage | null = null
+let bPkg: ComparePackage | null = null
+let aError = false
+let bError = false
+
+if (aSlug) {
+  try {
+    aPkg = await buildComparePackage(aSlug)
+    if (!aPkg) aError = true
+  } catch {
+    aError = true
+  }
+}
+
+if (bSlug) {
+  try {
+    bPkg = await buildComparePackage(bSlug)
+    if (!bPkg) bError = true
+  } catch {
+    bError = true
+  }
+}
+
+const bothProvided = aSlug && bSlug && !aError && !bError && aPkg && bPkg
+const onlyOneProvided = (aSlug || bSlug) && !bothProvided
+const neitherProvided = !aSlug && !bSlug
+
+// For the picker: resolve what the filled-in side's slug is
+const filledSlug = aSlug ? aSlug : (bSlug ? bSlug : null)
+const filledIsA = !!aSlug
+
+// Helper to build compare URL
+function compareUrl(filled: string, selected: string) {
+  if (filledIsA) {
+    return `/packages/compare?a=${encodeURIComponent(filled)}&b=${encodeURIComponent(selected)}`
+  }
+  return `/packages/compare?a=${encodeURIComponent(selected)}&b=${encodeURIComponent(filled)}`
+}
+---
+<Base title="Compare Packages">
+  <style>
+    .compare-page {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .compare-page-header {
+      margin-bottom: 2rem;
+    }
+
+    .compare-page-header h1 {
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+
+    .compare-page-header p {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .compare-back {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      display: inline-block;
+      margin-bottom: 1.5rem;
+    }
+
+    .compare-back:hover { color: var(--text); opacity: 1; }
+
+    /* Picker UI */
+    .compare-picker {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .compare-picker-row {
+      display: flex;
+      gap: 1rem;
+      align-items: stretch;
+    }
+
+    .compare-picker-card {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      min-height: 120px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .compare-picker-card.filled {
+      border-color: var(--accent);
+    }
+
+    .compare-picker-card.empty {
+      border-style: dashed;
+      align-items: center;
+    }
+
+    .picker-label {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .picker-name {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--accent);
+      word-break: break-all;
+    }
+
+    .picker-empty-text {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .compare-vs {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .compare-search {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .compare-search-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+
+    .compare-search-card h3 {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .search-input-row {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .search-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 0.875rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--text);
+      outline: none;
+    }
+
+    .search-input:focus { border-color: var(--accent); }
+
+    .search-btn {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      padding: 0.5rem 1rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+
+    .search-btn:hover { opacity: 0.85; }
+
+    .search-results {
+      margin-top: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    .search-result-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0.75rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      text-decoration: none;
+      color: var(--text);
+    }
+
+    .search-result-item:hover { border-color: var(--accent); opacity: 1; }
+
+    .result-name {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .result-ver {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .error-text {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: #ef4444;
+      margin-top: 0.5rem;
+    }
+
+    .compare-results-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+
+    @media (max-width: 640px) {
+      .compare-results-grid { grid-template-columns: 1fr; }
+      .compare-picker-row { flex-direction: column; }
+      .compare-vs { flex-direction: row; justify-content: center; }
+    }
+  </style>
+
+  <a class="compare-back" href="/packages">← packages</a>
+
+  <div class="compare-page">
+    <div class="compare-page-header">
+      <h1>compare packages</h1>
+      <p>Side-by-side comparison of two packages</p>
+    </div>
+
+    {neitherProvided && (
+      <div class="compare-picker">
+        <div class="compare-picker-row">
+          <div class="compare-picker-card empty">
+            <span class="picker-empty-text">Select first package from the listing</span>
+          </div>
+          <span class="compare-vs">vs</span>
+          <div class="compare-picker-card empty">
+            <span class="picker-empty-text">Select first package from the listing</span>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {onlyOneProvided && (
+      <div class="compare-picker">
+        <div class="compare-picker-row">
+          <div class={`compare-picker-card ${filledSlug ? 'filled' : 'empty'}`}>
+            <span class="picker-label">{filledIsA ? 'Package A' : 'Package B'}</span>
+            {filledSlug
+              ? <span class="picker-name">{filledSlug}</span>
+              : <span class="picker-empty-text">Not selected</span>}
+          </div>
+          <span class="compare-vs">vs</span>
+          <div class="compare-search-card" style="flex: 1;">
+            <h3>Pick second package</h3>
+            <div class="search-input-row">
+              <input
+                id="picker-search"
+                class="search-input"
+                type="search"
+                placeholder="Search packages…"
+                autocomplete="off"
+              />
+              <button class="search-btn" id="picker-search-btn">Add</button>
+            </div>
+            <div class="search-results" id="picker-results"></div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {bothProvided && (
+      <div>
+        <ComparePanel packages={[aPkg!, bPkg!]} fullPage={true} />
+      </div>
+    )}
+  </div>
+
+  <script>
+    const pickerSearch = document.getElementById('picker-search') as HTMLInputElement
+    const pickerResults = document.getElementById('picker-results') as HTMLDivElement
+    const pickerSearchBtn = document.getElementById('picker-search-btn') as HTMLButtonElement
+
+    const filledSlug = new URLSearchParams(location.search).get('a')
+      ?? new URLSearchParams(location.search).get('b')
+    const filledIsA = new URLSearchParams(location.search).has('a')
+
+    let debounce: ReturnType<typeof setTimeout>
+
+    function esc(s: string): string {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
+    }
+
+    function navigateToSelected(selectedSlug: string) {
+      const base = filledIsA
+        ? `/packages/compare?a=${encodeURIComponent(filledSlug!)}&b=${encodeURIComponent(selectedSlug)}`
+        : `/packages/compare?a=${encodeURIComponent(selectedSlug)}&b=${encodeURIComponent(filledSlug!)}`
+      location.href = base
+    }
+
+    pickerSearchBtn?.addEventListener('click', () => {
+      const q = pickerSearch.value.trim()
+      if (!q) return
+      navigateToSelected(q)
+    })
+
+    pickerSearch?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const q = pickerSearch.value.trim()
+        if (!q) return
+        navigateToSelected(q)
+      }
+    })
+
+    pickerSearch?.addEventListener('input', () => {
+      clearTimeout(debounce)
+      const q = pickerSearch.value.trim()
+      if (!q) {
+        pickerResults.innerHTML = ''
+        return
+      }
+
+      debounce = setTimeout(async () => {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
+        if (!res.ok) return
+        const results = await res.json() as Array<{ name: string; package_slug: string; version: string }>
+
+        if (!results.length) {
+          pickerResults.innerHTML = '<p class="picker-empty-text">no results.</p>'
+          return
+        }
+
+        pickerResults.innerHTML = results.slice(0, 10).map(pkg => {
+          const slug = esc(pkg.package_slug)
+          const name = esc(pkg.name)
+          return '<a class="search-result-item" href="#">' +
+            '<span class="result-name">' + name + '</span>' +
+            '<span class="result-ver">v' + esc(pkg.version) + '</span>' +
+          '</a>'
+        }).join('')
+
+        pickerResults.querySelectorAll('.search-result-item').forEach((item, i) => {
+          item.addEventListener('click', (e) => {
+            e.preventDefault()
+            const selected = results[i]
+            if (selected) navigateToSelected(selected.package_slug || selected.name)
+          })
+        })
+      }, 300)
+    })
+  </script>
+</Base>

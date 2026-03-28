@@ -598,6 +598,28 @@ const ogDescription = latest.description
       opacity: 1;
     }
 
+    .compare-btn-header {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+
+    .compare-btn-header:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      opacity: 1;
+    }
+
     .pending-releases-section {
       margin-top: 1.5rem;
       padding: 1rem;
@@ -680,8 +702,6 @@ const ogDescription = latest.description
     }
   </style>
 
-  <a class="back" href="/packages">← packages</a>
-
   {deprecation?.deprecated && (
     <DeprecationBanner
       message={deprecation.deprecation_message}
@@ -689,6 +709,8 @@ const ogDescription = latest.description
       deprecatedBy={deprecation.deprecated_by ?? undefined}
     />
   )}
+
+  <a class="back" href="/packages">← packages</a>
 
   <div class="pkg-header">
     <div class="pkg-name">{packageSlug}</div>
@@ -710,6 +732,9 @@ const ogDescription = latest.description
         interactive={true}
         packageSlug={dbSlug}
       />
+      <a class="compare-btn-header" href={`/packages/compare?a=${encodeURIComponent(dbSlug)}&b=`}>
+        compare
+      </a>
     </div>
     {latest.description && <p class="pkg-description">{latest.description}</p>}
     {tags.length > 0 && (
