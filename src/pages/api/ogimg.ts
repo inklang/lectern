@@ -2,8 +2,10 @@ import type { APIRoute } from 'astro'
 import { getPackageVersions, getPackageOwner } from '../../lib/db.js'
 import satori from 'satori'
 import sharp from 'sharp'
-import interRegular from '@fontsource/inter/files/inter-latin-400-normal.woff2'
-import interBold from '@fontsource/inter/files/inter-latin-700-normal.woff2'
+
+// Use Inter from jsDelivr as TTF
+const fontUrl = 'https://cdn.jsdelivr.net/npm/inter@3.19.0/packages/inter/ttf/Inter-Regular.ttf'
+const fontBoldUrl = 'https://cdn.jsdelivr.net/npm/inter@3.19.0/packages/inter/ttf/Inter-Bold.ttf'
 
 export const GET: APIRoute = async ({ url }) => {
   try {
@@ -26,6 +28,12 @@ export const GET: APIRoute = async ({ url }) => {
     const description = latest.description?.slice(0, 150) || `${packageSlug} — an Ink package`
     const version = latest.version
     const author = owner?.name || owner?.username || 'Unknown'
+
+    // Fetch fonts
+    const [fontRegular, fontBold] = await Promise.all([
+      fetch(fontUrl).then(r => r.arrayBuffer()),
+      fetch(fontBoldUrl).then(r => r.arrayBuffer()),
+    ])
 
     const svg = await satori(
       {
@@ -172,13 +180,13 @@ export const GET: APIRoute = async ({ url }) => {
         fonts: [
           {
             name: 'Inter',
-            data: interRegular,
+            data: fontRegular,
             weight: 400,
             style: 'normal',
           },
           {
             name: 'Inter',
-            data: interBold,
+            data: fontBold,
             weight: 700,
             style: 'normal',
           },
