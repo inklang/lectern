@@ -901,6 +901,10 @@ const accessToken = session.access_token
         tokensSection.querySelectorAll('.revoke-btn').forEach(btn => {
           btn.addEventListener('click', async (e) => {
             const tokenId = (e.target as HTMLElement).getAttribute('data-token-id')!
+            const preview = tokenId.slice(0, 8)
+            if (!confirm(`Revoke CLI token "${preview}"? This cannot be undone.`)) {
+              return
+            }
             const b = e.target as HTMLButtonElement
             b.disabled = true
             b.textContent = 'revoking…'
@@ -981,18 +985,18 @@ const accessToken = session.access_token
 
         if (tokens && tokens.length > 0) {
           const rows = tokens.map((token: any) => {
-            const created = formatDate(new Date(token.createdAt))
-            const lastUsed = token.lastUsedAt ? formatDate(new Date(token.lastUsedAt)) : 'never'
-            const expiresAt = token.expiresAt ? `expires ${formatDate(new Date(token.expiresAt))}` : 'never expires'
-            const typeBadge = `<span class="token-type-badge ${token.tokenType}">${token.tokenType}</span>`
+            const created = formatDate(new Date(token.created_at))
+            const lastUsed = token.last_used_at ? formatDate(new Date(token.last_used_at)) : 'never'
+            const expiresAt = token.expires_at ? `expires ${formatDate(new Date(token.expires_at))}` : 'never expires'
+            const typeBadge = `<span class="token-type-badge ${token.token_type}">${escapeHtml(token.token_type)}</span>`
             return `
               <div class="row-item" data-token-id="${escapeHtml(token.id)}">
                 <div class="row-left">
                   <span class="row-name">${escapeHtml(token.name)}</span>
-                  <span class="row-meta">${escapeHtml(token.tokenPrefix)}… · ${typeBadge} · ${expiresAt}</span>
+                  <span class="row-meta">${escapeHtml(token.token_prefix)}… · ${typeBadge} · ${expiresAt}</span>
                   <span class="row-meta">created ${created} · last used ${lastUsed}</span>
                 </div>
-                <button class="btn btn-danger revoke-api-token-btn" data-token-id="${escapeHtml(token.id)}">revoke</button>
+                <button class="btn btn-danger revoke-api-token-btn" data-token-id="${escapeHtml(token.id)}" data-token-name="${escapeHtml(token.name)}">revoke</button>
               </div>
             `
           }).join('')
@@ -1006,6 +1010,10 @@ const accessToken = session.access_token
         apiTokensSection.querySelectorAll('.revoke-api-token-btn').forEach(btn => {
           btn.addEventListener('click', async (e) => {
             const tokenId = (e.target as HTMLElement).getAttribute('data-token-id')!
+            const tokenName = (e.target as HTMLElement).getAttribute('data-token-name')!
+            if (!confirm(`Revoke API token "${tokenName}"? This cannot be undone.`)) {
+              return
+            }
             const b = e.target as HTMLButtonElement
             b.disabled = true
             b.textContent = 'revoking…'
