@@ -5,10 +5,7 @@ import sharp from 'sharp'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import path from 'path'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const fontPath = path.resolve(__dirname, './fonts/DejaVuSans.ttf')
-const fontData = readFileSync(fontPath)
+import fontData from './fonts/DejaVuSans.ttf?raw'
 
 export const GET: APIRoute = async ({ url }) => {
   const pkg = url.searchParams.get('pkg')
