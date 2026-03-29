@@ -1,0 +1,39 @@
+---
+interface Props {
+  type: string;
+  size?: 'sm' | 'md';
+}
+const { type, size = 'md' } = Astro.props;
+const isLibrary = type === 'library';
+const label = isLibrary ? 'Library' : 'Script';
+const color = isLibrary ? '#8b5cf6' : '#3b82f6';
+const bg = isLibrary ? 'rgba(139,92,246,0.1)' : 'rgba(59,130,246,0.1)';
+---
+
+<span
+  class={`pkg-type-badge ${size}`}
+  style={`color:${color};background:${bg};border:1px solid ${color};`}
+  title={`This is a ${label.toLowerCase()} package`}
+>
+  {label}
+</span>
+
+<style>
+  .pkg-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-family: var(--font-mono, monospace);
+    font-weight: 500;
+    border-radius: 4px;
+    vertical-align: middle;
+  }
+  .pkg-type-badge.sm {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.35rem;
+  }
+  .pkg-type-badge.md {
+    font-size: 0.75rem;
+    padding: 0.15rem 0.5rem;
+  }
+</style>

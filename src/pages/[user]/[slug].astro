@@ -12,6 +12,7 @@ import StarPicker from '../../components/StarPicker.astro'
 import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount, getPackageHealth, getDownloadTimeline, resolvePackageSlugs, getPackageReviewsWithUsers, getUserReview, getPackageRating, getPackageRedirect, type ReviewWithUser } from '../../lib/db.js'
 import { canUserPublish } from '../../lib/authz.js'
 import DownloadSparkline from '../../components/DownloadSparkline.astro'
+import PackageTypeBadge from '../../components/PackageTypeBadge.astro'
 import { renderMarkdown } from '../../lib/markdown.js'
 import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 import { supabase as supabaseAdmin } from '../../lib/supabase.js'
@@ -1000,6 +1001,7 @@ const ogDescription = latest.description
     </div>
     <div class="pkg-meta-row">
       <span class="badge latest">v{latest.version}</span>
+      <PackageTypeBadge type={latest.package_type ?? 'script'} size="sm" />
       {latest.author && <span class="badge">{latest.author}</span>}
       {latest.license && <span class="badge">{latest.license}</span>}
       <span class="downloads-total">{stats.total.toLocaleString()} download{stats.total !== 1 ? 's' : ''}</span>
