@@ -10,6 +10,7 @@ import { supabase } from '../../lib/supabase.js'
 const PAGE_SIZE = 20
 
 const selectedTag = Astro.url.searchParams.get('tag') ?? null
+const selectedType = Astro.url.searchParams.get('type') ?? null
 const sort = Astro.url.searchParams.get('sort') ?? 'recent'
 const page = Math.max(1, parseInt(Astro.url.searchParams.get('page') ?? '1'))
 
@@ -74,6 +75,12 @@ if (selectedTag) {
   totalCount = entries.length
 }
 
+// Apply type filter to allPackages paths
+if (selectedType && sort !== 'popular') {
+  allPackages = allPackages.filter(p => (p.latest as any).package_type === selectedType)
+  totalCount = allPackages.length
+}
+
 const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
 const clampedPage = Math.min(page, totalPages)
 const packages = allPackages.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE)
@@ -83,6 +90,12 @@ let starCounts: Record<string, number> = {}
 if (sort !== 'popular' && sort !== 'stars' && packages.length > 0) {
   starCounts = await getStarCounts(packages.map(p => p.name)).catch(() => {})
 }
+
+// TODO: Apply type filter for popular sort once getPopularPackages returns package_type
+// if (selectedType && sort === 'popular') {
+//   popularPackages = popularPackages.filter(p => (p as any).package_type === selectedType)
+//   totalCount = popularPackages.length
+// }
 
 const displayPackages = sort === 'popular'
   ? popularPackages.map(p => ({
@@ -155,6 +168,7 @@ function buildPageUrl(p: number) {
   params.set('page', String(p))
   if (sort !== 'recent') params.set('sort', sort)
   if (selectedTag) params.set('tag', selectedTag)
+  if (selectedType) params.set('type', selectedType)
   return `/packages?${params.toString()}`
 }
 ---
@@ -359,6 +373,52 @@ function buildPageUrl(p: number) {
       color: var(--accent);
       background: rgba(139, 92, 246, 0.08);
     }
+    .type-chips {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    .type-chip {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      background: none;
+      text-decoration: none;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .type-chip:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+    .type-chip.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(139, 92, 246, 0.08);
+    }
+    .pkg-type {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      margin-left: 0.4rem;
+      vertical-align: middle;
+      display: inline-block;
+    }
+    .pkg-type.library {
+      color: #8b5cf6;
+      background: rgba(139,92,246,0.1);
+      border: 1px solid #8b5cf6;
+    }
+    .pkg-type.script {
+      color: #3b82f6;
+      background: rgba(59,130,246,0.1);
+      border: 1px solid #3b82f6;
+    }
     .pkg-checkbox-label {
       display: none;
       cursor: pointer;
@@ -528,6 +588,12 @@ function buildPageUrl(p: number) {
     <button class="sort-chip" data-sort="stars">stars</button>
   </div>
 
+  <div class="type-chips" id="type-chips">
+    <a class={`type-chip${!selectedType ? ' active' : ''}`} href="/packages">all</a>
+    <a class={`type-chip${selectedType === 'script' ? ' active' : ''}`} href="/packages?type=script">scripts</a>
+    <a class={`type-chip${selectedType === 'library' ? ' active' : ''}`} href="/packages?type=library">libraries</a>
+  </div>
+
   <div class="search-bar">
     <input
       id="search-input"
@@ -550,6 +616,11 @@ function buildPageUrl(p: number) {
                 <a class="pkg-card" href={`/${pkg.name}`}>
                   <div class="pkg-left">
                     <span class="pkg-name">{pkg.name}</span>
+                    {(pkg.latest as any).package_type && (
+                      <span class={`pkg-type ${(pkg.latest as any).package_type}`}>
+                        {(pkg.latest as any).package_type === 'library' ? 'Library' : 'Script'}
+                      </span>
+                    )}
                     {verifiedMap[pkg.name] && <VerifiedBadge size="sm" />}
                     {deprecationMap[pkg.name]?.deprecated && (
                       <span class="pkg-deprecated" title={deprecationMap[pkg.name].deprecation_message ?? undefined}>deprecated</span>
@@ -632,7 +703,7 @@ function buildPageUrl(p: number) {
 
     const url = new URL(location.href)
     let activeSort = url.searchParams.get('sort') ?? 'recent'
-    let cachedResults: Array<{ name: string; package_slug: string; version: string; description: string | null; deprecated: boolean; deprecation_message: string | null; verified: boolean }> = []
+    let cachedResults: Array<{ name: string; package_slug: string; version: string; description: string | null; deprecated: boolean; deprecation_message: string | null; verified: boolean; package_type?: string }> = []
 
     function esc(s: string): string {
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -744,12 +815,16 @@ function buildPageUrl(p: number) {
           const verifiedBadge = pkg.verified
             ? '<span class="verified-badge" style="display:inline-flex;align-items:center;gap:0.25rem;padding:0.1rem 0.3rem;background:rgba(34,197,94,0.1);border:1px solid #22c55e;border-radius:4px;color:#22c55e;font-family:var(--font-mono,monospace);font-size:0.65rem;font-weight:500;vertical-align:middle;" title="This package is from a verified publisher"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>'
             : ''
+          const typeBadge = pkg.package_type
+            ? '<span class="pkg-type ' + esc(pkg.package_type) + '">' + (pkg.package_type === 'library' ? 'Library' : 'Script') + '</span>'
+            : ''
           return '<label class="pkg-checkbox-label">' +
             '<input type="checkbox" class="pkg-checkbox" value="' + name + '" />' +
           '</label>' +
           '<a class="pkg-card" href="/' + slug + '" style="flex:1;">' +
             '<div class="pkg-left">' +
               '<span class="pkg-name">' + name + '</span>' +
+              typeBadge +
               verifiedBadge +
               deprecatedLabel +
               (pkg.description ? '<span class="pkg-description">' + desc + '</span>' : '') +
