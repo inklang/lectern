@@ -12,6 +12,7 @@ export interface PackageVersion {
   published_at: string
   download_count?: number
   targets?: string[]
+  package_type?: string
 }
 
 export interface PackageRow {
@@ -107,7 +108,7 @@ export async function createPackage(slug: string, displayName: string, ownerSlug
 export async function insertVersion(version: Omit<PackageVersion, 'published_at'> & { embedding?: number[] | null }): Promise<void> {
   const { error } = await supabase
     .from('package_versions')
-    .insert(version)
+    .insert({ ...version, package_type: version.package_type ?? 'script' })
   if (error) throw error
 }
 
