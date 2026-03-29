@@ -7,6 +7,7 @@ returns table (
   package_name text,
   version text,
   description text,
+  package_type text,
   similarity float
 )
 language sql stable
@@ -15,6 +16,7 @@ as $$
     pv.package_name,
     pv.version,
     pv.description,
+    pv.package_type,
     1 - (pv.embedding <=> query_embedding) as similarity
   from package_versions pv
   inner join (

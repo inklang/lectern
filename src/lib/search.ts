@@ -12,6 +12,7 @@ export interface SearchResult {
   deprecated: boolean
   deprecation_message: string | null
   verified: boolean
+  package_type: string
 }
 
 interface RrfItem { name: string; package_slug?: string; [key: string]: unknown }
@@ -37,16 +38,18 @@ export function rrfMerge(fts: RrfItem[], semantic: RrfItem[], k = 60): (RrfItem 
     .map(([name, score]) => ({ ...items.get(name)!, name, score }))
 }
 
-export async function hybridSearch(query: string, limit = 20): Promise<SearchResult[]> {
+export async function hybridSearch(query: string, limit = 20, type?: 'script' | 'library'): Promise<SearchResult[]> {
   const { supabase } = await import('./supabase.js')
 
   // Full-text search
-  const { data: ftsRows } = await supabase
+  let ftsQuery = supabase
     .from('package_versions')
-    .select('package_name, version, description')
+    .select('package_name, version, description, package_type')
     .textSearch('fts', query, { type: 'plain', config: 'english' })
     .order('published_at', { ascending: false })
     .limit(limit)
+  if (type) ftsQuery = ftsQuery.eq('package_type', type)
+  const { data: ftsRows } = await ftsQuery
 
   const ftsDeduped = dedupeLatest(ftsRows ?? [])
 
@@ -58,7 +61,9 @@ export async function hybridSearch(query: string, limit = 20): Promise<SearchRes
       query_embedding: embedding,
       match_count: limit,
     })
-    semDeduped = dedupeLatest(semRows ?? [])
+    let semFiltered = semRows ?? []
+    if (type) semFiltered = semFiltered.filter((r: Record<string, unknown>) => r.package_type === type)
+    semDeduped = dedupeLatest(semFiltered)
   }
 
   // Collect all unique package names
@@ -78,8 +83,8 @@ export async function hybridSearch(query: string, limit = 20): Promise<SearchRes
   }
 
   const merged = rrfMerge(
-    ftsDeduped.map(r => ({ name: r.package_name, package_slug: `${ownerMap.get(r.package_name) ?? ''}/${r.package_name}`, version: r.version, description: r.description })),
-    semDeduped.map(r => ({ name: r.package_name, package_slug: `${ownerMap.get(r.package_name) ?? ''}/${r.package_name}`, version: r.version, description: r.description })),
+    ftsDeduped.map(r => ({ name: r.package_name, package_slug: `${ownerMap.get(r.package_name) ?? ''}/${r.package_name}`, version: r.version, description: r.description, package_type: r.package_type })),
+    semDeduped.map(r => ({ name: r.package_name, package_slug: `${ownerMap.get(r.package_name) ?? ''}/${r.package_name}`, version: r.version, description: r.description, package_type: (r as Record<string, unknown>).package_type })),
   )
 
   const topNames = merged.slice(0, limit).map(r => r.name as string)
@@ -162,6 +167,7 @@ export async function hybridSearch(query: string, limit = 20): Promise<SearchRes
     deprecated: deprecationMap.get(r.name as string)?.deprecated ?? false,
     deprecation_message: deprecationMap.get(r.name as string)?.deprecation_message ?? null,
     verified: verifiedMap.get(r.name as string) ?? false,
+    package_type: (r.package_type as string) ?? 'script',
   }))
 }
 

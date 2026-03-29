@@ -11,7 +11,8 @@ export const GET: APIRoute = async ({ request }) => {
     })
   }
 
-  const results = await hybridSearch(q)
+  const typeParam = url.searchParams.get('type') as 'script' | 'library' | null
+  const results = await hybridSearch(q, 20, typeParam ?? undefined)
   return new Response(JSON.stringify(results), {
     headers: { 'Content-Type': 'application/json' }
   })
