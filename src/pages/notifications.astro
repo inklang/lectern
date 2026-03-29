@@ -105,7 +105,7 @@ function notificationHref(n: typeof notifications[0]): string {
   const payload = n.payload as Record<string, unknown>
   switch (n.type) {
     case 'new_follower':
-      return `/u/${payload.actor}`
+      return `/${payload.actor}`
     case 'new_org_follower':
       return `/org/${payload.org_id}`
     case 'package_starred':

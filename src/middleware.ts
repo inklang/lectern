@@ -24,6 +24,6 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
     return next()
   }
 
-  // Redirect to /u/[username]
-  return context.redirect(`/u/${segment}`, 301)
+  // Let [user].astro handle username routes
+  return next()
 }

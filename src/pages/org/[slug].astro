@@ -89,9 +89,9 @@ if (org && viewerId) {
   isFollowing = await isFollowingOrg(viewerId, org.id)
 }
 
-// If visiting a user, redirect to /u/[username]
+// If visiting a user, redirect to /[username]
 if (isUser) {
-  return Astro.redirect(`/u/${user!.user_name}`)
+  return Astro.redirect(`/${user!.user_name}`)
 }
 
 // Prepare packages for grid
@@ -371,7 +371,7 @@ const packagesForGrid = (packages ?? []).map((p: any) => {
         }
 
         container.innerHTML = users.map(user => `
-          <a class="follower-item" href="/u/${user.userName}">
+          <a class="follower-item" href="/${user.userName}">
             <div class="follower-avatar" style="background: ${getAvatarColor(user.userName)}">${user.userName.charAt(0).toUpperCase()}</div>
             <span class="follower-name">@${user.userName}</span>
           </a>
