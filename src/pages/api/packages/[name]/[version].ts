@@ -67,6 +67,7 @@ export const PUT: APIRoute = async ({ params, request }) => {
   let dependencies: Record<string, string> = {}
   let tags: string[] = []
   let targets: string[] = []
+  let packageType: string = 'script'
 
   if (contentType.includes('application/vnd.ink-publish+gzip')) {
     // New format: tarball as raw gzip body, metadata in HTTP headers
@@ -80,6 +81,12 @@ export const PUT: APIRoute = async ({ params, request }) => {
     const targetsHeader = request.headers.get('X-Package-Targets')
     if (targetsHeader) {
       try { targets = JSON.parse(targetsHeader) } catch { targets = [] }
+    }
+
+    // Parse package type from X-Package-Type header
+    packageType = request.headers.get('X-Package-Type') ?? 'script'
+    if (packageType !== 'script' && packageType !== 'library') {
+      return new Response(JSON.stringify({ error: 'Invalid X-Package-Type. Must be "script" or "library".' }), { status: 400 })
     }
   } else if (contentType.includes('multipart/form-data')) {
     const formData = await request.formData()
@@ -141,10 +148,10 @@ export const PUT: APIRoute = async ({ params, request }) => {
     const org = await getOrgById(ownerOrgId)
     ownerSlug = org?.slug ?? 'unknown'
   } else {
-    // Get user's slug (username)
+    // Get user's slug (username) via Auth Admin API
     const { supabase } = await import('../../../../lib/supabase.js')
-    const { data: userData } = await supabase.from('auth.users').select('raw_user_meta_data').eq('id', userId).single()
-    ownerSlug = userData?.raw_user_meta_data?.preferred_username ?? 'unknown'
+    const { data: { user: authUser } } = await supabase.auth.admin.getUserById(userId)
+    ownerSlug = authUser?.user_metadata?.preferred_username ?? authUser?.user_metadata?.user_name ?? 'unknown'
   }
 
   // Full slug is ownerSlug/packageName
@@ -159,16 +166,16 @@ export const PUT: APIRoute = async ({ params, request }) => {
 
   // Insert version row (embedding added async after response)
   await insertVersion({
+    package_name: name,
     package_slug: slug,
     version,
     description,
     readme,
-    author,
-    license,
     dependencies,
     tarball_url: tarballUrl,
     embedding: null,
     targets,
+    package_type: packageType,
   })
 
   // Notify followers of new version (fire and forget)
