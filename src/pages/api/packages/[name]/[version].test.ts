@@ -83,6 +83,10 @@ vi.mock('../../../../tar.js', () => ({
   extractDependencies: vi.fn().mockResolvedValue({}),
 }))
 
+vi.mock('../../../../lib/security.js', () => ({
+  scanDependencies: vi.fn().mockResolvedValue([]),
+}))
+
 describe('PUT /api/packages/[name]/[version] author/license parsing', () => {
   it('parses author and license from multipart form data variables', async () => {
     // This test validates that the form-parsing variables are correctly declared
@@ -187,5 +191,101 @@ describe('PUT /api/packages/[name]/[version] tarball integrity', () => {
         tarball_hash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
       })
     )
+  })
+})
+
+describe('PUT /api/packages/[name]/[version] vulnerability scanning', () => {
+  it('returns 422 when a critical advisory matches a dependency', async () => {
+    const { scanDependencies } = await import('../../../../lib/security.js')
+    vi.mocked(scanDependencies).mockResolvedValue([
+      {
+        dep: 'vuln/pkg',
+        depRange: '>=1.0.0',
+        advisory: {
+          id: 'uuid-1',
+          advisoryId: 'GHSA-1111',
+          cve: 'CVE-2025-0001',
+          severity: 'critical',
+          title: 'Critical issue',
+          affectedVersions: '>=1.0.0',
+          fixedVersion: null,
+          advisoryUrl: 'https://example.com',
+        },
+      },
+    ])
+
+    const { PUT } = await import('./[version].js')
+    const request = new Request('http://localhost/api/packages/owner%2Fpkg/1.0.0', {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'Bearer test-token',
+        'Content-Type': 'application/vnd.ink-publish+gzip',
+      },
+      body: new Uint8Array([1, 2, 3]),
+    })
+
+    const response = await PUT({ params: { name: 'owner/pkg', version: '1.0.0' }, request } as any)
+    expect(response.status).toBe(422)
+
+    const body = await response.json()
+    expect(body.error).toContain('dependencies have known vulnerabilities')
+    expect(body.vulnerabilities).toHaveLength(1)
+    expect(body.vulnerabilities[0].dep).toBe('vuln/pkg')
+  })
+
+  it('proceeds with warnings when only low/medium advisories match', async () => {
+    const { scanDependencies } = await import('../../../../lib/security.js')
+    vi.mocked(scanDependencies).mockResolvedValue([
+      {
+        dep: 'warn/pkg',
+        depRange: '>=1.0.0',
+        advisory: {
+          id: 'uuid-2',
+          advisoryId: 'GHSA-2222',
+          cve: null,
+          severity: 'low',
+          title: 'Low severity',
+          affectedVersions: '>=1.0.0',
+          fixedVersion: null,
+          advisoryUrl: 'https://example.com',
+        },
+      },
+    ])
+
+    const { PUT } = await import('./[version].js')
+    const request = new Request('http://localhost/api/packages/owner%2Fpkg/1.0.0', {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'Bearer test-token',
+        'Content-Type': 'application/vnd.ink-publish+gzip',
+      },
+      body: new Uint8Array([1, 2, 3]),
+    })
+
+    const response = await PUT({ params: { name: 'owner/pkg', version: '1.0.0' }, request } as any)
+    expect(response.status).toBe(200)
+
+    const body = await response.json()
+    expect(body.warnings).toBeDefined()
+    expect(body.warnings).toHaveLength(1)
+  })
+
+  it('proceeds normally when scanning throws', async () => {
+    const { scanDependencies } = await import('../../../../lib/security.js')
+    vi.mocked(scanDependencies).mockRejectedValue(new Error('DB down'))
+
+    const { PUT } = await import('./[version].js')
+    const request = new Request('http://localhost/api/packages/owner%2Fpkg/1.0.0', {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'Bearer test-token',
+        'Content-Type': 'application/vnd.ink-publish+gzip',
+      },
+      body: new Uint8Array([1, 2, 3]),
+    })
+
+    const response = await PUT({ params: { name: 'owner/pkg', version: '1.0.0' }, request } as any)
+    // Should not be 422 or 500 — scanning failure is non-blocking
+    expect(response.status).toBe(200)
   })
 })

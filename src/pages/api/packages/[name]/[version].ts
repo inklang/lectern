@@ -156,6 +156,30 @@ export const PUT: APIRoute = async ({ params, request }) => {
     return new Response(JSON.stringify({ error: 'Failed to compute tarball hash' }), { status: 500 })
   }
 
+  // Vulnerability scan — runs before upload so a blocked publish never stores the tarball
+  let vulnWarnings: import('../../../../lib/security.js').VulnerabilityHit[] = []
+  try {
+    const { scanDependencies } = await import('../../../../lib/security.js')
+    const hits = await scanDependencies(dependencies)
+    const blocking = hits.filter(h => h.advisory.severity === 'critical' || h.advisory.severity === 'high')
+    if (blocking.length > 0) {
+      return new Response(
+        JSON.stringify({
+          error: 'publish blocked: dependencies have known vulnerabilities',
+          vulnerabilities: blocking.map(h => ({
+            dep: h.dep,
+            depRange: h.depRange,
+            advisory: h.advisory,
+          })),
+        }),
+        { status: 422, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+    vulnWarnings = hits.filter(h => h.advisory.severity === 'medium' || h.advisory.severity === 'low')
+  } catch (e) {
+    console.error('vulnerability scan failed, proceeding with publish:', e)
+  }
+
   // Check if this should be an org-owned package
   const url = new URL(request.url)
   const ownerOrgId = url.searchParams.get('owner_org_id')
@@ -287,8 +311,14 @@ export const PUT: APIRoute = async ({ params, request }) => {
     userAgent: request.headers.get('user-agent') ?? null,
   }).catch(() => {})
 
-  const baseUrl = process.env['BASE_URL'] ?? 'http://localhost:4321'
-  const resp = new Response(JSON.stringify({ name, version, url: `${baseUrl}/api/packages/${name}/${version}` }), { status: 201 })
+  const resp = new Response(
+    JSON.stringify({
+      message: 'published',
+      version,
+      ...(vulnWarnings.length > 0 ? { warnings: vulnWarnings } : {}),
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } }
+  )
   // Add rate limit headers to successful response
   for (const [k, v] of Object.entries(rateLimitHeaders(rateLimit))) {
     resp.headers.set(k, v)
