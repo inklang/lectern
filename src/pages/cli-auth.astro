@@ -24,7 +24,13 @@ const supabaseKey = import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? ''
       // Returning from OAuth — exchange code for session
       status.textContent = 'Exchanging code…'
       try {
-        const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+        // Reconstruct the exact redirectTo URL used during signInWithOAuth
+        // to ensure PKCE code_verifier lookup succeeds
+        const redirectToUrl = new URL('/cli-auth', location.origin)
+        redirectToUrl.searchParams.set('callback', callbackUrl)
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code, {
+          redirectTo: redirectToUrl.toString()
+        })
         if (error || !data.session) {
           status.textContent = 'Auth failed: ' + (error?.message ?? 'no session')
           console.error('Auth exchange error:', error)
