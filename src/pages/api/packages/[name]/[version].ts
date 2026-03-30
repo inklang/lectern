@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro'
+import { createHash } from 'crypto'
 import { resolveAuth } from '../../../../lib/tokens.js'
 import { canUserPublish } from '../../../../lib/authz.js'
 import { getPackageOwner, createPackage, insertVersion, versionExists } from '../../../../lib/db.js'
@@ -147,7 +148,6 @@ export const PUT: APIRoute = async ({ params, request }) => {
   }
 
   // Compute SHA-256 integrity hash before any storage upload
-  const { createHash } = await import('crypto')
   let tarballHash: string
   try {
     tarballHash = 'sha256:' + createHash('sha256').update(tarballData).digest('hex')
