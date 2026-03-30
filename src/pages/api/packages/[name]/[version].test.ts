@@ -10,8 +10,19 @@ vi.mock('../../../../lib/supabase.js', () => ({
     },
     from: vi.fn().mockReturnValue({
       insert: vi.fn().mockResolvedValue({ error: null }),
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: null, error: null }),
+      update: vi.fn().mockReturnThis(),
     }),
     rpc: vi.fn().mockResolvedValue({ error: null }),
+    auth: {
+      admin: {
+        getUserById: vi.fn().mockResolvedValue({
+          data: { user: { user_metadata: { preferred_username: 'testuser' } } },
+        }),
+      },
+    },
   },
 }))
 
@@ -29,10 +40,47 @@ vi.mock('../../../../lib/authz.js', () => ({
 
 vi.mock('../../../../lib/webhooks.js', () => ({
   deliverWebhook: vi.fn().mockResolvedValue(undefined),
+  deliverOrgWebhook: vi.fn().mockResolvedValue(undefined),
+  emitWebhooks: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('../../../../lib/embed.js', () => ({
   embedText: vi.fn().mockResolvedValue(null),
+}))
+
+vi.mock('../../../../lib/db.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../lib/db.js')>()
+  return {
+    ...actual,
+    getPackageOwner: vi.fn().mockResolvedValue('existing-owner'),
+    createPackage: vi.fn().mockResolvedValue(undefined),
+    insertVersion: vi.fn().mockResolvedValue(undefined),
+    versionExists: vi.fn().mockResolvedValue(false),
+    addPackageTag: vi.fn().mockResolvedValue(undefined),
+  }
+})
+
+vi.mock('../../../../lib/ratelimit.js', () => ({
+  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 29, reset: 0, limit: 30 }),
+  rateLimitHeaders: vi.fn().mockReturnValue({}),
+  rateLimitResponse: vi.fn().mockReturnValue(new Response('rate limited', { status: 429 })),
+}))
+
+vi.mock('../../../../lib/audit.js', () => ({
+  logAuditEvent: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('../../../../lib/notifications.js', () => ({
+  emitNotificationBatch: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('../../../../lib/follows.js', () => ({
+  getUserFollowers: vi.fn().mockResolvedValue([]),
+  getOrgFollowers: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('../../../../tar.js', () => ({
+  extractDependencies: vi.fn().mockResolvedValue({}),
 }))
 
 describe('PUT /api/packages/[name]/[version] author/license parsing', () => {
@@ -110,5 +158,34 @@ describe('GET /api/packages/[name]/[version] download tracking', () => {
       pkg_name: 'my-package',
       ver: '1.0.0',
     })
+  })
+})
+
+describe('PUT /api/packages/[name]/[version] tarball integrity', () => {
+  it('computes SHA-256 hash and passes tarball_hash to insertVersion', async () => {
+    const { insertVersion } = await import('../../../../lib/db.js')
+    const mockInsert = vi.mocked(insertVersion)
+    mockInsert.mockResolvedValue(undefined)
+    mockInsert.mockClear()
+
+    const { PUT } = await import('./[version].js')
+
+    const tarballBytes = new Uint8Array([1, 2, 3, 4, 5])
+    const request = new Request('http://localhost/api/packages/owner%2Fpkg/1.0.0', {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'Bearer test-token',
+        'Content-Type': 'application/vnd.ink-publish+gzip',
+      },
+      body: tarballBytes,
+    })
+
+    await PUT({ params: { name: 'owner/pkg', version: '1.0.0' }, request } as any)
+
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tarball_hash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      })
+    )
   })
 })

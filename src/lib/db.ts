@@ -9,6 +9,7 @@ export interface PackageVersion {
   license: string | null
   dependencies: Record<string, string>
   tarball_url: string
+  tarball_hash?: string | null
   published_at: string
   download_count?: number
   targets?: string[]

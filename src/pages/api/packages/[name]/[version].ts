@@ -146,6 +146,16 @@ export const PUT: APIRoute = async ({ params, request }) => {
     try { dependencies = await extractDependencies(tarballData) } catch {}
   }
 
+  // Compute SHA-256 integrity hash before any storage upload
+  const { createHash } = await import('crypto')
+  let tarballHash: string
+  try {
+    tarballHash = 'sha256:' + createHash('sha256').update(tarballData).digest('hex')
+  } catch (e) {
+    console.error('hash computation failed:', e)
+    return new Response(JSON.stringify({ error: 'Failed to compute tarball hash' }), { status: 500 })
+  }
+
   // Check if this should be an org-owned package
   const url = new URL(request.url)
   const ownerOrgId = url.searchParams.get('owner_org_id')
@@ -196,6 +206,7 @@ export const PUT: APIRoute = async ({ params, request }) => {
     readme,
     dependencies,
     tarball_url: tarballUrl,
+    tarball_hash: tarballHash,
     embedding: null,
     targets,
     package_type: packageType,
