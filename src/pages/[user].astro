@@ -10,8 +10,10 @@ import { createServerClient, parseCookieHeader } from '@supabase/ssr'
 const { user: username } = Astro.params
 if (!username) return Astro.redirect('/packages')
 
+const { supabase: sbAdmin } = await import('../lib/supabase.js')
+
 // Check if it's an org first
-const { data: org } = await import('../lib/supabase.js').then(m => m.supabase)
+const { data: org } = await sbAdmin
   .from('orgs')
   .select('slug, name, avatar_url, description, banner_url')
   .ilike('slug', username)
@@ -24,8 +26,6 @@ if (org) {
 // It's a user - get profile
 const userProfile = await getUserProfile(username)
 if (!userProfile) return Astro.redirect('/packages')
-
-const { supabase: sbAdmin } = await import('../lib/supabase.js')
 
 // Fetch packages owned by this user
 const { data: packages } = await sbAdmin
