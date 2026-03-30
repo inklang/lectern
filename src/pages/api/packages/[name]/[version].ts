@@ -22,18 +22,36 @@ export const GET: APIRoute = async ({ params, request }) => {
   const { logDownload } = await import('../../../../lib/db.js')
   logDownload(name, version, request.headers.get('authorization') ?? null, country, referrer).catch(() => {})
 
+  // Parse slug to get ownerSlug and packageName
+  const slashIdx = name.indexOf('/')
+  const ownerSlug = slashIdx > 0 ? name.slice(0, slashIdx) : name
+  const packageName = slashIdx > 0 ? name.slice(slashIdx + 1) : name
+
+  // Target from query param, default to 'default'
+  const url = new URL(request.url)
+  const target = url.searchParams.get('target') ?? 'default'
+
   // Redirect to Supabase Storage public URL via storage helper
-  // For slug-based URLs, name IS the slug (owner/package format)
+  // New path structure: [ownerSlug]/[packageName]/[target]/[version]/package.tar.gz
   const { supabase } = await import('../../../../lib/supabase.js')
   const { data: urlData } = supabase.storage
     .from('tarballs')
-    .getPublicUrl(`${name}/${version}.tar.gz`)
+    .getPublicUrl(`${ownerSlug}/${packageName}/${target}/${version}/package.tar.gz`)
   return Response.redirect(urlData.publicUrl, 302)
 }
 
 export const PUT: APIRoute = async ({ params, request }) => {
   const { name, version } = params
   if (!name || !version) return new Response('Bad request', { status: 400 })
+
+  // Validate package name: allow scoped (owner/pkg) but no dots in any segment
+  const nameSegments = name.split('/')
+  const disallowed = /[^a-zA-Z0-9_-]/
+  for (const segment of nameSegments) {
+    if (!segment || disallowed.test(segment)) {
+      return new Response(JSON.stringify({ error: `Invalid package name "${name}". Only letters, numbers, hyphens, and underscores are allowed.` }), { status: 400 })
+    }
+  }
 
   // Auth
   const userId = await resolveAuth(request.headers.get('authorization'))
@@ -154,11 +172,16 @@ export const PUT: APIRoute = async ({ params, request }) => {
     ownerSlug = authUser?.user_metadata?.preferred_username ?? authUser?.user_metadata?.user_name ?? 'unknown'
   }
 
-  // Full slug is ownerSlug/packageName
-  const slug = `${ownerSlug}/${name}`
+  // For scoped names (e.g., "mintychochip/ink.paper"), name is already the full slug
+  const slashIdx = name.indexOf('/')
+  const packageName = slashIdx > 0 ? name.slice(slashIdx + 1) : name
+  const slug = slashIdx > 0 ? name : `${ownerSlug}/${name}`
 
-  // Upload to Supabase Storage (use slug for path)
-  const tarballUrl = await uploadTarball(slug, version, tarballData)
+  // Determine target: use first target if provided, otherwise default to 'default'
+  const uploadTarget = targets.length > 0 ? targets[0] : 'default'
+
+  // Upload to Supabase Storage (new path: [ownerSlug]/[packageName]/[target]/[version]/package.tar.gz)
+  const tarballUrl = await uploadTarball(ownerSlug, packageName, uploadTarget, version, tarballData)
 
   // Create package record on first publish
   const owner = await getPackageOwner(slug)

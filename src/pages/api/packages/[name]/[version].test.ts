@@ -5,7 +5,7 @@ vi.mock('../../../../lib/supabase.js', () => ({
   supabase: {
     storage: {
       from: vi.fn().mockReturnValue({
-        getPublicUrl: vi.fn().mockReturnValue({ data: { publicUrl: 'https://example.com/tarballs/foo/1.0.0.tar.gz' } }),
+        getPublicUrl: vi.fn().mockReturnValue({ data: { publicUrl: 'https://example.com/tarballs/owner/package/default/1.0.0/package.tar.gz' } }),
       }),
     },
     from: vi.fn().mockReturnValue({
@@ -16,7 +16,7 @@ vi.mock('../../../../lib/supabase.js', () => ({
 }))
 
 vi.mock('../../../../lib/storage.js', () => ({
-  uploadTarball: vi.fn().mockResolvedValue('https://example.com/tarballs/foo/1.0.0.tar.gz'),
+  uploadTarball: vi.fn().mockResolvedValue('https://example.com/tarballs/owner/package/default/1.0.0/package.tar.gz'),
 }))
 
 vi.mock('../../../../lib/tokens.js', () => ({
