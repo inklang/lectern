@@ -1,0 +1,318 @@
+---
+import Base from '../../layouts/Base.astro'
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
+import { getUserProfile } from '../../lib/users.js'
+
+const { user: username } = Astro.params
+if (!username) return Astro.redirect('/packages')
+
+const supabase = createServerClient(
+  import.meta.env.SUPABASE_URL ?? '',
+  import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? '',
+  {
+    cookies: {
+      getAll() { return parseCookieHeader(Astro.request.headers.get('Cookie') ?? '') },
+      setAll() {},
+    },
+  }
+)
+
+const { data: { session } } = await supabase.auth.getSession()
+if (!session) return Astro.redirect(`/login?next=/${username}/settings`)
+
+// Only the owner can access their own settings
+const sessionUsername = session.user.user_metadata?.user_name ?? session.user.user_metadata?.preferred_username
+if (sessionUsername?.toLowerCase() !== username.toLowerCase()) {
+  return Astro.redirect(`/${username}`)
+}
+
+const profile = await getUserProfile(username)
+if (!profile) return Astro.redirect('/packages')
+---
+
+<Base title={`Settings — ${username}`}>
+  <style>
+    .settings-wrap {
+      max-width: 600px;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      margin-bottom: 2rem;
+      transition: color 0.15s;
+    }
+    .back-link:hover { color: var(--text); }
+
+    h1 {
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 2rem;
+    }
+
+    .settings-section {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .settings-section h2 {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1.25rem;
+    }
+
+    .field {
+      margin-bottom: 1.25rem;
+    }
+    .field:last-child { margin-bottom: 0; }
+
+    label {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 0.4rem;
+    }
+
+    .field-hint {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+      display: block;
+    }
+
+    input[type="text"],
+    input[type="url"],
+    textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--text);
+      transition: border-color 0.15s;
+      box-sizing: border-box;
+    }
+
+    input[type="text"]:focus,
+    input[type="url"]:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .avatar-preview {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .avatar-img {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--border);
+      background: var(--surface);
+    }
+
+    .avatar-fallback {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .form-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-top: 0.25rem;
+    }
+
+    .btn-save {
+      padding: 0.5rem 1.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: white;
+      background: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn-save:hover { opacity: 0.85; }
+    .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .save-status {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--muted);
+      display: none;
+    }
+    .save-status.success { color: #4ade80; display: inline; }
+    .save-status.error { color: #f87171; display: inline; }
+  </style>
+
+  <div class="settings-wrap">
+    <a class="back-link" href={`/${username}`}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      back to profile
+    </a>
+
+    <h1>Profile Settings</h1>
+
+    <div class="settings-section">
+      <h2>Avatar</h2>
+      <div class="avatar-preview">
+        {profile.avatar_url
+          ? <img id="avatar-preview-img" class="avatar-img" src={profile.avatar_url} alt="avatar" />
+          : <div class="avatar-fallback" id="avatar-preview-fallback">{username.charAt(0).toUpperCase()}</div>
+        }
+        <span style="font-family:var(--font-mono);font-size:0.8125rem;color:var(--muted);">Preview updates as you type</span>
+      </div>
+      <div class="field">
+        <label for="avatar_url">Avatar URL</label>
+        <input type="url" id="avatar_url" name="avatar_url" placeholder="https://..." value={profile.avatar_url ?? ''} />
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h2>About</h2>
+      <div class="field">
+        <label for="bio">Bio</label>
+        <textarea id="bio" name="bio" placeholder="Tell people a bit about yourself...">{profile.bio ?? ''}</textarea>
+      </div>
+      <div class="field">
+        <label for="website">Website</label>
+        <input type="url" id="website" name="website" placeholder="https://yoursite.com" value={profile.website ?? ''} />
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h2>Social</h2>
+      <div class="field">
+        <label for="twitter">Twitter / X</label>
+        <span class="field-hint">Username without @</span>
+        <input type="text" id="twitter" name="twitter" placeholder="yourhandle" value={profile.twitter ?? ''} />
+      </div>
+      <div class="field">
+        <label for="github">GitHub</label>
+        <span class="field-hint">Username without @</span>
+        <input type="text" id="github" name="github" placeholder="yourhandle" value={profile.github ?? ''} />
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn-save" id="save-btn" type="button">Save changes</button>
+      <span class="save-status" id="save-status"></span>
+    </div>
+  </div>
+
+  <script define:vars={{ username }}>
+    // Live avatar preview
+    const avatarInput = document.getElementById('avatar_url')
+    const avatarImg = document.getElementById('avatar-preview-img')
+    const avatarFallback = document.getElementById('avatar-preview-fallback')
+
+    avatarInput?.addEventListener('input', () => {
+      const url = avatarInput.value.trim()
+      if (url) {
+        if (avatarImg) {
+          avatarImg.src = url
+          avatarImg.style.display = ''
+          if (avatarFallback) avatarFallback.style.display = 'none'
+        } else if (avatarFallback) {
+          // Create img element
+          const img = document.createElement('img')
+          img.id = 'avatar-preview-img'
+          img.className = 'avatar-img'
+          img.src = url
+          img.alt = 'avatar'
+          avatarFallback.replaceWith(img)
+        }
+      } else {
+        if (avatarImg) {
+          avatarImg.src = ''
+        }
+      }
+    })
+
+    // Save
+    const saveBtn = document.getElementById('save-btn')
+    const saveStatus = document.getElementById('save-status')
+
+    saveBtn?.addEventListener('click', async () => {
+      saveBtn.disabled = true
+      saveStatus.className = 'save-status'
+      saveStatus.textContent = 'Saving...'
+      saveStatus.style.display = 'inline'
+
+      const body = {
+        bio: document.getElementById('bio')?.value ?? '',
+        avatar_url: document.getElementById('avatar_url')?.value ?? '',
+        website: document.getElementById('website')?.value ?? '',
+        twitter: document.getElementById('twitter')?.value ?? '',
+        github: document.getElementById('github')?.value ?? '',
+      }
+
+      try {
+        const res = await fetch('/api/profile', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+
+        if (res.ok) {
+          saveStatus.className = 'save-status success'
+          saveStatus.textContent = 'Saved!'
+          setTimeout(() => {
+            saveStatus.style.display = 'none'
+          }, 2500)
+        } else {
+          const data = await res.json()
+          saveStatus.className = 'save-status error'
+          saveStatus.textContent = data.error ?? 'Failed to save'
+        }
+      } catch {
+        saveStatus.className = 'save-status error'
+        saveStatus.textContent = 'Network error'
+      } finally {
+        saveBtn.disabled = false
+      }
+    })
+  </script>
+</Base>
