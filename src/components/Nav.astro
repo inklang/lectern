@@ -126,7 +126,7 @@ function isActive(href: string) {
       </svg>
     </button>
     {session ? (
-      <a href="/profile" class="nav-avatar" title={username ?? 'profile'}>
+      <a href={username ? `/${username}` : '/profile'} class="nav-avatar" title={username ?? 'profile'}>
         {avatar
           ? <img src={avatar} alt={username ?? 'avatar'} />
           : <span class="avatar-fallback">{(username ?? 'U')[0].toUpperCase()}</span>

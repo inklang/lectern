@@ -1,0 +1,29 @@
+---
+import { createServerClient, parseCookieHeader } from '@supabase/ssr'
+
+const supabase = createServerClient(
+  import.meta.env.SUPABASE_URL ?? '',
+  import.meta.env.SUPABASE_PUBLISHABLE_KEY ?? '',
+  {
+    cookies: {
+      getAll() { return parseCookieHeader(Astro.request.headers.get('Cookie') ?? '') },
+      setAll() {},
+    },
+  }
+)
+
+const { data: { session } } = await supabase.auth.getSession()
+
+if (!session) {
+  return Astro.redirect('/login')
+}
+
+const username = session.user.user_metadata?.user_name ?? session.user.user_metadata?.preferred_username
+
+if (username) {
+  return Astro.redirect(`/${username}`, 302)
+}
+
+// Fallback: redirect to packages if we can't determine the username
+return Astro.redirect('/packages')
+---
