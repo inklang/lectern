@@ -9,7 +9,8 @@ import HealthPanel from '../../components/HealthPanel.astro'
 import DeprecationBanner from '../../components/DeprecationBanner.astro'
 import VerifiedBadge from '../../components/VerifiedBadge.astro'
 import StarPicker from '../../components/StarPicker.astro'
-import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount, getPackageHealth, getDownloadTimeline, resolvePackageSlugs, getPackageReviewsWithUsers, getUserReview, getPackageRating, getPackageRedirect, type ReviewWithUser } from '../../lib/db.js'
+import { getPackageVersions, getPackageOwner, getPackageDependents, getPackageStats, getPackageDeprecation, getPackageAdvisories, getPackageTags, getStarCount, getPackageHealth, getDownloadTimeline, resolvePackageSlugs, getPackageReviewsWithUsers, getUserReview, getPackageRating, getPackageRedirect, getCachedVulnerabilities, type ReviewWithUser } from '../../lib/db.js'
+import { scanDependencies } from '../../lib/security.js'
 import { canUserPublish } from '../../lib/authz.js'
 import DownloadSparkline from '../../components/DownloadSparkline.astro'
 import PackageTypeBadge from '../../components/PackageTypeBadge.astro'
@@ -115,6 +116,31 @@ if (userId && owner) {
 
 // Check if user is package owner (for analytics link)
 const isOwner = userId ? await canUserPublish(userId, dbSlug) : false
+
+let vulnHits: { dep_name: string; dep_range: string; severity: string; advisory: any }[] = []
+try {
+  const cached = await getCachedVulnerabilities(latest.package_slug, latest.version)
+  if (cached.length > 0) {
+    vulnHits = cached
+  } else if (Object.keys(latest.dependencies ?? {}).length > 0) {
+    // Live fallback when cache is empty
+    const hits = await scanDependencies(latest.dependencies ?? {}).catch(() => [])
+    vulnHits = hits.map(h => ({
+      dep_name: h.dep,
+      dep_range: h.depRange,
+      severity: h.advisory.severity,
+      advisory: h.advisory,
+    }))
+  }
+} catch {
+  // Never let banner failure break the page
+}
+
+const worstSeverity = vulnHits.reduce<string | null>((worst, h) => {
+  const order = ['low', 'medium', 'high', 'critical']
+  if (!worst || order.indexOf(h.severity) > order.indexOf(worst)) return h.severity
+  return worst
+}, null)
 
 const packageUrl = `https://lectern.inklang.org/${packageSlug}`
 const ogDescription = latest.description
@@ -1018,6 +1044,55 @@ const ogDescription = latest.description
     .integrity-hash:hover {
       color: var(--accent);
     }
+
+    .vuln-banner {
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      padding: 0.75rem 1rem;
+      margin-bottom: 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+    }
+
+    .vuln-banner.vuln-low    { border-color: #6b7280; background: rgba(107,114,128,0.08); }
+    .vuln-banner.vuln-medium { border-color: #f59e0b; background: rgba(245,158,11,0.08); }
+    .vuln-banner.vuln-high   { border-color: #f97316; background: rgba(249,115,22,0.08); }
+    .vuln-banner.vuln-critical { border-color: #ef4444; background: rgba(239,68,68,0.08); }
+
+    .vuln-banner summary {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      list-style: none;
+      color: var(--text);
+    }
+
+    .vuln-banner summary::-webkit-details-marker { display: none; }
+
+    .vuln-list {
+      margin: 0.75rem 0 0 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      list-style: none;
+      padding: 0;
+    }
+
+    .vuln-list li {
+      display: flex;
+      gap: 0.75rem;
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+
+    .vuln-dep  { font-weight: 600; }
+    .vuln-range { color: var(--muted); }
+
+    .vuln-sev-low      { color: #6b7280; }
+    .vuln-sev-medium   { color: #f59e0b; }
+    .vuln-sev-high     { color: #f97316; }
+    .vuln-sev-critical { color: #ef4444; }
   </style>
 
   {deprecation?.deprecated && (
@@ -1026,6 +1101,29 @@ const ogDescription = latest.description
       date={deprecation.deprecated_at ? new Date(deprecation.deprecated_at).toLocaleDateString() : undefined}
       deprecatedBy={deprecation.deprecated_by ?? undefined}
     />
+  )}
+
+  {vulnHits.length > 0 && (
+    <div class={`vuln-banner vuln-${worstSeverity}`}>
+      <details>
+        <summary>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {vulnHits.length} {vulnHits.length === 1 ? 'dependency has' : 'dependencies have'} a {worstSeverity} severity advisory
+        </summary>
+        <ul class="vuln-list">
+          {vulnHits.map(h => (
+            <li>
+              <span class="vuln-dep">{h.dep_name}</span>
+              <span class="vuln-range">{h.dep_range}</span>
+              <span class={`vuln-severity vuln-sev-${h.severity}`}>{h.severity}</span>
+              <a href={h.advisory.advisoryUrl ?? h.advisory.advisory_url} target="_blank" rel="noopener noreferrer">
+                {h.advisory.title} {h.advisory.cve ? `(${h.advisory.cve})` : ''}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </div>
   )}
 
   <a class="back" href="/packages">← packages</a>

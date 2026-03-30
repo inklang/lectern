@@ -1531,3 +1531,37 @@ export async function getPackageTransferHistory(packageName: string): Promise<Ar
   if (error) throw error
   return data ?? []
 }
+
+// ─── Vulnerability Cache ────────────────────────────────────────────────────────
+
+export interface CachedVulnerability {
+  dep_name: string
+  dep_range: string
+  severity: string
+  advisory: {
+    id: string
+    advisory_id: string
+    cve: string | null
+    title: string
+    affected_versions: string
+    fixed_version: string | null
+    advisory_url: string
+  }
+}
+
+export async function getCachedVulnerabilities(
+  packageName: string,
+  version: string
+): Promise<CachedVulnerability[]> {
+  const { data } = await supabase
+    .from('package_vulnerability_cache')
+    .select('dep_name, dep_range, severity, package_advisories(id, advisory_id, cve, title, affected_versions, fixed_version, advisory_url)')
+    .eq('package_name', packageName)
+    .eq('version', version)
+  return (data ?? []).map((row: any) => ({
+    dep_name: row.dep_name,
+    dep_range: row.dep_range,
+    severity: row.severity,
+    advisory: row.package_advisories,
+  }))
+}
