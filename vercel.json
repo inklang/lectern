@@ -1,10 +1,2 @@
 {
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/api/catch-all" }
-  ],
-  "redirects": [
-    { "source": "/packages", "destination": "/packages" },
-    { "source": "/blog", "destination": "/blog" },
-    { "source": "/docs/:path*", "destination": "/docs/:path*" }
-  ]
 }
