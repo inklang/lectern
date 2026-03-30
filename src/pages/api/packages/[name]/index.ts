@@ -28,6 +28,7 @@ export const GET: APIRoute = async ({ params }) => {
         description: v.description ?? null,
         published_at: v.published_at,
         dependencies: v.dependencies ?? {},
+        tarball_hash: v.tarball_hash ?? null,
       })),
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } }
