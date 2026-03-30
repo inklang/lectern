@@ -448,7 +448,7 @@ on event:player_death(player) {
       <p class="featured-heading">Healthiest Packages</p>
       <div class="featured-list">
         {healthLeaders.map(leader => (
-          <a class="featured-card" href={`/${leader.package_name}`}>
+          <a class="featured-card" href={`/${leader.package_slug}`}>
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
               <span class="featured-card-name">{leader.package_name}</span>
               <HealthBadge size="sm" score={leader.health_score} status={leader.health_status} />
@@ -492,7 +492,7 @@ on event:player_death(player) {
         ? <p class="empty">no packages yet.</p>
         : <div class="pkg-list">
             {recent.map(pkg => (
-              <a class="pkg-row" href={`/${pkg.name}`}>
+              <a class="pkg-row" href={pkg.name.includes('/') ? `/${pkg.name}` : `/packages/${pkg.name}`}>
                 <span class="pkg-name">{pkg.name}</span>
                 <span class="pkg-meta">v{pkg.version} · {new Date(pkg.published_at).toLocaleDateString()}</span>
               </a>

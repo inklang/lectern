@@ -853,6 +853,7 @@ export type HealthStatus = 'excellent' | 'good' | 'fair' | 'poor' | 'unknown';
 
 export interface HealthLeadersResult {
   package_name: string;
+  package_slug: string;
   health_score: number;
   health_status: HealthStatus;
   maintenance_status: HealthStatus;
@@ -870,7 +871,23 @@ export async function getPackageHealth(packageName: string): Promise<PackageHeal
 export async function getHealthLeaders(limit = 5): Promise<HealthLeadersResult[]> {
   const { data, error } = await supabase.rpc('get_health_leaders', { p_limit: limit });
   if (error) throw error;
-  return (data ?? []) as HealthLeadersResult[];
+  const results = (data ?? []) as Omit<HealthLeadersResult, 'package_slug'>[];
+
+  if (results.length === 0) return [];
+
+  // Fetch owner info to construct full slugs
+  const packageNames = results.map(r => r.package_name);
+  const { data: pkgRows } = await supabase
+    .from('packages')
+    .select('name, owner_slug')
+    .in('name', packageNames);
+
+  const ownerMap = new Map(pkgRows?.map(p => [p.name, p.owner_slug]) ?? []);
+
+  return results.map(r => ({
+    ...r,
+    package_slug: `${ownerMap.get(r.package_name) ?? ''}/${r.package_name}`,
+  }));
 }
 
 // Batch query to fetch health for multiple packages in one call
