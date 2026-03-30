@@ -30,13 +30,16 @@ const { data: pkgRow } = await supabaseAdmin
   .ilike('slug', packageSlug)
   .single()
 
-if (!pkgRow) {
+// Use the exact slug from DB if found, otherwise fall back to URL-constructed slug
+// (handles missing packages rows — content is authoritative in package_versions)
+const dbSlug = pkgRow?.slug ?? packageSlug
+const packageName = pkgRow?.name ?? (slug ?? packageSlug.split('/').pop() ?? packageSlug)
+
+// Only redirect if there is truly no package data anywhere
+const earlyVersionCheck = !pkgRow ? await getPackageVersions(dbSlug) : null
+if (!pkgRow && earlyVersionCheck?.length === 0) {
   return Astro.redirect('/packages')
 }
-
-// Use the exact slug from DB (case-corrected) for subsequent queries
-const dbSlug = pkgRow.slug
-const packageName = pkgRow.name // display name (bare package name, e.g., "test-package")
 
 // Check for package redirect (if this slug has been migrated)
 const redirectTarget = await getPackageRedirect(dbSlug).catch(() => null)

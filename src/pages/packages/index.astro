@@ -25,14 +25,24 @@ if (selectedTag) {
   // Build the same shape as allPackages
   const { listAllPackages: lap } = await import('../../lib/db.js')
   const allMap = await lap()
+  // allMap keys are full slugs (owner/name); build reverse map from bare name -> full slug
+  const bareToSlug = new Map<string, string>()
+  for (const key of Object.keys(allMap)) {
+    const bare = key.includes('/') ? key.split('/').pop()! : key
+    bareToSlug.set(bare, key)
+  }
   allPackages = pkgs
-    .filter(p => allMap[p.package_name])
     .map(p => {
-      const versions = allMap[p.package_name]
+      const fullSlug = bareToSlug.get(p.package_name) ?? allMap[p.package_name] ? p.package_name : null
+      return fullSlug ? { slug: fullSlug, pkg: p } : null
+    })
+    .filter((x): x is { slug: string; pkg: typeof pkgs[0] } => x !== null && !!allMap[x.slug])
+    .map(({ slug: fullSlug, pkg: p }) => {
+      const versions = allMap[fullSlug]
       const sorted = Object.values(versions).sort((a: any, b: any) =>
         new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
       )
-      return { name: p.package_name, latest: sorted[0], versionCount: sorted.length }
+      return { name: fullSlug, latest: sorted[0], versionCount: sorted.length }
     })
     .sort((a, b) =>
       new Date(b.latest.published_at).getTime() - new Date(a.latest.published_at).getTime()
@@ -613,7 +623,7 @@ function buildPageUrl(p: number) {
                 <label class="pkg-checkbox-label" data-package={pkg.name}>
                   <input type="checkbox" class="pkg-checkbox" value={pkg.name} />
                 </label>
-                <a class="pkg-card" href={`/${pkg.name}`}>
+                <a class="pkg-card" href={pkg.name.includes('/') ? `/${pkg.name}` : `/packages/${pkg.name}`}>
                   <div class="pkg-left">
                     <span class="pkg-name">{pkg.name}</span>
                     {(pkg.latest as any).package_type && (
