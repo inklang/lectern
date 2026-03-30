@@ -4,6 +4,20 @@ vi.mock('../../lib/db.js', () => ({
   getAllAdvisories: vi.fn(),
 }))
 
+vi.mock('../../lib/api-tokens.js', () => ({
+  verifyApiToken: vi.fn(),
+}))
+
+vi.mock('../../lib/supabase.js', () => ({
+  supabase: {
+    from: vi.fn(),
+  },
+}))
+
+vi.mock('../../lib/security.js', () => ({
+  scanDependencies: vi.fn().mockResolvedValue([]),
+}))
+
 const { getAllAdvisories } = await import('../../lib/db.js')
 
 describe('GET /api/advisories', () => {
@@ -77,5 +91,69 @@ describe('GET /api/advisories', () => {
 
     expect(response.status).toBe(200)
     expect(getAllAdvisories).toHaveBeenCalledWith(100, 0)
+  })
+})
+
+describe('POST /api/advisories', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns 403 when token is not admin type', async () => {
+    const { verifyApiToken } = await import('../../lib/api-tokens.js')
+    vi.mocked(verifyApiToken).mockResolvedValue({ tokenType: 'publish', userId: 'u1' } as any)
+
+    const { POST } = await import('./advisories.js')
+    const req = new Request('http://localhost/api/advisories', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ package_name: 'x', advisory_id: 'G-1', severity: 'high',
+        affected_versions: '>=1.0.0', title: 'T', advisory_url: 'https://x.com' }),
+    })
+    const res = await POST({ request: req } as any)
+    expect(res.status).toBe(403)
+  })
+
+  it('returns 400 when required fields are missing', async () => {
+    const { verifyApiToken } = await import('../../lib/api-tokens.js')
+    vi.mocked(verifyApiToken).mockResolvedValue({ tokenType: 'admin', userId: 'u1' } as any)
+
+    const { POST } = await import('./advisories.js')
+    const req = new Request('http://localhost/api/advisories', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ package_name: 'x' }), // missing required fields
+    })
+    const res = await POST({ request: req } as any)
+    expect(res.status).toBe(400)
+  })
+
+  it('inserts advisory and returns 201 for valid admin request', async () => {
+    const { verifyApiToken } = await import('../../lib/api-tokens.js')
+    vi.mocked(verifyApiToken).mockResolvedValue({ tokenType: 'admin', userId: 'u1' } as any)
+
+    const { supabase } = await import('../../lib/supabase.js')
+    const mockInsertChain = {
+      insert: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({
+        data: { id: 'adv-uuid', package_name: 'vuln/pkg', advisory_id: 'GHSA-1111',
+          severity: 'high', affected_versions: '<2.0.0', title: 'T', advisory_url: 'https://x.com' },
+        error: null,
+      }),
+    }
+    vi.mocked(supabase.from).mockReturnValue(mockInsertChain as any)
+
+    const { POST } = await import('./advisories.js')
+    const req = new Request('http://localhost/api/advisories', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        package_name: 'vuln/pkg', advisory_id: 'GHSA-1111', severity: 'high',
+        affected_versions: '<2.0.0', title: 'T', advisory_url: 'https://x.com',
+      }),
+    })
+    const res = await POST({ request: req } as any)
+    expect(res.status).toBe(201)
   })
 })
