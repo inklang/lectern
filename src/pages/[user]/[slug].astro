@@ -59,12 +59,12 @@ const owner = await getPackageOwner(dbSlug)
 
 // Resolve dependency bare names to full slugs for correct linking
 const depNames = Object.keys(latest.dependencies)
-const depSlugMap = depNames.length > 0 ? await resolvePackageSlugs(depNames) : new Map<string, string | null>()
+const depSlugMap = depNames.length > 0 ? await resolvePackageSlugs(depNames).catch(() => new Map<string, string | null>()) : new Map<string, string | null>()
 const readmeHtml = await renderMarkdown(latest.readme)
-const dependents = await getPackageDependents(dbSlug)
-const stats = await getPackageStats(dbSlug)
-const deprecation = await getPackageDeprecation(packageName)
-const advisories = await getPackageAdvisories(dbSlug)
+const dependents = await getPackageDependents(dbSlug).catch(() => [])
+const stats = await getPackageStats(dbSlug).catch(() => ({ total: 0, last7d: 0, last30d: 0 }))
+const deprecation = await getPackageDeprecation(packageName).catch(() => null)
+const advisories = await getPackageAdvisories(dbSlug).catch(() => [])
 const tags = await getPackageTags(dbSlug).catch(() => [])
 const starCount = await getStarCount(dbSlug).catch(() => 0)
 const health = await getPackageHealth(dbSlug).catch(() => null)
@@ -88,9 +88,9 @@ const userId = session?.user?.id ?? null
 
 // Fetch reviews data
 const [reviews, packageRating, userReview] = await Promise.all([
-  getPackageReviewsWithUsers(dbSlug, 20, 0),
-  getPackageRating(dbSlug),
-  userId ? getUserReview(userId, dbSlug) : Promise.resolve(null),
+  getPackageReviewsWithUsers(dbSlug, 20, 0).catch(() => []),
+  getPackageRating(dbSlug).catch(() => ({ avg: 0, count: 0 })),
+  userId ? getUserReview(userId, dbSlug).catch(() => null) : Promise.resolve(null),
 ])
 
 // Check if user is org admin
